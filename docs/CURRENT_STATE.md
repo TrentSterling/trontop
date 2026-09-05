@@ -2,6 +2,29 @@
 
 Last updated: 2026-09-05
 
+## Latest requested preview: clean alpha.26
+
+Trent called out diminishing returns, authorized stopping old Trontop windows,
+and explicitly requested a fresh build and launch. Rebuilt clean **b79708f** in
+**1 min 14 s**, then copied the exact EXE without overwriting previous artifacts:
+**`target/review/alpha26-b79708f-clean/trontop.exe`**, version **0.3.0-alpha.26**,
+**13,598,208 bytes**, built **2026-09-05 23:37:40.445 UTC**.
+SHA-256 **`5CC9CF248335353C821237229EFAED2E97BC9A082D8C11B8A2DA7CED9A82DF49`**.
+This changes the embedded source identity to clean b79708f; application source
+is unchanged from the previously verified alpha.26 below.
+
+Opened at **23:38:40.145 UTC**, PID **242180**, HWND **8192130**. Initial
+InputIdle/Responding checks passed, not a native drag/close/soak claim. Stopped
+only old preview PIDs 259420, 262932, 263640, 273992 and 274860 after verifying
+each exact executable path and start time. Their EXEs were retained. No unrelated
+window, global input, tray test or upload was involved. This normal user-requested
+app launch may load/save user settings, unlike the earlier isolated fixtures.
+
+Read `../REVIEW.md`. Next step is hands-on review of this exact build. No alpha.27
+tray rewrite was made; the wait remains documented. Do not continue a cosmetic
+or speculative optimization loop while awaiting review. The goal/ledger remain
+incomplete; isolated native-test and upload permissions remain unresolved.
+
 ## Latest candidate: alpha.26 non-blocking settings
 
 Settings no longer use eframe's synchronous startup read or unbounded save-thread
@@ -33,21 +56,23 @@ status footer and synthetic close events. No native window or OS input is used.
 This is not measured native startup/drag/close/soak performance. No actual user
 preferences were read, migrated or modified by these fixture tests.
 
-Candidate: **`target/release/trontop.exe`**, **0.3.0-alpha.26**,
+Original verification artifact (now retained at
+**`target/review/alpha26-b79708f/trontop.exe`**): **0.3.0-alpha.26**,
 **13,598,208 bytes**, built **2026-09-05 23:20:30.442 UTC** from modified 3b80efb source.
 SHA-256 **`C88474F57882E767E0C70A83C56F55E12BD87ACA162800268395930E08016450`**.
 PE import inspection shows only Windows libraries, with no dynamic MSVC CRT.
 Clean-machine portability remains unverified; no additional runtime assets.
 
-Next scoped wait: `TrayController::new` still blocks on `ready_rx.recv()` and
+Recorded wait: `TrayController::new` still blocks on `ready_rx.recv()` and
 can join a failed worker during startup. Address under A22 with bounded worker
 lifecycle and honest pending/failure states; no native tray test is authorized.
 Removing settings joins does not prove GPU/window/tray teardown is fast or that
 storage caused Trent's reported lag/crash. A13/A20/A21/A22/A25 remain unchecked.
 
-Local only. No preview launched/replaced/closed, no other windows touched and no
-upload attempt. Relaunch, isolated-desktop and explicit source-upload approval
-remain unanswered. Remote last verified at alpha.21; no alpha.26 CI/tag/release.
+Local only. No preview was touched during implementation; the later explicitly
+requested launch is recorded above. No upload attempt. Isolated-desktop and
+explicit source-upload approval remain unanswered. Remote last verified at
+alpha.21; no alpha.26 CI/tag/release.
 The persistent goal stays active and this is a checkpoint, not a finished app.
 
 ## Previous candidate: alpha.25 non-blocking recovery diagnostics

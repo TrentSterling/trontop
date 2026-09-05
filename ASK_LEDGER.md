@@ -238,6 +238,10 @@ expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
    (A20/A22/A25), plus focused A15/A16 alignment polish, not a feature expansion.
    Alpha.22 additionally removes synchronous UI process/shell calls (A22).
    Deliver the current tested candidate with its exact identity and native limits.
+   **Review checkpoint:** clean alpha.26 was rebuilt and opened on Trent's explicit
+   request at 23:38 UTC, replacing five old previews with permission. `REVIEW.md`
+   has the exact identity and remaining limits. Trent again flagged diminishing
+   returns; get feedback on this build before another implementation cycle.
 2. Alpha.26 addresses the settings-store wait under A13/A21/A22 with preservation
    and unsaved/error tests. Next bounded code-level wait is tray initialization:
    remove the synchronous ready/failed-worker join without duplicating workers or

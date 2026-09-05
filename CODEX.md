@@ -5,6 +5,17 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Review handoff takes precedence.** Trent called out the open-ended bug hunt,
+then explicitly authorized replacing old Trontop windows and requested a fresh
+build. Clean b79708f was rebuilt and opened from
+`target/review/alpha26-b79708f-clean/trontop.exe` at 23:38:40.145 UTC, PID 242180,
+HWND 8192130; initial responding/input-idle checks passed. Five verified older
+Trontop previews were stopped; other apps were untouched. Read `REVIEW.md` for
+exact identity and short changes. No alpha.27 code exists. Await hands-on review
+before another implementation cycle; do not turn this into endless bug hunting.
+Permission to replace these previews was received and fulfilled. Isolated native
+testing and source-upload approval are still separate and unanswered.
+
 Alpha.26 is the local settings-responsiveness candidate. Eframe file persistence
 is disabled; one bounded app-owned worker loads/migrates/saves settings. Staged
 replacement preserves the existing file, conflicting instances are refused, and
@@ -15,11 +26,12 @@ app-to-worker-to-fresh-app round trip. Final gate: 225 passed, 13 ignored,
 strict Clippy/format/release PASS. Final offscreen pass: 101 PNGs, all eight new
 settings states plus normal dark/light Theme Studio reviewed. Read
 `docs/SETTINGS_PERSISTENCE.md` and latest `docs/CURRENT_STATE.md` for exact identity.
-No user settings, previews, desktop input or remote uploads were touched. The
+The implementation tests did not touch user settings, previews, desktop input or
+remote uploads; the subsequently requested launch is recorded above. The
 headless synthetic-close tests are not native drag/close/soak evidence. Tray
-startup still has an unbounded ready/failed-worker wait; this is the next bounded
-A22 code-level task, not proven as the reported crash trigger. A13/A20/A21/A22/A25
-remain open. Relaunch, isolated-desktop and upload approval remain unanswered.
+startup still has an unbounded ready/failed-worker wait; this recorded A22 finding
+is not proven as the reported crash trigger. A13/A20/A21/A22/A25 remain open.
+Review comes next. Isolated-desktop and upload approval remain unanswered.
 Do not retry the rejected upload by any route. Keep the persistent goal active.
 
 The alpha.25 and older checkpoints below are historical.
