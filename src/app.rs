@@ -119,6 +119,7 @@ pub struct TrontopApp {
     tree_initialized: bool,
     tree_expansion: tree_state::Expansion,
     selected_pid: Option<u32>,
+    inspector_visible: bool,
     selected_service: Option<String>,
     service_controller: crate::service_control::Controller,
     pending_service: Option<crate::service_control::Request>,
@@ -207,6 +208,7 @@ impl TrontopApp {
             tree_initialized: false,
             tree_expansion: tree_state::Expansion::default(),
             selected_pid: None,
+            inspector_visible: true,
             selected_service: None,
             service_controller: crate::service_control::Controller::default(),
             pending_service: None,
@@ -682,6 +684,27 @@ impl TrontopApp {
                         {
                             self.request_end_selected();
                         }
+                        if matches!(self.page, Page::Processes | Page::Details) {
+                            let selected = self.selected_pid.is_some();
+                            let fill = if selected && self.inspector_visible {
+                                t.accent_dim
+                            } else {
+                                t.panel_raised
+                            };
+                            if ui.add_enabled_ui(selected, |ui| {
+                                widgets::icon_button(ui, Icon::Details, "Inspector", Vec2::ZERO, fill, t)
+                            }).inner
+                                .on_hover_text(if self.inspector_visible {
+                                    "Hide inspector and give the table more room. Selection is retained."
+                                } else {
+                                    "Show paths, live counters and controls for the selected process."
+                                })
+                                .on_disabled_hover_text("Select a process to inspect it.")
+                                .clicked()
+                            {
+                                self.inspector_visible = !self.inspector_visible;
+                            }
+                        }
                         if widgets::icon_button(
                             ui,
                             Icon::Theme,
@@ -775,7 +798,10 @@ impl TrontopApp {
     }
 
     fn inspector(&mut self, root: &mut egui::Ui) {
-        if !matches!(self.page, Page::Processes | Page::Details) {
+        if !matches!(self.page, Page::Processes | Page::Details)
+            || !self.inspector_visible
+            || self.selected_process().is_none()
+        {
             return;
         }
         let t = self.colors();
@@ -801,13 +827,11 @@ impl TrontopApp {
                         widgets::status_pill(ui, &process.status, if process.status == "Running" { t.good } else { t.text_muted });
                     });
                     ui.add_space(8.0);
-                    widgets::hover_label(ui, RichText::new(&process.name).size(19.0).strong().color(t.text));
-                    widgets::hover_label(ui,
-                        RichText::new(format!("PID {} | {}", process.pid, process.user))
-                            .monospace()
-                            .color(t.text),
-                    );
+                    ui.add(egui::Label::new(RichText::new(&process.name).size(19.0).strong().color(t.text)).truncate())
+                        .on_hover_text(&process.name);
                     ui.add_space(10.0);
+                    widgets::detail_row(ui, "PID", &process.pid.to_string(), t);
+                    widgets::detail_row(ui, "Account", &process.user, t);
                     widgets::detail_row(ui, "Status", &process.status, t);
                     widgets::detail_row(ui, "CPU", &format::percent(process.cpu_percent), t);
                     widgets::detail_row(ui, "GPU", &process.gpu_percent.label(), t);
@@ -1032,37 +1056,35 @@ impl TrontopApp {
     fn telemetry_strip(&self, ui: &mut egui::Ui) {
         let t = self.colors();
         let gpu_value = self.snapshot.gpu.reading().label();
-        ui.columns(4, |columns| {
-            widgets::stat_card(
-                &mut columns[0],
+        let cpu_value = format::percent(self.snapshot.cpu_percent);
+        let memory_value = format::percent(memory_percent(&self.snapshot));
+        let memory_detail = format!(
+            "{} / {}",
+            format::bytes(self.snapshot.memory_used_bytes),
+            format::bytes(self.snapshot.memory_total_bytes)
+        );
+        let uptime_value = format::duration(self.snapshot.uptime_seconds);
+        let uptime_detail = format!("{} live entries", self.snapshot.process_count);
+        let cards = [
+            (
                 "CPU",
-                &format::percent(self.snapshot.cpu_percent),
+                cpu_value.as_str(),
                 if self.snapshot.cpu.brand.is_empty() {
                     "total machine load"
                 } else {
                     &self.snapshot.cpu.brand
                 },
                 t.accent,
-                self.theme,
-                t,
-            );
-            widgets::stat_card(
-                &mut columns[1],
+            ),
+            (
                 "MEMORY",
-                &format::percent(memory_percent(&self.snapshot)),
-                &format!(
-                    "{} / {}",
-                    format::bytes(self.snapshot.memory_used_bytes),
-                    format::bytes(self.snapshot.memory_total_bytes)
-                ),
+                memory_value.as_str(),
+                memory_detail.as_str(),
                 t.secondary,
-                self.theme,
-                t,
-            );
-            widgets::stat_card(
-                &mut columns[2],
+            ),
+            (
                 "GPU",
-                &gpu_value,
+                gpu_value.as_str(),
                 if self.snapshot.gpu.available {
                     "Busiest Windows GPU engine"
                 } else {
@@ -1073,19 +1095,24 @@ impl TrontopApp {
                         .unwrap_or("collecting exact counters")
                 },
                 theme::mix(t.accent, t.secondary, 0.5),
-                self.theme,
-                t,
-            );
-            widgets::stat_card(
-                &mut columns[3],
+            ),
+            (
                 "UPTIME",
-                &format::duration(self.snapshot.uptime_seconds),
-                &format!("{} live entries", self.snapshot.process_count),
+                uptime_value.as_str(),
+                uptime_detail.as_str(),
                 t.good,
-                self.theme,
-                t,
-            );
-        });
+            ),
+        ];
+        // Keep complete metric values above the table, even with a wide inspector.
+        // Breakpoints use logical egui points, not physical screen pixels.
+        let count = if ui.available_width() >= 736.0 { 4 } else { 2 };
+        for row in cards.chunks(count) {
+            ui.columns(count, |columns| {
+                for (ui, &(label, value, detail, color)) in columns.iter_mut().zip(row) {
+                    widgets::stat_card(ui, label, value, detail, color, self.theme, t);
+                }
+            });
+        }
     }
 
     fn process_table(&mut self, ui: &mut egui::Ui, detailed: bool) {

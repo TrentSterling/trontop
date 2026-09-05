@@ -1,5 +1,24 @@
 # App-wide UI polish brief
 
+## Alpha.21 targeted compact layout pass (September 5)
+
+The existing-design audit found two concrete width/alignment defects: the empty
+inspector permanently occupied 286 logical pixels, and long inspector identities
+wrapped into a variable-height header. Both are corrected. A toolbar Inspector
+toggle also gives selected processes the full table width without losing selection
+or search. At compact widths the four telemetry cards use two rows, keeping full
+uptime values visible. Titles and metric descriptions expose full text on hover.
+The user's rounded surfaces, gradients and dense data layout are preserved.
+
+Four headless regressions pass for toolbar/header visibility, metric/footer
+geometry, toggle state and long identities. Dark/light compact and normal images
+were reviewed; see `HEADLESS_QA.md` and `CURRENT_STATE.md` for exact gate evidence.
+This does not close A15/A16: selected compact tables still scroll horizontally,
+wide-table spare width is not optimally assigned to names, native DPI transitions
+are unverified, and the full page/dialog/extreme-theme acceptance audit remains.
+
+## Original brief and historical checkpoints
+
 Saved September 4, 2026, as Trent parked the session.
 
 Trent wants the surface treatment applied throughout the app, not only to Processes.

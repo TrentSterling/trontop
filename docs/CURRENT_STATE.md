@@ -2,7 +2,55 @@
 
 Last updated: 2026-09-05
 
-## Latest candidate: alpha.20 renderer recovery / UI handoff
+## Latest candidate: alpha.21 compact Processes and inspector
+
+Focused A15/A16 polish on top of alpha.20 recovery. An empty inspector no longer
+reserves table width. The toolbar Inspector toggle reclaims that width without
+clearing selection or search. At 1040x640, all seven default process columns fit
+when the inspector is hidden. When shown at that size, the telemetry cards switch
+to two rows; full metric values remain readable. The table deliberately retains
+horizontal scrolling when both the inspector and columns cannot fit.
+
+Inspector names now have a single-line title with full-name hover text. PID and
+account use separate aligned detail rows, so long names/accounts cannot push the
+remaining fields around. Truncated metric descriptions also have full hover text.
+This is a targeted existing-layout audit, not another visual identity redesign.
+
+Final local gate: **186 passed, 0 failed, 13 ignored** (29.22 s), strict Clippy,
+formatting and optimized build PASS (release EXE build 41.88 s). Four new compact
+tests cover dark/light, logical 1040x640/1280x760, selected/hidden inspectors,
+long identity text, toolbar/column clipping and local toggle state retention.
+The header test also uses egui scale factors 1/1.25/1.5/2; this does not test native
+mixed-monitor DPI transitions. Offscreen pass: **70 PNGs** (48.95 s); Processes,
+normal/compact inspectors, hidden compact inspector and wide light Processes
+inspected. The final two inspector images were rechecked after the title fix.
+
+Selected optimized recovery retest: **3/3 pixel-identical recoveries**,
+**127.45 / 1003.43 / 998.75 ms** (repeat-loss retry spacing is intentional),
+longest polling call **0.088 ms**, replay buffer **262,144 bytes** for this fixture.
+Nine-page UI CPU/tessellation p95 at 500/5,000 fixture processes: **0.10-0.95 ms**.
+These short offscreen probes exclude native presentation, dragging and whole-app
+sampling overhead; differing fixture counts are not a scaling benchmark.
+
+Candidate: **`target/release/trontop.exe`**, version **0.3.0-alpha.21**,
+**13,462,528 bytes**, built **2026-09-05 20:55:02 UTC** from modified fb4c88f source.
+SHA-256 **`DA27B0AD97FB7338E839131FB0EF6B9370076170E45A525753EFBEE95E648BF6`**.
+PE imports list only Windows DLLs, no dynamic MSVC runtime. This is not a
+clean-machine portability result. This build has not been launched or substituted
+for an existing preview. The previous alpha.20 target/release artifact was replaced
+by this build; its identity below is historical.
+
+Native surface recovery, drag/close/soak, mixed-monitor DPI and final app-wide
+layout/contrast acceptance remain open. Wide-table spare-width allocation also
+needs a final pass without breaking manual column resizing. No desktop input,
+window manipulation, cross-project changes or release publication. Permission for
+a separate non-visible native test desktop remains unanswered. Alpha.20 Windows CI
+[33990642654](https://github.com/TrentSterling/trontop/actions/runs/33990642654)
+for fb4c88f completed successfully at **20:58:28 UTC**, including tests, both strict
+Clippy checks, optimized build and artifact upload. Alpha.21 remote CI has not run
+yet; record its exact run in the coordination journal after the private push.
+
+## Previous candidate: alpha.20 renderer recovery / UI handoff
 
 Trent reported that alpha.19 froze and closed. Both local failure metadata and
 Windows events confirm its renderer panic at **18:29:11.956 UTC**. The resumed
@@ -38,7 +86,8 @@ dependency. This is not clean-machine portability proof. The old
 No alpha.20 preview was launched/replaced. Native surface recovery, real dragging,
 close timing and mixed-load soak remain unverified. A separate non-visible desktop
 test was requested but not authorized yet. Do not interfere with existing previews.
-No release/tag/publication or cross-project patch. Private CI for alpha.20 pending.
+No release/tag/publication or cross-project patch. Alpha.20 private CI subsequently
+passed; see the newer checkpoint above for its exact run and completion time.
 Previous alpha.19 Windows CI 33983943962 passed for 5e845df (checked September 5).
 The repository is still private. Source checkpoints are not released artifacts.
 

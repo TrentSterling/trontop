@@ -92,7 +92,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   One final page/dialog inventory at 1040x640 and 1280x760, then DPI checks: no
   character-stacked values, clipped primary controls, misaligned numeric columns,
   jammed edges or footer overlap. Check empty/loading/error/scrolled states too.
-  Fixed Users wrapping and table baselines already have tests. See `docs/UI_POLISH_BRIEF.md`.
+  Fixed Users wrapping and table baselines already have tests. Alpha.21 reclaims
+  empty/hidden inspector width, reflows compact metric cards and stabilizes long
+  inspector identities; four new headless regressions pass. Native DPI/full-page
+  coverage and final review remain. See `docs/UI_POLISH_BRIEF.md`.
 - [ ] **A16: Readable text and complete hover/focus states. PARTIAL / REVIEW.**
   Shared hover backgrounds exist for controls, rows, cards, badges, charts and
   labels. Final audit must include selected/disabled/focused states and extreme
@@ -204,8 +207,8 @@ expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
 ## Next handoff, then stop expanding
 
 1. Current resumed slice is the alpha.19 crash and responsiveness regression
-   (A20/A22/A25), not another feature expansion. Deliver the tested alpha.20
-   stability candidate with its exact identity and remaining native-test limits.
+   (A20/A22/A25), plus focused A15/A16 alignment polish, not a feature expansion.
+   Deliver the tested alpha.21 candidate with its exact identity and native limits.
 2. Keep A13 unchecked until restart persistence and visual acceptance are confirmed.
 3. Resolve permission for isolated native measurements before touching any windows.
    Work the remaining bounded asks and release decisions, not new alpha features.

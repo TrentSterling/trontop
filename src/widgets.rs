@@ -321,7 +321,8 @@ pub fn stat_card(
             egui::Label::new(RichText::new(value).size(19.0).monospace().color(t.text)).truncate(),
         )
         .on_hover_text(value);
-        ui.add(egui::Label::new(RichText::new(detail).size(10.0).color(t.text_muted)).truncate());
+        ui.add(egui::Label::new(RichText::new(detail).size(10.0).color(t.text_muted)).truncate())
+            .on_hover_text(detail);
     });
 }
 

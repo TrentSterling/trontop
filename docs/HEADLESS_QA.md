@@ -33,6 +33,16 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.21 adds four compact-layout regressions: all default process headers and
+  toolbar actions fit without an inspector; selected compact metrics retain full
+  values above the table; local inspector toggles retain selection/filter; long
+  names/accounts do not change the identity block height. Tests use both modes,
+  1040x640/1280x760 logical points and egui scale factors 1/1.25/1.5/2 for the
+  header test. No native DPI transition is exercised. The offscreen suite now
+  generates 70 PNGs. Compact/normal inspectors, hidden inspector, Processes and
+  wide light Processes were inspected. Final ordinary gate: 186 pass, 13 ignored.
+  The exact build and selected recovery/CPU retests are in `CURRENT_STATE.md`.
+
 - Alpha.20 adds non-blocking snapshot transfer, renderer replay/state-gating and
   recovery-log tests. Separately selected offscreen device-loss and stalled-setup
   probes run the production recovery helper with no native windows or adapter reset.

@@ -6,6 +6,7 @@ use crate::model::{
 };
 use eframe::App;
 
+mod compact_layout;
 mod disks;
 mod export;
 mod failure;
@@ -1653,6 +1654,9 @@ fn render_offscreen_visual_pass() {
         "theme-presets-light",
         "theme-library",
         "inspector",
+        "inspector-compact",
+        "inspector-hidden-compact",
+        "processes-wide-light",
         "gpu-sensors",
         "gpu-sensors-light",
         "gpu-sensors-compact",
@@ -1711,6 +1715,15 @@ fn render_offscreen_visual_pass() {
             Page::Performance
         };
         app.selected_pid = (variant == "inspector").then_some(900_001);
+        if variant.starts_with("inspector-") {
+            app.page = Page::Processes;
+            app.selected_pid = Some(900_001);
+            app.inspector_visible = variant != "inspector-hidden-compact";
+        }
+        if variant == "processes-wide-light" {
+            app.page = Page::Processes;
+            app.selected_pid = None;
+        }
         if variant.starts_with("confirm-") {
             app.page = Page::Processes;
             app.selected_pid = Some(900_001);
@@ -1885,7 +1898,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 67 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 70 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

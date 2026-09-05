@@ -6,10 +6,14 @@ must not modify this repository.
 ## Current checkpoint
 
 New active request after alpha.19 crashed: fix the app, make it fast/snappy and
-polish it. Alpha.20 is a stability candidate for A20/A22/A25: non-blocking snapshot
-transfer and local egui-wgpu device recovery. Read `docs/RENDERER_RECOVERY.md` and
-the newest `docs/CURRENT_STATE.md`. Offscreen fault/rebuild tests pass; native
-surface/drag/close/soak remain unproven. No alpha.20 preview has been opened.
+polish it. Alpha.21 adds a focused A15/A16 compact layout pass to the alpha.20
+A20/A22/A25 stability candidate: non-blocking snapshot transfer and local egui-wgpu
+device recovery. Empty/hidden inspectors release table width, compact metrics use
+two rows, and long inspector names/accounts keep stable aligned fields. Read
+`docs/RENDERER_RECOVERY.md` and the newest `docs/CURRENT_STATE.md` for exact EXE
+identity. Local gate: 186 ordinary tests, strict Clippy/format/release PASS;
+70 offscreen PNGs; three pixel-identical device-loss recoveries. Native
+surface/drag/close/soak remain unproven. No alpha.20/21 preview has been opened.
 Permission for a separate non-visible test desktop was asked but not received.
 No cross-project rollout or new visible test windows.
 
@@ -28,7 +32,7 @@ diminishing returns and requested one consolidated ask ledger. The resumed stabi
 objective takes priority. Keep work tied to its asks; do not add unrelated features
 or restart an open-ended visual concept loop.
 
-Working branch: `feat/provider-diagnostics`, alpha.19 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.21 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Alpha.19 implements four-peg gradients and a tabbed Theme Studio: editable positions,
