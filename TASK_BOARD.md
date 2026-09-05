@@ -24,6 +24,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] True process tree ordering, expand/collapse, search context, and child resource aggregation
 - [x] Priority class editor with explicit confirmation and current-priority display
 - [x] CPU affinity editor with processor-group-aware logical processor labels
+- [x] Exact native creation-time validation on the action handle for End Task/priority/affinity; critical-process protection and stale confirmations: `docs/PROCESS_ACTION_SAFETY.md`
 - [ ] Suspend and resume controls with unmistakable state feedback
 - [ ] Start, stop, and restart service actions with confirmations and access errors
 - [ ] Startup enable/disable support with a reversible disabled-entry store
@@ -44,6 +45,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Fix centered table labels caused by add_sized; headless tests check left/right alignment, vertical centers, single-line layout, and full-cell clicks
 - [x] Verify table alignment across seven offscreen-rendered pages; alpha.2 release build contains the correction
 - [x] Shared hover backgrounds for navigation, device tiles, metrics, cards, labels, badges, charts, table cells and custom action buttons; Theme Studio gets aligned rounded zebra control rows
+- [x] Correct branded action-button baseline offset beside plain buttons; enabled/disabled geometry tests and confirmation PNG review
 - [ ] Finish code-drawn vector navigation/window controls and stronger Tront branding (no emoji icons)
 - [x] Independently scroll Performance rail/content and pin the sidebar footer; headless input tests verify compact scrolling and no GPU-label/footer overlap
 - [ ] Continue remaining app-wide spacing, zebra details and visual-state audit; new QA is not a universal proof
@@ -62,12 +64,13 @@ This is the durable resume board. Keep it honest and update it when a slice land
 
 ## Release work
 
-- [x] Build a separate optimized alpha.3 review EXE without touching the running release copy; Windows-only imports verified
-- [ ] Trent manually reviews alpha.3 sensors and hover/scroll behavior in the new EXE; no automated desktop interaction
+- [x] Build a separate optimized alpha.4 review EXE without touching the running release copy
+- [ ] Trent manually reviews alpha.4 sensors, confirmation and hover/scroll behavior; no automated desktop interaction
 
 - [x] Define private-alpha, release-candidate, public-preview, and rollback gates in `RELEASE_PLAN.md`
 - [x] Create and push the private `TrentSterling/trontop` GitHub repository; first Windows CI passed
-- [ ] Push the parked local UI/tray checkpoint, run CI for that exact commit, and publish the private alpha
+- [ ] Push the local UI/tray/sensors/action-safety checkpoint and run CI for that exact code commit
+- [ ] Complete the remaining alpha gates in `RELEASE_PLAN.md`, then publish the private alpha
 - [x] Embed version metadata and a generated multi-resolution Trontop application icon in the PE
 - [x] Add a Windows GitHub Actions gate that uploads the portable review executable
 - [ ] Add an About panel with build hash and provider health

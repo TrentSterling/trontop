@@ -84,14 +84,27 @@ pub fn action_button(
     base: Color32,
     t: Tokens,
 ) -> egui::Response {
-    ui.scope(|ui| {
-        let states = &mut ui.visuals_mut().widgets;
-        states.inactive.weak_bg_fill = base;
-        states.hovered.weak_bg_fill = theme::mix(base, t.accent, 0.22);
-        states.active.weak_bg_fill = theme::mix(base, t.secondary, 0.28);
-        ui.add_sized(size, egui::Button::new(text))
-    })
-    .inner
+    action_button_enabled(ui, text, size, base, t, true)
+}
+
+pub fn action_button_enabled(
+    ui: &mut egui::Ui,
+    text: impl Into<egui::WidgetText>,
+    size: Vec2,
+    base: Color32,
+    t: Tokens,
+    enabled: bool,
+) -> egui::Response {
+    // Scope the visuals, not the layout: nested Ui scopes in a horizontal row
+    // centered the action in a taller allocation and shifted its baseline.
+    let before = ui.visuals().widgets.clone();
+    let states = &mut ui.visuals_mut().widgets;
+    states.inactive.weak_bg_fill = base;
+    states.hovered.weak_bg_fill = theme::mix(base, t.accent, 0.22);
+    states.active.weak_bg_fill = theme::mix(base, t.secondary, 0.28);
+    let response = ui.add_enabled(enabled, egui::Button::new(text).min_size(size));
+    ui.visuals_mut().widgets = before;
+    response
 }
 
 pub fn tront_mark(ui: &mut egui::Ui, primary: Color32, secondary: Color32, size: f32) {
@@ -917,6 +930,26 @@ mod tests {
     }
 
     // Real egui layout and input, but no native window, OS input, tray or sampler.
+    #[test]
+    fn action_buttons_align_with_plain_buttons_and_restore_visuals() {
+        let ctx = egui::Context::default();
+        let t = theme::tokens(ThemeSettings::default());
+        for enabled in [true, false] {
+            let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+                ui.horizontal(|ui| {
+                    let before = ui.visuals().widgets.inactive.weak_bg_fill;
+                    let cancel = ui.button("Cancel");
+                    let action =
+                        action_button_enabled(ui, "End process", Vec2::ZERO, t.danger, t, enabled);
+                    assert!((cancel.rect.center().y - action.rect.center().y).abs() < 0.5);
+                    assert!((cancel.rect.height() - action.rect.height()).abs() < 0.5);
+                    assert_eq!(action.enabled(), enabled);
+                    assert_eq!(ui.visuals().widgets.inactive.weak_bg_fill, before);
+                });
+            });
+        }
+    }
+
     #[test]
     fn headless_labels_are_left_aligned_centered_vertically_and_clickable_across_cell() {
         for width in [76.0, 240.0, 420.0] {

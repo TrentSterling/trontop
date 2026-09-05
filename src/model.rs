@@ -39,6 +39,7 @@ impl PriorityClass {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ProcessControlInfo {
+    pub created_at_100ns: Option<u64>,
     pub priority: PriorityClass,
     pub affinity_mask: usize,
     pub system_affinity_mask: usize,
@@ -48,10 +49,26 @@ pub struct ProcessControlInfo {
 impl Default for ProcessControlInfo {
     fn default() -> Self {
         Self {
+            created_at_100ns: None,
             priority: PriorityClass::Unknown,
             affinity_mask: 0,
             system_affinity_mask: 0,
             accessible: false,
+        }
+    }
+}
+
+impl ProcessControlInfo {
+    pub fn for_observed_start(self, unix_seconds: u64) -> Self {
+        const WINDOWS_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
+        let native_start = self
+            .created_at_100ns
+            .and_then(|time| time.checked_sub(WINDOWS_UNIX_EPOCH_100NS))
+            .map(|time| time / 10_000_000);
+        if native_start == Some(unix_seconds) {
+            self
+        } else {
+            Self::default()
         }
     }
 }
@@ -77,6 +94,25 @@ pub struct ProcessRow {
     pub command: String,
     pub cwd: Option<PathBuf>,
     pub control: ProcessControlInfo,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessIdentity {
+    pub pid: u32,
+    /// Exact Windows FILETIME, not the rounded display timestamp.
+    pub created_at_100ns: u64,
+}
+
+impl ProcessRow {
+    pub fn identity(&self) -> Option<ProcessIdentity> {
+        self.control
+            .created_at_100ns
+            .filter(|time| *time > 0)
+            .map(|created_at_100ns| ProcessIdentity {
+                pid: self.pid,
+                created_at_100ns,
+            })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -483,6 +519,32 @@ fn natural_name_cmp(a: &str, b: &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn contradictory_native_identity_is_not_attached_to_a_snapshot_row() {
+        let control = ProcessControlInfo {
+            created_at_100ns: Some(133_444_736_000_000_001),
+            ..Default::default()
+        };
+        assert!(
+            control
+                .for_observed_start(1_700_000_000)
+                .created_at_100ns
+                .is_some()
+        );
+        assert!(
+            control
+                .for_observed_start(1_700_000_001)
+                .created_at_100ns
+                .is_none()
+        );
+        assert!(
+            ProcessControlInfo::default()
+                .for_observed_start(0)
+                .created_at_100ns
+                .is_none()
+        );
+    }
 
     fn row(pid: u32, name: &str, cpu: f32) -> ProcessRow {
         ProcessRow {

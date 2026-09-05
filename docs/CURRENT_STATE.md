@@ -1,8 +1,38 @@
 # Trontop current state
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
-## Latest: alpha.3 GPU sensors
+## Latest: alpha.4 process-action safety
+
+Version 0.3.0-alpha.4 binds End Task, priority and affinity actions to the exact native
+process creation FILETIME. Each operation verifies identity and Windows-critical
+status on the same handle used for the action. Missing/changed identity refuses the
+action. Pending End Task names/targets do not follow reused PIDs; stale selections
+clear. New process rows receive identity queries on their first sample.
+See `PROCESS_ACTION_SAFETY.md` for behavior, native/headless tests and limits.
+
+The offscreen pass exposed an action-button baseline offset next to Cancel. The
+shared helper now scopes visual colors without nesting layout allocations. A new
+headless test checks enabled/disabled geometry and visual-state restoration; both
+confirmation PNGs were inspected again after the fix.
+
+Local gate: formatting PASS; 35 tests passed, 0 failed, 3 opt-in tests ignored;
+strict Clippy PASS; optimized release build PASS. The explicitly selected offscreen
+visual pass passed with 17 PNGs, including valid/stale confirmations. Native mutations
+were restricted to harness-owned hidden child processes. PID 62220 was left untouched.
+
+Review EXE remains `target/review-build/release/trontop.exe`; 12,784,128 bytes,
+PE version 0.3.0-alpha.4; SHA-256:
+`D4FCD918DBC411A2967A3088F53023F3418F8FA808CFFEC205D1FAB91A34CCC3`.
+`dumpbin /dependents` shows only Windows imports, no NVML or dynamic MSVC runtime.
+It has not been launched. GitHub's existing successful baseline still only covers
+`ca46008`; the newer checkpoint needs a new CI run. No release/tag is published.
+
+The release audit found substantive alpha gates still open: suspend/resume, service
+actions, About/provider diagnostics, JSON/CSV export, crash logs, administrator paths,
+and the mixed-load soak. Do not weaken those gates or call the product complete.
+
+## Earlier: alpha.3 GPU sensors
 
 Version 0.3.0-alpha.3 adds optional read-only NVIDIA sensors on the background
 sampler. Performance > GPU Sensors shows per-adapter temperature, board power,

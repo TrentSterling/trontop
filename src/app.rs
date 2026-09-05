@@ -1,8 +1,8 @@
 use crate::format;
 use crate::gpu_sensors::SensorHistory;
 use crate::model::{
-    PriorityClass, ProcessRow, ProcessTotals, ProcessTreeRow, SortColumn, SortDirection,
-    SystemSnapshot, build_process_tree, sort_processes,
+    PriorityClass, ProcessIdentity, ProcessRow, ProcessTotals, ProcessTreeRow, SortColumn,
+    SortDirection, SystemSnapshot, build_process_tree, sort_processes,
 };
 use crate::platform;
 use crate::sampler::Sampler;
@@ -57,15 +57,19 @@ enum PerformanceDevice {
 #[derive(Clone, Copy)]
 enum PendingControlAction {
     Priority {
-        pid: u32,
-        started_at_unix: u64,
+        identity: ProcessIdentity,
         priority: PriorityClass,
     },
     Affinity {
-        pid: u32,
-        started_at_unix: u64,
+        identity: ProcessIdentity,
         affinity_mask: usize,
     },
+}
+
+#[derive(Clone)]
+struct PendingEndTask {
+    identity: ProcessIdentity,
+    name: String,
 }
 
 pub struct TrontopApp {
@@ -84,7 +88,7 @@ pub struct TrontopApp {
     tree_initialized: bool,
     expanded_pids: HashSet<u32>,
     selected_pid: Option<u32>,
-    pending_end_pid: Option<u32>,
+    pending_end_task: Option<PendingEndTask>,
     pending_control_action: Option<PendingControlAction>,
     message: Option<(String, bool)>,
     cpu_history: VecDeque<f32>,
@@ -137,7 +141,7 @@ impl TrontopApp {
             tree_initialized: false,
             expanded_pids: HashSet::new(),
             selected_pid: None,
-            pending_end_pid: None,
+            pending_end_task: None,
             pending_control_action: None,
             message: None,
             cpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
@@ -162,6 +166,25 @@ impl TrontopApp {
     }
 
     fn accept_sample(&mut self, snapshot: SystemSnapshot) {
+        if let Some(selected) = self.selected_process() {
+            let same = snapshot
+                .processes
+                .iter()
+                .find(|row| row.pid == selected.pid)
+                .is_some_and(|row| {
+                    row.started_at_unix == selected.started_at_unix
+                        && match (row.identity(), selected.identity()) {
+                            (Some(new), Some(old)) => new == old,
+                            _ => true,
+                        }
+                });
+            if !same {
+                self.selected_pid = None;
+                self.show_priority_editor = false;
+                self.show_affinity_editor = false;
+                // Pending confirmations keep their original target, never a reused PID.
+            }
+        }
         self.seen_generation = snapshot.sequence;
         if let Some(at) = snapshot.gpu_sensors.sampled_at {
             for adapter in &snapshot.gpu_sensors.adapters {
@@ -538,9 +561,23 @@ impl TrontopApp {
     }
 
     fn request_end_selected(&mut self) {
-        let Some(pid) = self.selected_pid else { return };
-        match platform::can_terminate(pid) {
-            Ok(()) => self.pending_end_pid = Some(pid),
+        let Some(process) = self.selected_process() else {
+            return;
+        };
+        let result = platform::can_terminate(process.pid).and_then(|()| {
+            process
+                .identity()
+                .map(|identity| PendingEndTask {
+                    identity,
+                    name: process.name.clone(),
+                })
+                .ok_or_else(|| {
+                    "Process identity is unavailable or still being sampled. No action was taken."
+                        .into()
+                })
+        });
+        match result {
+            Ok(target) => self.pending_end_task = Some(target),
             Err(error) => self.message = Some((error, true)),
         }
     }
@@ -632,7 +669,7 @@ impl TrontopApp {
                     };
                     widgets::detail_row(ui, "Affinity", &affinity, t);
                     ui.horizontal(|ui| {
-                        let controls_enabled = process.control.accessible
+                        let controls_enabled = process.control.accessible && process.identity().is_some()
                             && platform::can_control(process.pid).is_ok();
                         if ui
                             .add_enabled(controls_enabled, egui::Button::new("Set priority"))
@@ -1847,17 +1884,17 @@ impl TrontopApp {
     }
 
     fn confirm_end_task(&mut self, ctx: &egui::Context) {
-        let Some(pid) = self.pending_end_pid else {
+        let Some(target) = self.pending_end_task.clone() else {
             return;
         };
         let t = self.colors();
-        let name = self
+        let pid = target.identity.pid;
+        let name = target.name;
+        let still_listed = self
             .snapshot
             .processes
             .iter()
-            .find(|process| process.pid == pid)
-            .map(|process| process.name.clone())
-            .unwrap_or_else(|| "Unknown process".into());
+            .any(|row| row.identity() == Some(target.identity));
         egui::Window::new("Confirm end task")
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .collapsible(false)
@@ -1866,17 +1903,20 @@ impl TrontopApp {
                 ui.set_width(390.0);
                 widgets::hover_label(ui, RichText::new(format!("End {name}?")).size(18.0).strong().color(t.text));
                 widgets::hover_label(ui, RichText::new(format!("PID {pid} will be terminated immediately. Unsaved data in that process will be lost.")).color(t.text_muted));
+                widgets::hover_label(ui, RichText::new(if still_listed {
+                    "The native process creation time is rechecked when you confirm."
+                } else { "The original process exited or changed. Cancel and select again." }).size(11.0).color(t.text));
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() {
-                        self.pending_end_pid = None;
+                        self.pending_end_task = None;
                     }
-                    if widgets::action_button(ui, RichText::new("End process").color(Color32::WHITE), Vec2::ZERO, t.danger, t).clicked() {
-                        self.message = Some(match platform::terminate_process(pid) {
+                    if widgets::action_button_enabled(ui, RichText::new("End process").color(Color32::WHITE), Vec2::ZERO, t.danger, t, still_listed).clicked() {
+                        self.message = Some(match platform::terminate_process(target.identity) {
                             Ok(()) => (format!("Ended {name} ({pid})"), false),
                             Err(error) => (error, true),
                         });
-                        self.pending_end_pid = None;
+                        self.pending_end_task = None;
                     }
                 });
             });
@@ -1932,11 +1972,16 @@ impl TrontopApp {
                 );
             });
         if let Some(priority) = requested {
-            self.pending_control_action = Some(PendingControlAction::Priority {
-                pid: process.pid,
-                started_at_unix: process.started_at_unix,
-                priority,
-            });
+            let Some(identity) = process.identity() else {
+                self.message = Some((
+                    "Process identity is unavailable. No action was taken.".into(),
+                    true,
+                ));
+                self.show_priority_editor = false;
+                return;
+            };
+            self.pending_control_action =
+                Some(PendingControlAction::Priority { identity, priority });
             self.show_priority_editor = false;
         } else {
             self.show_priority_editor = open;
@@ -2053,9 +2098,16 @@ impl TrontopApp {
                 });
             });
         if apply {
+            let Some(identity) = process.identity() else {
+                self.message = Some((
+                    "Process identity is unavailable. No action was taken.".into(),
+                    true,
+                ));
+                self.show_affinity_editor = false;
+                return;
+            };
             self.pending_control_action = Some(PendingControlAction::Affinity {
-                pid: process.pid,
-                started_at_unix: process.started_at_unix,
+                identity,
                 affinity_mask: self.affinity_draft,
             });
             self.show_affinity_editor = false;
@@ -2068,23 +2120,16 @@ impl TrontopApp {
         let Some(action) = self.pending_control_action else {
             return;
         };
-        let (pid, started_at_unix) = match action {
-            PendingControlAction::Priority {
-                pid,
-                started_at_unix,
-                ..
-            }
-            | PendingControlAction::Affinity {
-                pid,
-                started_at_unix,
-                ..
-            } => (pid, started_at_unix),
+        let identity = match action {
+            PendingControlAction::Priority { identity, .. }
+            | PendingControlAction::Affinity { identity, .. } => identity,
         };
+        let pid = identity.pid;
         let process = self
             .snapshot
             .processes
             .iter()
-            .find(|process| process.pid == pid && process.started_at_unix == started_at_unix)
+            .find(|process| process.identity() == Some(identity))
             .cloned();
         let name = process
             .as_ref()
@@ -2121,7 +2166,7 @@ impl TrontopApp {
                 widgets::hover_label(ui, RichText::new(title).size(18.0).strong().color(t.text));
                 widgets::hover_label(ui, RichText::new(description).color(t.text_muted));
                 widgets::hover_label(ui,
-                    RichText::new(format!("PID {pid} | identity checked against process start time"))
+                    RichText::new(format!("PID {pid} | native creation time rechecked on confirmation"))
                         .size(10.0)
                         .monospace()
                         .color(t.secondary),
@@ -2140,10 +2185,10 @@ impl TrontopApp {
                         } else {
                             match action {
                                 PendingControlAction::Priority { priority, .. } => {
-                                    platform::set_process_priority(pid, priority)
+                                    platform::set_process_priority(identity, priority)
                                 }
                                 PendingControlAction::Affinity { affinity_mask, .. } => {
-                                    platform::set_process_affinity(pid, affinity_mask)
+                                    platform::set_process_affinity(identity, affinity_mask)
                                 }
                             }
                         };

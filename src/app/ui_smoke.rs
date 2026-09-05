@@ -25,6 +25,13 @@ fn fixture() -> SystemSnapshot {
             memory_bytes: 256_000_000 + index as u64 * 17_000_000,
             accumulated_cpu_millis: index as u64 * 87_600,
             started_at_unix: 1_700_000_000,
+            control: crate::model::ProcessControlInfo {
+                created_at_100ns: Some(133_444_736_000_000_000 + index as u64),
+                priority: PriorityClass::Normal,
+                affinity_mask: 0xff,
+                system_affinity_mask: 0xff,
+                accessible: true,
+            },
             command: "fixture.exe --headless-test-only --deliberately-long-command-line".into(),
             ..Default::default()
         })
@@ -296,7 +303,10 @@ fn search_selection_device_pages_and_dialogs_render_without_native_services() {
         app.show_run_task = dialog == 1;
         app.show_priority_editor = dialog == 2;
         app.show_affinity_editor = dialog == 3;
-        app.pending_end_pid = (dialog == 4).then_some(900_001);
+        app.pending_end_task = (dialog == 4).then(|| PendingEndTask {
+            identity: app.snapshot.processes[1].identity().unwrap(),
+            name: app.snapshot.processes[1].name.clone(),
+        });
         for _ in 0..3 {
             frame(&ctx, &mut app, size, vec![]);
         }
@@ -422,6 +432,76 @@ fn compact_sidebar_preserves_footer_and_performance_details_are_scrollable() {
     assert!(
         system_visible(&output),
         "bottom details must be reachable by local scroll input"
+    );
+}
+
+#[test]
+fn end_confirmation_keeps_original_identity_and_selection_expires_on_pid_reuse() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.selected_pid = Some(900_001);
+    app.request_end_selected(); // stages a confirmation only; no native calls
+    let original = app.pending_end_task.clone().unwrap();
+    let mut snapshot = app.snapshot.clone();
+    let replacement = &mut snapshot.processes[1];
+    replacement.name = "Replacement.Must.Never.Be.Targeted.exe".into();
+    replacement.control.created_at_100ns = Some(original.identity.created_at_100ns + 1);
+    app.accept_sample(snapshot);
+    assert!(app.selected_pid.is_none());
+    assert_eq!(
+        app.pending_end_task.as_ref().unwrap().identity,
+        original.identity
+    );
+    let size = Vec2::new(1040.0, 640.0);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    for _ in 0..20 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let texts = text_shapes(&output);
+    assert!(
+        texts
+            .iter()
+            .any(|(text, _)| text.galley.job.text == format!("End {}?", original.name))
+    );
+    assert!(texts.iter().any(|(text, _)| text.galley.job.text
+        == "The original process exited or changed. Cancel and select again."));
+    // Only click Cancel. The production destructive action is never invoked by
+    // the UI harness; native action tests own isolated disposable children.
+    let cancel = texts
+        .iter()
+        .find(|(text, _)| text.galley.job.text == "Cancel")
+        .unwrap()
+        .0
+        .visual_bounding_rect()
+        .center();
+    for pressed in [true, false] {
+        frame(
+            &ctx,
+            &mut app,
+            size,
+            vec![
+                egui::Event::PointerMoved(cancel),
+                egui::Event::PointerButton {
+                    pos: cancel,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+    }
+    assert!(app.pending_end_task.is_none());
+    app.selected_pid = Some(900_001);
+    app.snapshot.processes[1].control.created_at_100ns = None;
+    app.request_end_selected();
+    assert!(app.pending_end_task.is_none());
+    assert!(
+        app.message
+            .as_ref()
+            .unwrap()
+            .0
+            .contains("identity is unavailable")
     );
 }
 
@@ -569,6 +649,8 @@ fn render_offscreen_visual_pass() {
         "gpu-sensors-light",
         "gpu-sensors-compact",
         "gpu-sensors-unavailable",
+        "confirm-end-task",
+        "confirm-stale-task",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -583,6 +665,14 @@ fn render_offscreen_visual_pass() {
             Page::Performance
         };
         app.selected_pid = (variant == "inspector").then_some(900_001);
+        if variant.starts_with("confirm-") {
+            app.page = Page::Processes;
+            app.selected_pid = Some(900_001);
+            app.request_end_selected();
+            if variant == "confirm-stale-task" {
+                app.snapshot.processes[1].control.created_at_100ns = None;
+            }
+        }
         app.show_theme_editor = variant == "theme-studio";
         if variant.starts_with("gpu-sensors") {
             app.performance_device = PerformanceDevice::GpuSensors;
@@ -614,7 +704,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 15 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 17 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

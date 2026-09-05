@@ -5,11 +5,11 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Latest local version: 0.3.0-alpha.3. Read the latest section of `docs/CURRENT_STATE.md`
+Latest local version: 0.3.0-alpha.4. Read the latest section of `docs/CURRENT_STATE.md`
 and `docs/HEADLESS_QA.md`. The hover/rounded-controls slice and safe headless harness
 are now implemented. A separate optimized review EXE exists under
 `target/review-build/release/trontop.exe`; do not confuse it with the still-running
-older `target/release` copy. Fifteen test-fixture PNGs were generated without opening
+older `target/release` copy. Seventeen test-fixture PNGs were generated without opening
 any app window. No native drag fix or published release is verified.
 
 Trent reports a clear subjective drag improvement; there is no measured 60 FPS claim.
@@ -17,6 +17,13 @@ Alpha.3 integrates real NVIDIA NVML temperature/power/clocks/fan/VRAM on the sam
 with a dedicated GPU Sensors page and bounded, gap-aware histories. Native read-only
 probe and headless checks passed. Details and remaining CPU/storage/vendor work are
 in `docs/SENSORS_PLAN.md`. No app windows were launched or manipulated for this slice.
+
+Alpha.4 adds exact native process-creation identity checks on the same handle used
+for End Task/priority/affinity, Windows-critical-process refusals, and stale-confirmation
+protection. Read `docs/PROCESS_ACTION_SAFETY.md`. Local gate: 35 tests passed, strict
+Clippy and optimized build pass. The shared action-button helper also fixes the
+confirmation baseline offset, verified by geometry tests and offscreen images.
+The larger alpha release gates are still incomplete.
 
 ## Earlier checkpoint (historical)
 

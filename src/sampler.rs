@@ -106,12 +106,16 @@ fn sample_loop(
             .values()
             .map(|process| (process.pid().as_u32(), process.start_time()))
             .collect::<HashSet<_>>();
-        if sequence.is_multiple_of(CONTROL_REFRESH_INTERVAL) {
-            process_controls.retain(|key, _| active_process_keys.contains(key));
-            for &(pid, started_at) in &active_process_keys {
+        process_controls.retain(|key, _| active_process_keys.contains(key));
+        for &(pid, started_at) in &active_process_keys {
+            if sequence.is_multiple_of(CONTROL_REFRESH_INTERVAL)
+                || !process_controls.contains_key(&(pid, started_at))
+            {
                 process_controls.insert(
                     (pid, started_at),
-                    platform::query_process_control(pid).unwrap_or_default(),
+                    platform::query_process_control(pid)
+                        .unwrap_or_default()
+                        .for_observed_start(started_at),
                 );
             }
         }

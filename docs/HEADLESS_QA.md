@@ -25,6 +25,8 @@ NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
 - Actual text geometry: visible page titles, finite bounds, single-line table names.
 - Existing widget tests verify left-aligned labels, right-aligned numbers, vertical
   centering, and full-cell clicks.
+- Shared action-button tests require the same baseline and height as a neighboring
+  plain button in enabled/disabled states, and restore the surrounding visual colors.
 - Local egui pointer events exercise all navigation items and process selection.
 - Compact sidebar checks keep GPU text visible above the footer. Local wheel input
   must reveal the bottom CPU detail row in the separately scrolled Performance pane.
@@ -33,13 +35,16 @@ NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
 - Sixteen GPU sensor size/mode/state cases cover available, partially unsupported,
   missing-driver and multiple-adapter fixtures. Additional tests verify history
   identity, missing samples and removal after expiration.
+- Confirmation fixtures simulate PID reuse and require the original target/name,
+  stale warning and expired selection. Local pointer input only cancels the dialog;
+  native mutation tests exclusively use their own disposable hidden children.
 - Thirteen shared surface variants in both modes must change background under the
   pointer, restore it after exit, and preserve geometry. Includes selected/unselected
   navigation/devices, cards, metrics, detail rows, badges, meters, action buttons,
   control rows and charts.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes fifteen PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes seventeen PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 

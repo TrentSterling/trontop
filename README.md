@@ -10,7 +10,11 @@ Version 0.3 alpha provides:
 - a persistent process inspector
 - current Windows priority and CPU affinity telemetry, plus confirmed scheduling controls
 - guarded process termination with explicit confirmation
+- native creation-time validation on the same action handle for termination, priority,
+  and affinity; reused PIDs and Windows-critical processes are refused
 - CPU, memory, disk, network, and GPU performance drill-downs
+- optional NVIDIA temperature, board power, clocks, fan target, and VRAM sensors with
+  two-minute temperature/power histories; missing sensors stay explicitly unavailable
 - History, Startup, Users, Details, and Services pages backed by native data
 - a frameless Tront shell and persistent live gradient Theme Studio
 - alternating row and gradient column bands, padded cells, and high-contrast selection
