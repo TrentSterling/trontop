@@ -4,21 +4,27 @@ use crate::gpu_sensors::{AdapterSensors, SensorHistory};
 impl TrontopApp {
     pub(super) fn gpu_sensor_performance(&self, ui: &mut egui::Ui) {
         let t = self.colors();
-        widgets::performance_heading(
-            ui,
-            "GPU sensors",
-            "Read-only NVIDIA driver telemetry",
-            "NVML",
-            t.secondary,
-            t,
-        );
-        let snapshot = &self.snapshot.gpu_sensors;
-        if snapshot.adapters.is_empty() {
-            widgets::empty_state(ui, "Hardware sensors unavailable",
-                snapshot.error.as_deref().unwrap_or("Waiting for the first driver sample. GPU Engine usage remains on its own page."), t);
-            return;
+        if self.page != Page::Sensors {
+            widgets::performance_heading(
+                ui,
+                "GPU sensors",
+                "Read-only NVIDIA driver telemetry",
+                "NVML",
+                t.secondary,
+                t,
+            );
         }
-        for (index, adapter) in snapshot.adapters.iter().enumerate() {
+        let snapshot = &self.snapshot.gpu_sensors;
+        let placeholder = AdapterSensors {
+            name: "Hardware sensors unavailable".into(),
+            ..Default::default()
+        };
+        let adapters = if snapshot.adapters.is_empty() {
+            std::slice::from_ref(&placeholder)
+        } else {
+            &snapshot.adapters
+        };
+        for (index, adapter) in adapters.iter().enumerate() {
             ui.push_id(("sensor_adapter", adapter.uuid.as_deref(), index), |ui| {
                 widgets::hover_frame(ui, widgets::surface(ui, t, index % 2 == 1), |ui| {
                     ui.set_min_width(ui.available_width());
@@ -34,12 +40,30 @@ impl TrontopApp {
                     .on_hover_text(&adapter.name);
                     widgets::hover_label(
                         ui,
-                        RichText::new(format!(
-                            "NVIDIA adapter {index} · live sample · {:.2} ms collection",
-                            snapshot.query_millis
-                        ))
+                        RichText::new(if snapshot.using_cached {
+                            format!(
+                                "Cached reading / last success {}",
+                                crate::diagnostics::age(
+                                    snapshot.last_success,
+                                    std::time::Instant::now()
+                                )
+                            )
+                        } else if snapshot.adapters.is_empty() {
+                            "No readings / fields stay visible".into()
+                        } else {
+                            format!(
+                                "NVIDIA adapter {index} / live sample / {:.2} ms collection",
+                                snapshot.query_millis
+                            )
+                        })
                         .size(10.0)
                         .color(t.text_muted),
+                    )
+                    .on_hover_text(
+                        snapshot
+                            .error
+                            .as_deref()
+                            .unwrap_or("Read-only sensor provider"),
                     );
                 });
                 if let Some(error) = &adapter.error {

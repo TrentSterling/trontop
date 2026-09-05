@@ -1,5 +1,6 @@
 use crate::format;
 use crate::gpu_sensors::SensorHistory;
+use crate::icons::Icon;
 use crate::model::{
     PriorityClass, ProcessIdentity, ProcessRow, ProcessTotals, ProcessTreeRow, SortColumn,
     SortDirection, SystemSnapshot, build_process_tree, sort_processes,
@@ -16,6 +17,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 const HISTORY_LENGTH: usize = 120;
 
+mod diagnostics;
+mod overview;
 mod sensors;
 
 #[cfg(test)]
@@ -23,6 +26,8 @@ mod ui_smoke;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Page {
+    Overview,
+    Sensors,
     Processes,
     Performance,
     History,
@@ -33,7 +38,22 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [(Self, &'static str, &'static str); 7] = [
+    fn icon(self) -> Icon {
+        match self {
+            Self::Overview => Icon::Overview,
+            Self::Sensors => Icon::Sensors,
+            Self::Processes => Icon::Processes,
+            Self::Performance => Icon::Performance,
+            Self::History => Icon::History,
+            Self::Startup => Icon::Startup,
+            Self::Users => Icon::Users,
+            Self::Details => Icon::Details,
+            Self::Services => Icon::Services,
+        }
+    }
+
+    const ALL: [(Self, &'static str, &'static str); 9] = [
+        (Self::Overview, "00", "Overview"),
         (Self::Processes, "01", "Processes"),
         (Self::Performance, "02", "Performance"),
         (Self::History, "03", "History"),
@@ -41,6 +61,7 @@ impl Page {
         (Self::Users, "05", "Users"),
         (Self::Details, "06", "Details"),
         (Self::Services, "07", "Services"),
+        (Self::Sensors, "08", "Hardware sensors"),
     ];
 }
 
@@ -94,11 +115,13 @@ pub struct TrontopApp {
     cpu_history: VecDeque<f32>,
     memory_history: VecDeque<f32>,
     gpu_history: VecDeque<f32>,
+    gpu_engine_names: Vec<String>,
     sensor_history: HashMap<String, SensorHistory>,
     disk_history: HashMap<String, VecDeque<f32>>,
     network_history: HashMap<String, VecDeque<f32>>,
     theme: ThemeSettings,
     show_theme_editor: bool,
+    show_diagnostics: bool,
     show_run_task: bool,
     show_priority_editor: bool,
     show_affinity_editor: bool,
@@ -147,11 +170,18 @@ impl TrontopApp {
             cpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
             memory_history: VecDeque::with_capacity(HISTORY_LENGTH),
             gpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
+            gpu_engine_names: vec![
+                "3D".into(),
+                "Copy".into(),
+                "VideoEncode".into(),
+                "VideoDecode".into(),
+            ],
             sensor_history: HashMap::new(),
             disk_history: HashMap::new(),
             network_history: HashMap::new(),
             theme: saved_theme,
             show_theme_editor: false,
+            show_diagnostics: false,
             show_run_task: false,
             show_priority_editor: false,
             show_affinity_editor: false,
@@ -197,7 +227,8 @@ impl TrontopApp {
                     .gpu_sensors
                     .adapters
                     .iter()
-                    .find(|a| a.uuid.as_ref() == Some(uuid));
+                    .find(|a| a.uuid.as_ref() == Some(uuid))
+                    .filter(|_| !snapshot.gpu_sensors.using_cached);
                 history.push(at, adapter);
             }
             // Expire removed adapters after their entire history window is empty.
@@ -221,9 +252,18 @@ impl TrontopApp {
         );
         widgets::push_history(
             &mut self.gpu_history,
-            snapshot.gpu.utilization_percent,
+            if snapshot.gpu.available {
+                snapshot.gpu.utilization_percent
+            } else {
+                f32::NAN
+            },
             HISTORY_LENGTH,
         );
+        for (name, _) in &snapshot.gpu.engine_utilization {
+            if !self.gpu_engine_names.contains(name) && self.gpu_engine_names.len() < 32 {
+                self.gpu_engine_names.push(name.clone());
+            }
+        }
         for disk in &snapshot.disks {
             let value = ((disk.read_bytes_per_sec + disk.write_bytes_per_sec) / 1_048_576.0) as f32;
             widgets::push_history(
@@ -358,24 +398,43 @@ impl TrontopApp {
                             .color(t.text_muted),
                     );
                     ui.add_space(8.0);
-                    let live = self.seen_generation > 0;
+                    let state = self
+                        .snapshot
+                        .diagnostics
+                        .get(crate::diagnostics::Provider::System)
+                        .state(
+                            crate::diagnostics::Provider::System,
+                            std::time::Instant::now(),
+                        );
                     widgets::status_pill(
                         ui,
-                        if live { "LIVE" } else { "CONNECTING" },
-                        if live { t.good } else { t.secondary },
+                        &state.label().to_uppercase(),
+                        diagnostics::state_color(state, t),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if chrome_button(ui, "X", t, true).clicked() {
+                        if chrome_button(ui, Icon::Close, "Close", t, true).clicked() {
                             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                        if chrome_button(ui, "[]", t, false).clicked() {
-                            let maximized = ui
-                                .ctx()
-                                .input(|input| input.viewport().maximized.unwrap_or(false));
+                        let maximized = ui
+                            .ctx()
+                            .input(|input| input.viewport().maximized.unwrap_or(false));
+                        if chrome_button(
+                            ui,
+                            if maximized {
+                                Icon::Restore
+                            } else {
+                                Icon::Maximize
+                            },
+                            if maximized { "Restore" } else { "Maximize" },
+                            t,
+                            false,
+                        )
+                        .clicked()
+                        {
                             ui.ctx()
                                 .send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
                         }
-                        if chrome_button(ui, "_", t, false).clicked() {
+                        if chrome_button(ui, Icon::Minimize, "Minimize", t, false).clicked() {
                             ui.ctx()
                                 .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                         }
@@ -422,10 +481,35 @@ impl TrontopApp {
             )
             .show(root, |ui| {
                 egui::Panel::bottom("navigation_footer")
-                    .exact_size(76.0)
+                    .exact_size(230.0)
                     .frame(egui::Frame::NONE)
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 4.0;
+                        widgets::mini_meter(
+                            ui,
+                            "CPU",
+                            (self.seen_generation > 0).then_some(self.snapshot.cpu_percent),
+                            t.accent,
+                            t,
+                        );
+                        widgets::mini_meter(
+                            ui,
+                            "MEMORY",
+                            (self.snapshot.memory_total_bytes > 0)
+                                .then(|| memory_percent(&self.snapshot)),
+                            t.secondary,
+                            t,
+                        );
+                        widgets::mini_meter(
+                            ui,
+                            "GPU",
+                            self.snapshot
+                                .gpu
+                                .available
+                                .then_some(self.snapshot.gpu.utilization_percent),
+                            theme::mix(t.accent, t.secondary, 0.5),
+                            t,
+                        );
                         ui.add_space(8.0);
                         ui.add(
                             egui::Label::new(
@@ -448,8 +532,9 @@ impl TrontopApp {
                             .size(9.0)
                             .color(t.text_muted),
                         );
-                        if widgets::action_button(
+                        if widgets::icon_button(
                             ui,
+                            Icon::Theme,
                             "Theme Studio",
                             Vec2::new(ui.available_width(), 31.0),
                             t.accent_dim,
@@ -473,39 +558,10 @@ impl TrontopApp {
                                 .color(t.text_muted),
                         );
                         ui.add_space(5.0);
-                        for (page, number, label) in Page::ALL {
-                            if widgets::nav_button(ui, self.page == page, number, label, t) {
+                        for (page, _, label) in Page::ALL {
+                            if widgets::nav_button(ui, self.page == page, page.icon(), label, t) {
                                 self.page = page;
                             }
-                        }
-
-                        ui.add_space(12.0);
-                        ui.separator();
-                        ui.add_space(9.0);
-                        widgets::hover_label(
-                            ui,
-                            RichText::new("MACHINE")
-                                .size(9.0)
-                                .strong()
-                                .color(t.text_muted),
-                        );
-                        ui.add_space(6.0);
-                        widgets::mini_meter(ui, "CPU", self.snapshot.cpu_percent, t.accent, t);
-                        widgets::mini_meter(
-                            ui,
-                            "MEMORY",
-                            memory_percent(&self.snapshot),
-                            t.secondary,
-                            t,
-                        );
-                        if self.snapshot.gpu.available {
-                            widgets::mini_meter(
-                                ui,
-                                "GPU",
-                                self.snapshot.gpu.utilization_percent,
-                                theme::mix(t.accent, t.secondary, 0.5),
-                                t,
-                            );
                         }
                     });
             });
@@ -526,6 +582,8 @@ impl TrontopApp {
                     widgets::hover_label(
                         ui,
                         RichText::new(match self.page {
+                            Page::Overview => "MACHINE OVERVIEW",
+                            Page::Sensors => "HARDWARE SENSORS",
                             Page::Processes => "PROCESS MATRIX",
                             Page::Performance => "PERFORMANCE ARRAY",
                             Page::History => "RESOURCE HISTORY",
@@ -539,21 +597,58 @@ impl TrontopApp {
                         .color(t.text_muted),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("Run task").clicked() {
+                        if widgets::icon_button(
+                            ui,
+                            Icon::Startup,
+                            "Run task",
+                            Vec2::ZERO,
+                            t.accent_dim,
+                            t,
+                        )
+                        .clicked()
+                        {
                             self.show_run_task = true;
                         }
                         if matches!(self.page, Page::Processes | Page::Details)
                             && ui
-                                .add_enabled(
-                                    self.selected_pid.is_some(),
-                                    egui::Button::new("End task"),
-                                )
+                                .add_enabled_ui(self.selected_pid.is_some(), |ui| {
+                                    widgets::icon_button(
+                                        ui,
+                                        Icon::Stop,
+                                        "End task",
+                                        Vec2::ZERO,
+                                        t.panel_raised,
+                                        t,
+                                    )
+                                })
+                                .inner
                                 .clicked()
                         {
                             self.request_end_selected();
                         }
-                        if ui.button("Theme").clicked() {
+                        if widgets::icon_button(
+                            ui,
+                            Icon::Theme,
+                            "Theme",
+                            Vec2::ZERO,
+                            t.panel_raised,
+                            t,
+                        )
+                        .clicked()
+                        {
                             self.show_theme_editor = true;
+                        }
+                        if widgets::icon_button(
+                            ui,
+                            Icon::Info,
+                            "About",
+                            Vec2::ZERO,
+                            t.panel_raised,
+                            t,
+                        )
+                        .clicked()
+                        {
+                            self.show_diagnostics = true;
                         }
                     });
                 });
@@ -584,6 +679,8 @@ impl TrontopApp {
 
     fn keyboard_shortcuts(&mut self, ctx: &egui::Context) {
         let pages = [
+            (egui::Key::Num0, Page::Overview),
+            (egui::Key::Num8, Page::Sensors),
             (egui::Key::Num1, Page::Processes),
             (egui::Key::Num2, Page::Performance),
             (egui::Key::Num3, Page::History),
@@ -833,7 +930,7 @@ impl TrontopApp {
     fn page_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str, searchable: bool) {
         let t = self.colors();
         ui.horizontal(|ui| {
-            ui.heading(RichText::new(title).color(t.text));
+            ui.heading(RichText::new(title).size(24.0).strong().color(t.text));
             if searchable {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let edit = egui::TextEdit::singleline(&mut self.query)
@@ -858,7 +955,7 @@ impl TrontopApp {
         let gpu_value = if self.snapshot.gpu.available {
             format::percent(self.snapshot.gpu.utilization_percent)
         } else {
-            "WARMING".into()
+            "-- %".into()
         };
         ui.columns(4, |columns| {
             widgets::stat_card(
@@ -1089,21 +1186,31 @@ impl TrontopApp {
                             ui.spacing_mut().button_padding = Vec2::ZERO;
                             ui.add_space(display.depth as f32 * 13.0);
                             if tree_mode && display.has_children {
-                                let marker = if display.expanded { "-" } else { "+" };
-                                if widgets::action_button(
-                                    ui,
-                                    RichText::new(marker).monospace().color(t.text),
-                                    Vec2::splat(20.0),
-                                    t.accent_dim,
-                                    t,
-                                )
-                                .on_hover_text(if display.expanded {
+                                let label = if display.expanded {
                                     "Collapse process subtree"
                                 } else {
                                     "Expand process subtree"
-                                })
-                                .clicked()
-                                {
+                                };
+                                let response = widgets::icon_button(
+                                    ui,
+                                    if display.expanded {
+                                        Icon::Collapse
+                                    } else {
+                                        Icon::Expand
+                                    },
+                                    "",
+                                    Vec2::splat(20.0),
+                                    t.accent_dim,
+                                    t,
+                                );
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::labeled(
+                                        egui::WidgetType::Button,
+                                        ui.is_enabled(),
+                                        label,
+                                    )
+                                });
+                                if response.on_hover_text(label).clicked() {
                                     toggled_pid = Some(process.pid);
                                 }
                             } else if tree_mode {
@@ -1604,32 +1711,28 @@ impl TrontopApp {
             ui,
             "GPU ENGINE ARRAY",
             "Windows GPU Engine counters",
-            &format::percent(self.snapshot.gpu.utilization_percent),
+            &if self.snapshot.gpu.available {
+                format::percent(self.snapshot.gpu.utilization_percent)
+            } else {
+                "-- %".into()
+            },
             color,
             t,
         );
-        if self.snapshot.gpu.available {
-            widgets::history_graph(ui, &self.gpu_history, color, 250.0, Some(100.0), t);
-            ui.add_space(10.0);
-            let engines = self
+        widgets::history_graph(ui, &self.gpu_history, color, 250.0, Some(100.0), t);
+        ui.add_space(10.0);
+        for engine in self.gpu_engine_names.iter().take(8) {
+            let usage = self
                 .snapshot
                 .gpu
                 .engine_utilization
                 .iter()
-                .take(8)
-                .cloned()
-                .collect::<Vec<_>>();
-            for (engine, usage) in engines {
-                widgets::engine_meter(ui, &engine, usage, color, t);
-            }
-        } else {
-            widgets::empty_state(
-                ui,
-                "GPU telemetry is warming up",
-                self.snapshot.gpu.error.as_deref().unwrap_or("Trontop is enumerating the exact active GPU Engine PDH instances. Rate counters need two observations before they are valid."),
-                t,
-            );
+                .find(|(name, _)| name == engine)
+                .map(|(_, value)| *value)
+                .filter(|_| self.snapshot.gpu.available);
+            widgets::engine_meter(ui, engine, usage, color, t);
         }
+        self.provider_notice(ui, crate::diagnostics::Provider::GpuActivity);
     }
 
     fn history_page(&mut self, ui: &mut egui::Ui) {
@@ -1701,6 +1804,7 @@ impl TrontopApp {
             "Run keys and Startup folders, refreshed every 30 seconds",
             "Search startup inventory",
         );
+        self.provider_notice(ui, crate::diagnostics::Provider::Startup);
         ui.add_space(12.0);
         let needle = self.secondary_query.trim().to_lowercase();
         let rows = self
@@ -1832,6 +1936,7 @@ impl TrontopApp {
             "Windows Service Control Manager inventory, refreshed every 30 seconds",
             "Search services",
         );
+        self.provider_notice(ui, crate::diagnostics::Provider::Services);
         ui.add_space(12.0);
         let needle = self.secondary_query.trim().to_lowercase();
         let rows = self
@@ -2398,6 +2503,8 @@ impl eframe::App for TrontopApp {
                     .stroke(Stroke::new(1.0, t.border)),
             )
             .show(ui, |ui| match self.page {
+                Page::Overview => self.overview_page(ui),
+                Page::Sensors => self.sensors_page(ui),
                 Page::Processes => self.processes_page(ui),
                 Page::Performance => self.performance_page(ui),
                 Page::History => self.history_page(ui),
@@ -2412,6 +2519,7 @@ impl eframe::App for TrontopApp {
         self.confirm_control_action(&ctx);
         self.run_task_window(&ctx);
         self.theme_editor(&ctx);
+        self.diagnostics_window(&ctx);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -2419,16 +2527,23 @@ impl eframe::App for TrontopApp {
     }
 }
 
-fn chrome_button(ui: &mut egui::Ui, label: &str, t: Tokens, danger: bool) -> egui::Response {
-    widgets::action_button(
-        ui,
-        RichText::new(label)
-            .size(11.0)
-            .color(if danger { t.danger } else { t.text_muted }),
-        Vec2::new(34.0, 27.0),
-        t.panel_raised,
-        t,
-    )
+fn chrome_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    t: Tokens,
+    danger: bool,
+) -> egui::Response {
+    let mut colors = t;
+    if danger {
+        colors.text = t.danger;
+    }
+    let response =
+        widgets::icon_button(ui, icon, "", Vec2::new(34.0, 27.0), t.panel_raised, colors);
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+    });
+    response.on_hover_text(label)
 }
 
 fn memory_percent(snapshot: &SystemSnapshot) -> f32 {

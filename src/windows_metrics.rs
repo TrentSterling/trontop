@@ -1,6 +1,12 @@
-use crate::model::{GpuSnapshot, ServiceRow, StartupRow};
+use crate::model::{GpuSnapshot, ServiceRow};
 use std::collections::HashMap;
-use std::path::Path;
+
+mod startup;
+pub use startup::enumerate_startup;
+
+fn counter_reading(api_ok: bool, status_ok: bool, value: f64) -> Option<f32> {
+    (api_ok && status_ok && value.is_finite() && value >= 0.0).then(|| value.min(100.0) as f32)
+}
 
 #[cfg(windows)]
 mod native {
@@ -94,21 +100,21 @@ mod native {
 
             let mut by_pid = HashMap::<u32, f32>::new();
             let mut by_engine = HashMap::<String, f32>::new();
+            let mut valid_counters = 0;
             for counter in &self.counters {
                 let mut value = PDH_FMT_COUNTERVALUE::default();
                 let status = unsafe {
                     PdhGetFormattedCounterValue(counter.handle, PDH_FMT_DOUBLE, None, &mut value)
                 };
-                if status != 0
-                    || (value.CStatus != PDH_CSTATUS_VALID_DATA
-                        && value.CStatus != PDH_CSTATUS_NEW_DATA)
-                {
+                let Some(number) = counter_reading(
+                    status == 0,
+                    value.CStatus == PDH_CSTATUS_VALID_DATA
+                        || value.CStatus == PDH_CSTATUS_NEW_DATA,
+                    unsafe { value.Anonymous.doubleValue },
+                ) else {
                     continue;
-                }
-                let number = unsafe { value.Anonymous.doubleValue } as f32;
-                if !number.is_finite() || number <= 0.0 {
-                    continue;
-                }
+                };
+                valid_counters += 1;
                 *by_pid.entry(counter.pid).or_default() += number;
                 *by_engine.entry(counter.engine.clone()).or_default() += number;
             }
@@ -126,10 +132,12 @@ mod native {
                 .fold(0.0_f32, f32::max);
             (
                 GpuSnapshot {
-                    available: true,
+                    available: valid_counters > 0,
+                    valid_counters,
+                    total_counters: self.counters.len(),
                     utilization_percent: total,
                     engine_utilization: engines,
-                    error: None,
+                    error: (valid_counters == 0).then(|| "No valid GPU counter readings".into()),
                 },
                 by_pid,
             )
@@ -346,95 +354,17 @@ pub fn enumerate_services() -> Result<Vec<ServiceRow>, String> {
     Err("Service inventory requires Windows".into())
 }
 
-pub fn enumerate_startup() -> Vec<StartupRow> {
-    let mut rows = Vec::new();
-    #[cfg(windows)]
-    {
-        for (key, source) in [
-            (
-                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
-                "Current user Run key",
-            ),
-            (
-                r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run",
-                "Machine Run key",
-            ),
-            (
-                r"HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
-                "32-bit machine Run key",
-            ),
-        ] {
-            if let Ok(output) = std::process::Command::new("reg.exe")
-                .args(["query", key])
-                .output()
-            {
-                let text = String::from_utf8_lossy(&output.stdout);
-                for line in text.lines() {
-                    if let Some(row) = parse_reg_line(line, source) {
-                        rows.push(row);
-                    }
-                }
-            }
-        }
-
-        for (variable, source) in [
-            ("APPDATA", "Current user Startup folder"),
-            ("PROGRAMDATA", "Machine Startup folder"),
-        ] {
-            if let Some(root) = std::env::var_os(variable) {
-                let path = Path::new(&root).join("Microsoft/Windows/Start Menu/Programs/Startup");
-                if let Ok(entries) = std::fs::read_dir(path) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        rows.push(StartupRow {
-                            name: path
-                                .file_stem()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .into_owned(),
-                            command: path.display().to_string(),
-                            source: source.into(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-    rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    rows.dedup_by(|a, b| a.name.eq_ignore_ascii_case(&b.name) && a.command == b.command);
-    rows
-}
-
-fn parse_reg_line(line: &str, source: &str) -> Option<StartupRow> {
-    let trimmed = line.trim();
-    let marker = ["REG_SZ", "REG_EXPAND_SZ"]
-        .into_iter()
-        .find_map(|kind| trimmed.find(kind).map(|index| (kind, index)))?;
-    let name = trimmed[..marker.1].trim();
-    let command = trimmed[marker.1 + marker.0.len()..].trim();
-    if name.is_empty() || command.is_empty() {
-        return None;
-    }
-    Some(StartupRow {
-        name: name.into(),
-        command: command.into(),
-        source: source.into(),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parses_registry_startup_row() {
-        let row = parse_reg_line(
-            "Discord    REG_SZ    C:\\Users\\trent\\Discord.exe --startup",
-            "Run key",
-        )
-        .unwrap();
-        assert_eq!(row.name, "Discord");
-        assert!(row.command.contains("Discord.exe"));
+    fn pdh_valid_zero_is_not_confused_with_invalid_counter_data() {
+        assert_eq!(counter_reading(true, true, 0.0), Some(0.0));
+        assert_eq!(counter_reading(false, true, 0.0), None);
+        assert_eq!(counter_reading(true, false, 12.0), None);
+        assert_eq!(counter_reading(true, true, f64::NAN), None);
+        assert_eq!(counter_reading(true, true, -1.0), None);
     }
 
     #[cfg(windows)]

@@ -36,7 +36,20 @@ fn fixture() -> SystemSnapshot {
             ..Default::default()
         })
         .collect();
+    let mut diagnostics = crate::diagnostics::Diagnostics::default();
+    // Fixtures do not age into stale state while a slow test suite renders.
+    let fixture_at = std::time::Instant::now() + std::time::Duration::from_secs(3600);
+    for provider in crate::diagnostics::Provider::ALL {
+        diagnostics.get_mut(provider).record(
+            fixture_at,
+            std::time::Duration::from_micros(420),
+            crate::diagnostics::State::Live,
+            None,
+            None,
+        );
+    }
     SystemSnapshot {
+        diagnostics,
         sequence: 1,
         cpu_percent: 37.2,
         memory_used_bytes: 41_000_000_000,
@@ -78,6 +91,8 @@ fn fixture() -> SystemSnapshot {
         }],
         gpu: GpuSnapshot {
             available: true,
+            valid_counters: 32,
+            total_counters: 32,
             utilization_percent: 23.8,
             engine_utilization: vec![
                 ("3D".into(), 23.8),
@@ -87,7 +102,10 @@ fn fixture() -> SystemSnapshot {
             error: None,
         },
         gpu_sensors: crate::gpu_sensors::SensorSnapshot {
+            last_success: Some(std::time::Instant::now()),
+            using_cached: false,
             sampled_at: Some(std::time::Instant::now()),
+            attempted_at: Some(std::time::Instant::now()),
             adapters: vec![crate::gpu_sensors::AdapterSensors {
                 name: "Fixture NVIDIA GPU (test data)".into(),
                 uuid: Some("FIXTURE-GPU-0".into()),
@@ -157,6 +175,16 @@ fn frame(
     size: Vec2,
     events: Vec<egui::Event>,
 ) -> egui::FullOutput {
+    checked_frame(ctx, app, size, events, false)
+}
+
+fn checked_frame(
+    ctx: &egui::Context,
+    app: &mut TrontopApp,
+    size: Vec2,
+    events: Vec<egui::Event>,
+    allow_copy: bool,
+) -> egui::FullOutput {
     let output = ctx.run_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
@@ -167,7 +195,12 @@ fn frame(
     );
     // Commands are never executed by this harness. Also reject any unexpected
     // attempt to open external programs or manipulate a native viewport.
-    assert!(output.platform_output.commands.is_empty());
+    for command in &output.platform_output.commands {
+        assert!(
+            allow_copy && matches!(command, egui::OutputCommand::CopyText(_)),
+            "unexpected platform command"
+        );
+    }
     for viewport in output.viewport_output.values() {
         assert!(
             viewport.commands.is_empty(),
@@ -236,6 +269,7 @@ fn all_pages_render_headlessly_across_sizes_themes_and_empty_data() {
                             texts
                                 .iter()
                                 .any(|(text, clip)| text.galley.job.text == title
+                                    && text.pos.x >= 196.0
                                     && clip.contains_rect(text.visual_bounding_rect())),
                             "missing visible heading {title} at {size:?}"
                         );
@@ -260,8 +294,131 @@ fn all_pages_render_headlessly_across_sizes_themes_and_empty_data() {
             }
         }
     }
-    assert_eq!(cases, 336);
+    assert_eq!(cases, 432);
     println!("UI smoke: {cases} page/size/theme/data cases passed; no native windows or OS input");
+}
+
+#[test]
+fn about_report_is_only_emitted_on_explicit_copy_and_excludes_private_fixture_fields() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.show_diagnostics = true;
+    let size = Vec2::new(1280.0, 900.0);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let position = text_shapes(&output)
+        .into_iter()
+        .find(|(text, _)| text.galley.job.text == "Copy support report")
+        .unwrap()
+        .0
+        .visual_bounding_rect()
+        .center();
+    let event = |pressed| {
+        vec![
+            egui::Event::PointerMoved(position),
+            egui::Event::PointerButton {
+                pos: position,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]
+    };
+    frame(&ctx, &mut app, size, event(true));
+    // Only inspect the copy command. Never forward it to the real OS clipboard.
+    let output = checked_frame(&ctx, &mut app, size, event(false), true);
+    let [egui::OutputCommand::CopyText(report)] = output.platform_output.commands.as_slice() else {
+        panic!("expected exactly one copy command");
+    };
+    assert!(report.contains("Build:") && report.contains("System telemetry: Live"));
+    for secret in [
+        &app.snapshot.host_name,
+        &app.snapshot.processes[0].name,
+        &app.snapshot.processes[0].user,
+        &app.snapshot.processes[0].command,
+        &app.snapshot.startup[0].command,
+        app.snapshot.gpu_sensors.adapters[0].uuid.as_ref().unwrap(),
+    ] {
+        assert!(
+            !report.contains(secret),
+            "private fixture field entered report"
+        );
+    }
+}
+
+#[test]
+fn sensor_fields_keep_geometry_when_data_is_missing_or_cached_and_cache_does_not_extend_history() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Performance;
+    app.performance_device = PerformanceDevice::GpuSensors;
+    let size = Vec2::new(1280.0, 900.0);
+    let mut bounds = Vec::new();
+    for state in 0..3 {
+        if state == 1 {
+            let mut snapshot = app.snapshot.clone();
+            snapshot.sequence += 1;
+            snapshot.gpu_sensors.sampled_at = snapshot
+                .gpu_sensors
+                .sampled_at
+                .map(|at| at + std::time::Duration::from_secs(1));
+            snapshot.gpu_sensors.using_cached = true;
+            app.accept_sample(snapshot);
+            assert!(
+                app.sensor_history["FIXTURE-GPU-0"]
+                    .points
+                    .back()
+                    .unwrap()
+                    .temperature_c
+                    .is_none()
+            );
+        } else if state == 2 {
+            app.snapshot.gpu_sensors.adapters.clear();
+            app.snapshot.gpu_sensors.using_cached = false;
+        }
+        let mut output = frame(&ctx, &mut app, size, vec![]);
+        for _ in 0..3 {
+            output = frame(&ctx, &mut app, size, vec![]);
+        }
+        let texts = text_shapes(&output);
+        let current: Vec<_> = [
+            "GPU temperature",
+            "Board power",
+            "GRAPHICS CLOCK",
+            "MEMORY CLOCK",
+            "FAN TARGET",
+            "VRAM USED / TOTAL",
+        ]
+        .into_iter()
+        .map(|label| {
+            texts
+                .iter()
+                .find(|(text, _)| text.galley.job.text == label)
+                .unwrap()
+                .0
+                .visual_bounding_rect()
+        })
+        .collect();
+        if state == 0 {
+            bounds = current;
+        } else {
+            assert_eq!(
+                current, bounds,
+                "sensor field layout shifted at state {state}"
+            );
+        }
+        if state == 1 {
+            assert!(
+                texts
+                    .iter()
+                    .any(|(text, _)| text.galley.job.text.starts_with("Cached reading"))
+            );
+        }
+    }
 }
 
 #[test]
@@ -319,12 +476,11 @@ fn navigation_and_selection_accept_local_pointer_input() {
     let mut app = app(ThemeSettings::default(), true);
     theme::install(&ctx, app.theme);
     let size = Vec2::new(1280.0, 760.0);
-    for (page, number, name) in Page::ALL {
+    for (page, _, name) in Page::ALL {
         let output = frame(&ctx, &mut app, size, vec![]);
-        let label = format!("{number}   {name}");
         let position = text_shapes(&output)
             .into_iter()
-            .find(|(text, _)| text.galley.job.text == label)
+            .find(|(text, _)| text.galley.job.text == name && text.pos.x < 196.0)
             .unwrap()
             .0
             .visual_bounding_rect()
@@ -559,7 +715,8 @@ fn sensor_states_render_without_wrapping_or_fabricated_readings() {
                 assert!(visible("GPU sensors"));
                 if state == 2 {
                     assert!(visible("Hardware sensors unavailable"));
-                    assert!(!visible("GPU temperature"));
+                    assert!(visible("GPU temperature"));
+                    assert!(visible("Board power"));
                 } else {
                     assert!(visible("GPU temperature"));
                     assert!(visible("Board power"));
@@ -651,14 +808,20 @@ fn render_offscreen_visual_pass() {
         "gpu-sensors-unavailable",
         "confirm-end-task",
         "confirm-stale-task",
+        "overview-light",
+        "overview-empty",
+        "about",
+        "about-light",
+        "about-compact",
+        "gpu-sensors-cached",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
-            dark: variant != "performance-light" && variant != "gpu-sensors-light",
+            dark: !variant.ends_with("-light"),
             ..Default::default()
         };
         theme::install(&ctx, settings);
-        let mut app = app(settings, true);
+        let mut app = app(settings, variant != "overview-empty");
         app.page = if variant == "inspector" {
             Page::Processes
         } else {
@@ -674,6 +837,14 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant == "theme-studio";
+        app.show_diagnostics = variant.starts_with("about");
+        if variant.starts_with("overview") {
+            app.page = Page::Overview;
+        }
+        if variant == "gpu-sensors-cached" {
+            app.snapshot.gpu_sensors.using_cached = true;
+            app.snapshot.gpu_sensors.error = Some("Fixture provider unavailable".into());
+        }
         if variant.starts_with("gpu-sensors") {
             app.performance_device = PerformanceDevice::GpuSensors;
         }
@@ -682,7 +853,7 @@ fn render_offscreen_visual_pass() {
             app.snapshot.gpu_sensors.error =
                 Some("Fixture: NVIDIA driver unavailable. Other telemetry still works.".into());
         }
-        let size = if variant == "gpu-sensors-compact" {
+        let size = if variant.ends_with("-compact") {
             Vec2::new(1040.0, 640.0)
         } else {
             Vec2::new(1280.0, 760.0)
@@ -704,7 +875,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 17 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 25 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

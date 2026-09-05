@@ -2,7 +2,87 @@
 
 Last updated: 2026-09-05
 
-## Latest: alpha.4 process-action safety
+## Latest source: alpha.6 diagnostics, overview and vector controls
+
+Branch `feat/provider-diagnostics`. The existing running alpha.5 preview was NOT
+closed, replaced, moved or relaunched for this work. The separate optimized alpha.6
+review EXE is `target/review-build/release/trontop.exe`, 12,839,936 bytes, SHA-256:
+`91BDB02B4A0AB2744F4E8B3093F27FC1A8693E94FF16BBBC155E8B2DEB3E19E6`.
+PE version 0.3.0-alpha.6. Built from the modified bfe8689 worktree before checkpoint;
+About honestly records that modified build identity. It has NOT been launched.
+`dumpbin /dependents` shows only Windows imports, no bundled NVML or dynamic MSVC CRT.
+No installer or runtime image directory was introduced. No alpha.6 remote CI/release.
+
+Implemented and locally verified:
+
+- Overview dashboard, Hardware sensors navigation and About/provider-health dialog.
+  Reports contain only build/provider status, timing, coverage and static reason
+  strings. Copy is explicit, never uploaded; headless tests do not access clipboard.
+- Stable sensor fields during startup/failure; the last complete NVIDIA snapshot is
+  labeled Cached with original freshness. Cached values do not extend live graphs.
+  GPU Engine fields remain present with dashes, and absent history samples form gaps.
+- Native read-only startup queries, service cache retention/failure metadata, periodic
+  CPU frequency refresh, unknown-account labeling and validated PDH counter status.
+- Worker waiting is bounded at shutdown: sampler detaches after signaling stop, tray
+  posts quit with at most 100 ms join waiting. Threads retain their own query/resource
+  ownership. A blocked-worker regression test passes; whole-app close latency has NOT
+  been measured, and no claim covers renderer/settings-save delays.
+- Original 18-symbol vector vocabulary for navigation, window controls, action buttons
+  and tree chevrons. No emoji or icon-font dependency. Accessible names/tooltips remain;
+  disabled actions cannot click or shift. Selected navigation has a thin accent marker.
+- Four supplied inspiration boards and a generated Signal icon candidate saved under
+  `docs/inspiration`. PNG inspection confirmed ARGB with transparent corner pixels.
+  Candidate is not embedded/shipped; existing theme-aware Tront mark remains in use.
+
+Verification: formatting and diff whitespace checks PASS; 48 tests passed, 0 failed,
+3 opt-in tests ignored (26.50 s); strict Clippy PASS; optimized build PASS (54.44 s).
+Explicit offscreen rendering PASS, 25 PNGs using RTX 5070 Ti/Vulkan. Inspected compact
+Processes, Overview, Hardware sensors and About, plus light/cached variants. The
+headless page matrix covers 432 page/size/theme/data combinations. No native window,
+tray test, global input, focus changes or user process mutations were used for UI QA.
+
+Still open: individual startup-source status retention/display, per-process GPU
+missing-value semantics, full Task Manager parity and release gates. CPU/motherboard
+and drive temperature fields are explicit placeholders, NOT connected sensors. The
+SSD probe proved one supported native path but the HDD query stalled for 4.25 seconds;
+integrate storage on its own bounded slow worker. GitHub sensor research is saved in
+`SENSORS_PLAN.md`. No approval exists to install drivers/services or elevate Trontop.
+
+## Previous: alpha.5 preview refreshed at Trent's request
+
+On 2026-09-05 at approximately 01:24 CDT, replaced the old alpha.1 EXE with a new
+optimized build from the uncommitted `feat/provider-diagnostics` worktree. Trent
+explicitly requested killing/replacing his running instance. The old PID 62220
+exited before replacement; the guarded stop command refused its changed process
+set and terminated nothing. Confirmed no Trontop remained before deployment.
+
+The previous EXE is recoverable at
+`target/replaced-builds/alpha1-20260905-0124/trontop.exe`. Deployment retained the
+existing `target/release/trontop.exe` path and did not edit settings. New PID 255824
+was observed with a responsive native window titled Trontop and PE version
+0.3.0-alpha.5. No desktop input, focus manipulation or other app changes were used.
+This one refresh does not authorize automatic restarts during further iteration.
+
+New EXE: 12,785,152 bytes; SHA-256:
+`A43DCD9DE277B4717EA4376B1D5EB06ECCC7D2597454A7CFD948A81B9BD6E778`.
+At this historical checkpoint the separate review EXE matched this hash. Imports
+remain Windows-only, with no NVML or dynamic MSVC runtime dependency.
+
+Local source checks: formatting PASS; 40 tests passed, 0 failed, 3 ignored;
+optimized build PASS (48.95 seconds). Eight unused diagnostics warnings remain
+because the About/provider-health UI has not yet been connected. Strict Clippy,
+new diagnostics offscreen fixtures, and remote CI are NOT verified for alpha.5.
+The launched build includes the preceding hover/sensors/action-safety features and
+the in-progress sampler corrections, but is not a completed release milestone.
+
+At the alpha.5 checkpoint the next work was to connect the About dialog and report
+action and expose independent
+provider freshness and stale inventories; preserve startup-source status detail;
+finish GPU unavailable-versus-zero presentation; test failure/recovery and report
+copy without accessing the real clipboard; then run the full gate and visual pass.
+See `DIAGNOSTICS_PLAN.md` and the newer alpha.6 entry above for the completed portion.
+
+## Previous: alpha.4 process-action safety
 
 Version 0.3.0-alpha.4 binds End Task, priority and affinity actions to the exact native
 process creation FILETIME. Each operation verifies identity and Windows-critical

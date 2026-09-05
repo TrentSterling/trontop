@@ -1,7 +1,20 @@
 # Next slice: provider health and support reports
 
-This is a code-audit plan, not an implemented feature or a reproduced failure on
-Trent's machine. It follows the alpha.4 process-action checkpoint.
+Alpha.6 source on `feat/provider-diagnostics` implements health metadata, About/status
+UI and explicit privacy-safe report copy. Timed attempts/success/coverage, service
+cache retention, native startup inventory, periodic CPU frequency, unknown account
+labels and PDH API/CStatus validation are wired. Provider failures can show cached
+sensor readings with original freshness, not falsely live values. The allowlisted
+support report has no path/process/account/host/GPU-ID fields and is never uploaded.
+Headless tests capture the CopyText command without executing the system clipboard.
+
+Local verification: 48 passing tests, strict Clippy clean, 25 offscreen PNGs. Read
+`CURRENT_STATE.md` for the review build and the separate still-running alpha.5 preview.
+Remote CI/release for this branch is not complete. Individual startup-source result
+preservation/display and per-process GPU unavailable semantics remain open.
+
+The audit findings below describe the original code, not necessarily its current
+state, and are not claims of reproduced failures on Trent's machine.
 
 ## Evidence to address
 

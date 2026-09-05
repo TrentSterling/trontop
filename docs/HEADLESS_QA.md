@@ -20,7 +20,7 @@ NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
 
 ## Coverage
 
-- 336 page/size/preset/mode/data cases: seven pages, 1040x640 / 1280x760 /
+- 432 page/size/preset/mode/data cases: nine pages, 1040x640 / 1280x760 /
   1920x1080, four presets, light/dark, populated/empty fixtures.
 - Actual text geometry: visible page titles, finite bounds, single-line table names.
 - Existing widget tests verify left-aligned labels, right-aligned numbers, vertical
@@ -38,13 +38,20 @@ NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
 - Confirmation fixtures simulate PID reuse and require the original target/name,
   stale warning and expired selection. Local pointer input only cancels the dialog;
   native mutation tests exclusively use their own disposable hidden children.
-- Thirteen shared surface variants in both modes must change background under the
+- Fourteen shared surface variants in both modes must change background under the
   pointer, restore it after exit, and preserve geometry. Includes selected/unselected
   navigation/devices, cards, metrics, detail rows, badges, meters, action buttons,
   control rows and charts.
+- Eighteen original vector symbols at 16/18/20/32 px stay within their allocation
+  and produce no font text. Disabled icon actions cannot click or shift their bounds.
+- About support-report copy only emits a command after explicit local click; report
+  checks reject private fixture fields. The harness never executes clipboard commands.
+- Six sensor fields keep identical geometry across live, cached and unavailable
+  snapshots. Cached snapshots cannot extend the live history. Missing GPU graph
+  samples produce gaps, not zero values or connecting traces.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes seventeen PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes twenty-five PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 

@@ -1,3 +1,4 @@
+use crate::diagnostics::{Diagnostics, Health, Issue, Provider, State};
 use crate::gpu_sensors::SensorSampler;
 use crate::model::{
     CpuInfo, DiskRow, NetworkRow, ProcessControlInfo, ProcessRow, SystemSnapshot, UserSummary,
@@ -59,7 +60,7 @@ impl Drop for Sampler {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
+            crate::shutdown::finish(worker, Duration::ZERO);
         }
     }
 }
@@ -80,8 +81,15 @@ fn sample_loop(
     let mut sensor_sampler = SensorSampler::default();
     let mut sequence = 0_u64;
     let mut previous_sample = Instant::now();
-    let mut startup = Arc::new(windows_metrics::enumerate_startup());
-    let mut services = Arc::new(windows_metrics::enumerate_services().unwrap_or_default());
+    let mut diagnostics = Diagnostics::default();
+    let mut startup = Arc::new(Vec::new());
+    let mut services = Arc::new(Vec::new());
+    collect_startup(&mut startup, diagnostics.get_mut(Provider::Startup));
+    collect_inventory(
+        &mut services,
+        diagnostics.get_mut(Provider::Services),
+        windows_metrics::enumerate_services,
+    );
     let mut process_controls = HashMap::<(u32, u64), ProcessControlInfo>::new();
 
     system.refresh_cpu_frequency();
@@ -91,6 +99,9 @@ fn sample_loop(
     }
 
     loop {
+        if stop.load(Ordering::Acquire) {
+            return;
+        }
         let cycle_started = Instant::now();
         let sample_seconds = previous_sample.elapsed().as_secs_f64().max(0.001);
         previous_sample = Instant::now();
@@ -100,7 +111,25 @@ fn sample_loop(
         system.refresh_processes(ProcessesToUpdate::All, true);
         disks.refresh(true);
         networks.refresh(true);
+        if sequence.is_multiple_of(CONTROL_REFRESH_INTERVAL) {
+            system.refresh_cpu_frequency();
+        }
+        let system_ok = !system.cpus().is_empty() && system.total_memory() > 0;
+        diagnostics.get_mut(Provider::System).record(
+            cycle_started,
+            cycle_started.elapsed(),
+            if system_ok {
+                State::Live
+            } else if system.cpus().is_empty() && system.total_memory() == 0 {
+                State::Unavailable
+            } else {
+                State::Partial
+            },
+            None,
+            (!system_ok).then_some(Issue::MissingSystemData),
+        );
 
+        let control_started = Instant::now();
         let active_process_keys = system
             .processes()
             .values()
@@ -119,16 +148,57 @@ fn sample_loop(
                 );
             }
         }
+        if sequence.is_multiple_of(CONTROL_REFRESH_INTERVAL) {
+            let readable = process_controls
+                .values()
+                .filter(|info| info.accessible && info.created_at_100ns.is_some())
+                .count();
+            let total = active_process_keys.len();
+            diagnostics.get_mut(Provider::ProcessControls).record(
+                control_started,
+                control_started.elapsed(),
+                if readable == total {
+                    State::Live
+                } else if readable > 0 {
+                    State::Partial
+                } else {
+                    State::Unavailable
+                },
+                Some((readable, total)),
+                (readable < total).then_some(Issue::ProcessAccess),
+            );
+        }
 
+        let gpu_started = Instant::now();
         if sequence > 0 && sequence.is_multiple_of(GPU_REBUILD_INTERVAL) {
             gpu_sampler.rebuild();
         }
         let (gpu, gpu_by_pid) = gpu_sampler.sample();
-        if sequence > 0 && sequence.is_multiple_of(INVENTORY_INTERVAL) {
-            startup = Arc::new(windows_metrics::enumerate_startup());
-            if let Ok(inventory) = windows_metrics::enumerate_services() {
-                services = Arc::new(inventory);
+        let gpu_state = if gpu.available {
+            if gpu.valid_counters == gpu.total_counters {
+                State::Live
+            } else {
+                State::Partial
             }
+        } else if gpu.error.is_none() {
+            State::Starting
+        } else {
+            State::Unavailable
+        };
+        diagnostics.get_mut(Provider::GpuActivity).record(
+            gpu_started,
+            gpu_started.elapsed(),
+            gpu_state,
+            Some((gpu.valid_counters, gpu.total_counters)),
+            matches!(gpu_state, State::Partial | State::Unavailable).then_some(Issue::GpuCounters),
+        );
+        if sequence > 0 && sequence.is_multiple_of(INVENTORY_INTERVAL) {
+            collect_startup(&mut startup, diagnostics.get_mut(Provider::Startup));
+            collect_inventory(
+                &mut services,
+                diagnostics.get_mut(Provider::Services),
+                windows_metrics::enumerate_services,
+            );
         }
 
         sequence += 1;
@@ -142,7 +212,7 @@ fn sample_loop(
                     .user_id()
                     .and_then(|id| users.get_user_by_id(id))
                     .map(|user| user.name().to_string())
-                    .unwrap_or_else(|| "System".into());
+                    .unwrap_or_else(|| "Unknown account".into());
                 ProcessRow {
                     pid: process.pid().as_u32(),
                     parent_pid: process.parent().map(|pid| pid.as_u32()),
@@ -218,7 +288,60 @@ fn sample_loop(
             logical_cores: system.cpus().len(),
         };
 
+        let sensors = sensor_sampler.sample();
+        if let Some(at) = sensors.attempted_at {
+            let health = diagnostics.get_mut(Provider::GpuSensors);
+            if health.last_attempt != Some(at) {
+                let total = sensors.adapters.len() * 6;
+                let available = sensors
+                    .adapters
+                    .iter()
+                    .map(|a| {
+                        [
+                            a.temperature_c.is_some(),
+                            a.power_w.is_some(),
+                            a.graphics_clock_mhz.is_some(),
+                            a.memory_clock_mhz.is_some(),
+                            a.fan_percent.is_some(),
+                            a.memory.is_some(),
+                        ]
+                        .into_iter()
+                        .filter(|present| *present)
+                        .count()
+                    })
+                    .sum::<usize>();
+                let state = if sensors.error.is_some() || available == 0 {
+                    State::Unavailable
+                } else if available == total {
+                    State::Live
+                } else {
+                    State::Partial
+                };
+                health.record(
+                    at,
+                    Duration::from_secs_f64(sensors.query_millis / 1000.0),
+                    state,
+                    Some((
+                        if sensors.error.is_some() {
+                            0
+                        } else {
+                            available
+                        },
+                        total,
+                    )),
+                    match state {
+                        State::Unavailable => Some(Issue::GpuDriver),
+                        State::Partial => Some(Issue::PartialSensors),
+                        _ => None,
+                    },
+                );
+            }
+        }
+        if stop.load(Ordering::Acquire) {
+            return;
+        }
         let snapshot = SystemSnapshot {
+            diagnostics: diagnostics.clone(),
             sequence,
             cpu_percent: system.global_cpu_usage().clamp(0.0, 100.0),
             memory_used_bytes: system.used_memory(),
@@ -236,7 +359,7 @@ fn sample_loop(
             disks: disk_rows,
             networks: network_rows,
             gpu,
-            gpu_sensors: sensor_sampler.sample(),
+            gpu_sensors: sensors,
             users: user_rows,
             startup: Arc::clone(&startup),
             services: Arc::clone(&services),
@@ -267,6 +390,48 @@ fn sample_loop(
         if wait_for_stop(&stop, remaining) {
             break;
         }
+    }
+}
+
+fn collect_startup(cache: &mut Arc<Vec<crate::model::StartupRow>>, health: &mut Health) {
+    let at = Instant::now();
+    let inventory = windows_metrics::enumerate_startup();
+    let (resolved, total) = inventory.coverage();
+    let state = if resolved == total {
+        State::Live
+    } else if resolved > 0 || !inventory.rows.is_empty() {
+        State::Partial
+    } else {
+        State::Unavailable
+    };
+    health.record(
+        at,
+        at.elapsed(),
+        state,
+        Some((resolved, total)),
+        (resolved < total).then_some(Issue::StartupSources),
+    );
+    *cache = Arc::new(inventory.rows);
+}
+
+fn collect_inventory<T>(
+    cache: &mut Arc<Vec<T>>,
+    health: &mut Health,
+    query: impl FnOnce() -> Result<Vec<T>, String>,
+) {
+    let at = Instant::now();
+    match query() {
+        Ok(rows) => {
+            *cache = Arc::new(rows);
+            health.record(at, at.elapsed(), State::Live, None, None);
+        }
+        Err(_) => health.record(
+            at,
+            at.elapsed(),
+            State::Unavailable,
+            None,
+            Some(Issue::ServiceQuery),
+        ),
     }
 }
 
@@ -301,4 +466,33 @@ fn wait_for_stop(stop: &AtomicBool, duration: Duration) -> bool {
         );
     }
     stop.load(Ordering::Acquire)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn inventory_failure_retains_cache_and_last_success_until_recovery() {
+        let mut cache = Arc::new(Vec::new());
+        let mut health = Health::default();
+        collect_inventory(&mut cache, &mut health, || Ok(vec![41_u32]));
+        let first = health.last_success;
+        collect_inventory(&mut cache, &mut health, || {
+            Err("Fixture secret path C:/private".into())
+        });
+        assert_eq!(cache.as_slice(), &[41]);
+        assert_eq!(health.last_success, first);
+        assert_eq!(
+            health.state(Provider::Services, Instant::now()),
+            State::Stale
+        );
+        assert_eq!(health.issue, Some(Issue::ServiceQuery));
+        collect_inventory(&mut cache, &mut health, || Ok(vec![42]));
+        assert_eq!(cache.as_slice(), &[42]);
+        assert_eq!(
+            health.state(Provider::Services, Instant::now()),
+            State::Live
+        );
+        assert!(health.issue.is_none());
+    }
 }

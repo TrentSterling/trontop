@@ -1,11 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod diagnostics;
 mod format;
 mod gpu_sensors;
+mod icons;
 mod model;
 mod platform;
 mod sampler;
+mod shutdown;
 mod theme;
 mod tray;
 mod widgets;

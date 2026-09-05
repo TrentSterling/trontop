@@ -190,6 +190,8 @@ pub struct NetworkRow {
 #[derive(Clone, Debug, Default)]
 pub struct GpuSnapshot {
     pub available: bool,
+    pub valid_counters: usize,
+    pub total_counters: usize,
     pub utilization_percent: f32,
     pub engine_utilization: Vec<(String, f32)>,
     pub error: Option<String>,
@@ -222,6 +224,7 @@ pub struct UserSummary {
 
 #[derive(Clone, Debug, Default)]
 pub struct SystemSnapshot {
+    pub diagnostics: crate::diagnostics::Diagnostics,
     pub sequence: u64,
     pub cpu_percent: f32,
     pub memory_used_bytes: u64,

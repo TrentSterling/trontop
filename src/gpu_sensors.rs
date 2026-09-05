@@ -24,7 +24,10 @@ pub struct AdapterSensors {
 
 #[derive(Clone, Debug, Default)]
 pub struct SensorSnapshot {
+    pub last_success: Option<Instant>,
+    pub using_cached: bool,
     pub sampled_at: Option<Instant>,
+    pub attempted_at: Option<Instant>,
     pub adapters: Vec<AdapterSensors>,
     pub error: Option<String>,
     pub query_millis: f64,
@@ -32,22 +35,43 @@ pub struct SensorSnapshot {
 
 #[derive(Default)]
 pub struct SensorSampler {
+    last_good: Vec<AdapterSensors>,
+    last_success: Option<Instant>,
     #[cfg(windows)]
     provider: Option<nvml::Nvml>,
     retry_at: Option<Instant>,
     last_error: Option<String>,
+    last_attempt: Option<Instant>,
 }
 
 impl SensorSampler {
     pub fn sample(&mut self) -> SensorSnapshot {
         let started = Instant::now();
+        if self.retry_at.is_none_or(|deadline| started >= deadline) {
+            self.last_attempt = Some(started);
+        }
         let result = self.collect(started);
+        self.finish_sample(started, result)
+    }
+
+    fn finish_sample(
+        &mut self,
+        started: Instant,
+        result: Result<Vec<AdapterSensors>, String>,
+    ) -> SensorSnapshot {
         let (adapters, error) = match result {
-            Ok(adapters) => (adapters, None),
-            Err(error) => (Vec::new(), Some(error)),
+            Ok(adapters) => {
+                self.last_good = adapters.clone();
+                self.last_success = Some(started);
+                (adapters, None)
+            }
+            Err(error) => (self.last_good.clone(), Some(error)),
         };
         SensorSnapshot {
+            last_success: self.last_success,
+            using_cached: error.is_some() && !adapters.is_empty(),
             sampled_at: Some(started),
+            attempted_at: self.last_attempt,
             adapters,
             error,
             query_millis: started.elapsed().as_secs_f64() * 1000.0,
@@ -125,6 +149,27 @@ impl SensorHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_refresh_keeps_last_readings_explicitly_cached_and_recovers() {
+        let now = Instant::now();
+        let mut sampler = SensorSampler::default();
+        let row = AdapterSensors {
+            name: "Fixture GPU".into(),
+            temperature_c: Some(54),
+            power_w: Some(0.0),
+            ..Default::default()
+        };
+        let first = sampler.finish_sample(now, Ok(vec![row.clone()]));
+        assert!(!first.using_cached);
+        let failed = sampler.finish_sample(now, Err("Fixture driver loss".into()));
+        assert!(failed.using_cached);
+        assert_eq!(failed.adapters[0].temperature_c, Some(54));
+        assert_eq!(failed.last_success, first.last_success);
+        let recovered = sampler.finish_sample(now, Ok(vec![row]));
+        assert!(!recovered.using_cached);
+        assert!(recovered.error.is_none());
+    }
 
     #[test]
     fn history_preserves_unavailable_and_zero_and_bounds_time() {

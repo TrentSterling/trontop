@@ -5,6 +5,39 @@ must not modify this repository.
 
 ## Current checkpoint
 
+Working branch: `feat/provider-diagnostics`, alpha.6 source. Read the newest
+`docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
+
+Implemented: Overview and Hardware sensors navigation, About/provider diagnostics
+and explicit privacy-safe report copy, stable missing/cached GPU sensor fields,
+gap-aware GPU activity charts, bounded worker-shutdown waiting, and original vector
+navigation/window/action/tree icons. Four user mockup boards and a generated
+transparent Signal icon candidate are saved in `docs/inspiration`; the candidate
+is not installed as the application icon. CPU/motherboard/drive providers are NOT
+connected, despite their stable placeholder fields. No full Task Manager parity.
+
+Local tests: 48 passed, 0 failed, 3 opt-in tests ignored. Strict Clippy passes.
+Offscreen QA produced 25 PNGs without native windows/input. Native end-to-end close
+latency and dragging performance are NOT measured. CPU provider research and the
+slow SSD/HDD probe findings are in `docs/SENSORS_PLAN.md`; no driver install authority.
+
+Running instance is still the separately deployed alpha.5 preview. On
+2026-09-05 Trent explicitly requested replacing/reopening his old running build.
+The old alpha.1 process exited before replacement; no process was terminated.
+The freshly optimized alpha.5 preview now runs as PID 255824 from
+`target/release/trontop.exe`. Its native window was observed responsive with title
+Trontop. The previous EXE is backed up at
+`target/replaced-builds/alpha1-20260905-0124/trontop.exe`. No other windows were touched.
+This is a development preview, not a published alpha release. Do not automatically
+restart it again for subsequent edits. Read the newest `docs/CURRENT_STATE.md` section.
+
+Next: preserve/display individual startup-source results, finish per-process GPU
+missing-value semantics, integrate safe isolated storage sampling, then continue
+slim components and real executable icons with a bounded background cache. Complete
+the release gates in `RELEASE_PLAN.md`; alpha.4 CI is not verification of alpha.6.
+
+## Previous verified checkpoint
+
 Latest local version: 0.3.0-alpha.4. Read the latest section of `docs/CURRENT_STATE.md`
 and `docs/HEADLESS_QA.md`. The hover/rounded-controls slice and safe headless harness
 are now implemented. A separate optimized review EXE exists under

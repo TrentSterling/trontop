@@ -272,7 +272,7 @@ mod native {
                 let _ = PostThreadMessageW(self.sink.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
             }
             if let Some(worker) = self.worker.take() {
-                let _ = worker.join();
+                crate::shutdown::finish(worker, std::time::Duration::from_millis(100));
             }
         }
     }

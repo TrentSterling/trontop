@@ -1,4 +1,5 @@
 use crate::format;
+use crate::icons::Icon;
 use crate::model::{SortColumn, SortDirection};
 use crate::theme::{self, ThemeSettings, Tokens};
 use eframe::egui;
@@ -148,13 +149,33 @@ pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) {
     });
 }
 
-pub fn nav_button(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str, t: Tokens) -> bool {
-    let response = ui.allocate_response(Vec2::new(ui.available_width(), 32.0), Sense::click());
+pub fn nav_button(ui: &mut egui::Ui, selected: bool, icon: Icon, label: &str, t: Tokens) -> bool {
+    let height = if ui.ctx().content_rect().height() < 700.0 {
+        28.0
+    } else {
+        32.0
+    };
+    let response = ui.allocate_response(Vec2::new(ui.available_width(), height), Sense::click());
     paint_interactive_surface(ui, &response, selected, t.panel_raised, t);
+    icon.paint(
+        ui.painter(),
+        egui::Rect::from_center_size(
+            response.rect.left_center() + Vec2::new(19.0, 0.0),
+            Vec2::splat(18.0),
+        ),
+        t.text,
+    );
+    if selected {
+        let bar = egui::Rect::from_min_size(
+            response.rect.left_top() + Vec2::new(2.0, 6.0),
+            Vec2::new(2.0, height - 12.0),
+        );
+        ui.painter().rect_filled(bar, 1.0, t.accent);
+    }
     ui.painter().text(
-        response.rect.left_center() + Vec2::new(10.0, 0.0),
+        response.rect.left_center() + Vec2::new(36.0, 0.0),
         egui::Align2::LEFT_CENTER,
-        format!("{icon}   {label}"),
+        label,
         FontId::proportional(12.0),
         t.text,
     );
@@ -162,6 +183,54 @@ pub fn nav_button(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str, t:
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, label)
     });
     response.clicked()
+}
+
+/// An icon-only or icon-and-label button with the same stable hover geometry.
+/// Text is also the accessible name. Callers label icon-only controls explicitly.
+pub fn icon_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    size: Vec2,
+    base: Color32,
+    t: Tokens,
+) -> egui::Response {
+    let color = if ui.is_enabled() {
+        t.text
+    } else {
+        t.text_muted
+    };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.into(), FontId::proportional(12.0), color);
+    let desired = if label.is_empty() {
+        Vec2::splat(20.0).max(size)
+    } else {
+        Vec2::new(galley.size().x + 42.0, 28.0).max(size)
+    };
+    let response = ui.allocate_response(desired, Sense::click());
+    paint_interactive_surface(ui, &response, false, base, t);
+    let center = if label.is_empty() {
+        response.rect.center()
+    } else {
+        response.rect.left_center() + Vec2::new(18.0, 0.0)
+    };
+    icon.paint(
+        ui.painter(),
+        egui::Rect::from_center_size(center, Vec2::splat(17.0)),
+        color,
+    );
+    if !label.is_empty() {
+        ui.painter().galley(
+            response.rect.left_center() + Vec2::new(33.0, -galley.size().y / 2.0),
+            galley,
+            color,
+        );
+    }
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+    });
+    response
 }
 
 fn paint_interactive_surface(
@@ -202,13 +271,13 @@ fn paint_interactive_surface(
     );
 }
 
-pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: f32, color: Color32, t: Tokens) {
+pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32, t: Tokens) {
     hover_frame(ui, surface(ui, t, false), |ui| {
         ui.horizontal(|ui| {
             ui.label(RichText::new(label).size(10.0).color(t.text_muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
-                    RichText::new(format::percent(value))
+                    RichText::new(value.map_or_else(|| "-- %".into(), format::percent))
                         .monospace()
                         .size(10.0)
                         .color(t.text),
@@ -216,7 +285,7 @@ pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: f32, color: Color32, t:
             });
         });
         ui.add(
-            egui::ProgressBar::new((value / 100.0).clamp(0.0, 1.0))
+            egui::ProgressBar::new((value.unwrap_or(0.0) / 100.0).clamp(0.0, 1.0))
                 .fill(color)
                 .desired_width(ui.available_width())
                 .desired_height(3.0),
@@ -532,22 +601,30 @@ pub fn history_graph(
                 let x = rect.right()
                     - ((history.len() - 1 - index) as f32 / denominator) * rect.width();
                 let y = rect.bottom() - (value.clamp(0.0, maximum) / maximum) * rect.height();
-                egui::pos2(x, y)
+                value.is_finite().then_some(egui::pos2(x, y))
             })
             .collect::<Vec<_>>();
         let fill_color = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 30);
         let mut fill = egui::Mesh::default();
         for pair in points.windows(2) {
+            let [Some(first), Some(second)] = pair else {
+                continue;
+            };
             let base = fill.vertices.len() as u32;
-            fill.colored_vertex(pair[0], fill_color);
-            fill.colored_vertex(pair[1], fill_color);
-            fill.colored_vertex(egui::pos2(pair[1].x, rect.bottom()), Color32::TRANSPARENT);
-            fill.colored_vertex(egui::pos2(pair[0].x, rect.bottom()), Color32::TRANSPARENT);
+            fill.colored_vertex(*first, fill_color);
+            fill.colored_vertex(*second, fill_color);
+            fill.colored_vertex(egui::pos2(second.x, rect.bottom()), Color32::TRANSPARENT);
+            fill.colored_vertex(egui::pos2(first.x, rect.bottom()), Color32::TRANSPARENT);
             fill.add_triangle(base, base + 1, base + 2);
             fill.add_triangle(base, base + 2, base + 3);
         }
         painter.add(egui::Shape::mesh(fill));
-        painter.add(egui::Shape::line(points, Stroke::new(2.0, color)));
+        for run in points.split(Option::is_none) {
+            let run: Vec<_> = run.iter().flatten().copied().collect();
+            if run.len() > 1 {
+                painter.add(egui::Shape::line(run, Stroke::new(2.0, color)));
+            }
+        }
         painter.text(
             rect.left_top() + Vec2::new(8.0, 7.0),
             egui::Align2::LEFT_TOP,
@@ -655,7 +732,9 @@ pub fn metric(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
     .on_hover_text(format!("{label}: {value}"));
 }
 
-pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: f32, color: Color32, t: Tokens) {
+pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32, t: Tokens) {
+    let caption = value.map_or_else(|| "-- %".into(), format::percent);
+    let value = value.unwrap_or(0.0);
     hover_frame(ui, surface(ui, t, false), |ui| {
         ui.horizontal(|ui| {
             let (label_rect, _) = ui.allocate_exact_size(Vec2::new(96.0, 24.0), Sense::hover());
@@ -687,14 +766,14 @@ pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: f32, color: Color32, 
             ui.painter().text(
                 rect.right_center() - Vec2::new(9.0, 0.0),
                 egui::Align2::RIGHT_CENTER,
-                format::percent(value),
+                &caption,
                 FontId::monospace(10.0),
                 t.text,
             );
         });
     })
     .response
-    .on_hover_text(format!("{label}: {}", format::percent(value)));
+    .on_hover_text(format!("{label}: {caption}"));
 }
 
 pub fn section_label(ui: &mut egui::Ui, label: &str, t: Tokens) {
@@ -703,17 +782,6 @@ pub fn section_label(ui: &mut egui::Ui, label: &str, t: Tokens) {
         RichText::new(label).size(9.0).strong().color(t.text_muted),
     );
     ui.add_space(7.0);
-}
-
-pub fn empty_state(ui: &mut egui::Ui, title: &str, detail: &str, t: Tokens) {
-    ui.add_space(24.0);
-    hover_frame(ui, surface(ui, t, false), |ui| {
-        ui.vertical_centered(|ui| {
-            ui.label(RichText::new(title).size(18.0).strong().color(t.text));
-            ui.add_space(5.0);
-            ui.label(RichText::new(detail).size(11.0).color(t.text_muted));
-        });
-    });
 }
 
 pub fn inventory_table(
@@ -778,6 +846,95 @@ pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn disabled_icon_actions_never_click_or_shift() {
+        let settings = ThemeSettings::default();
+        let t = theme::tokens(settings);
+        let mut expected = None;
+        for enabled in [true, false] {
+            let ctx = egui::Context::default();
+            theme::install(&ctx, settings);
+            let mut bounds = egui::Rect::NOTHING;
+            let mut clicked = false;
+            for phase in 0..6 {
+                let events = if phase >= 4 {
+                    vec![
+                        egui::Event::PointerMoved(bounds.center()),
+                        egui::Event::PointerButton {
+                            pos: bounds.center(),
+                            button: egui::PointerButton::Primary,
+                            pressed: phase == 4,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ]
+                } else {
+                    vec![]
+                };
+                let output = ctx.run_ui(
+                    egui::RawInput {
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let response = ui
+                            .add_enabled_ui(enabled, |ui| {
+                                icon_button(
+                                    ui,
+                                    Icon::Stop,
+                                    "End task",
+                                    Vec2::ZERO,
+                                    t.panel_raised,
+                                    t,
+                                )
+                            })
+                            .inner;
+                        bounds = response.rect;
+                        clicked |= response.clicked();
+                    },
+                );
+                assert!(output.platform_output.commands.is_empty());
+            }
+            assert_eq!(clicked, enabled);
+            if let Some(expected) = expected {
+                assert_eq!(bounds, expected);
+            }
+            expected = Some(bounds);
+        }
+    }
+
+    #[test]
+    fn missing_graph_samples_make_gaps_not_zero_or_bridged_lines() {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings::default();
+        crate::theme::install(&ctx, settings);
+        let values = VecDeque::from(vec![10.0, 20.0, f32::NAN, 80.0, 90.0]);
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            history_graph(
+                ui,
+                &values,
+                Color32::RED,
+                100.0,
+                Some(100.0),
+                crate::theme::tokens(settings),
+            );
+        });
+        let paths: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Path(path) if !path.closed => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(paths.len(), 2);
+        assert!(
+            paths
+                .iter()
+                .all(|path| path.points.len() == 2 && path.points.iter().all(|p| p.is_finite()))
+        );
+        assert!(paths[0].points[1].x < paths[1].points[0].x);
+    }
+
     fn backgrounds(shape: &egui::Shape, out: &mut Vec<(egui::Rect, Color32)>) {
         match shape {
             egui::Shape::Rect(rect) if rect.fill != Color32::TRANSPARENT => {
@@ -795,7 +952,7 @@ mod tests {
     #[test]
     fn shared_surfaces_change_background_on_hover_and_restore_without_layout_shift() {
         for dark in [true, false] {
-            for widget in 0..13 {
+            for widget in 0..14 {
                 let ctx = egui::Context::default();
                 let settings = ThemeSettings {
                     dark,
@@ -832,7 +989,13 @@ mod tests {
                                     )),
                                     |ui| match widget {
                                         0 => {
-                                            nav_button(ui, false, "02", "Performance", t);
+                                            nav_button(
+                                                ui,
+                                                false,
+                                                Icon::Performance,
+                                                "Performance",
+                                                t,
+                                            );
                                         }
                                         1 => {
                                             device_button(
@@ -857,8 +1020,8 @@ mod tests {
                                             t,
                                         ),
                                         5 => status_pill(ui, "LIVE", t.good),
-                                        6 => mini_meter(ui, "CPU", 37.2, t.accent, t),
-                                        7 => engine_meter(ui, "3D", 37.2, t.accent, t),
+                                        6 => mini_meter(ui, "CPU", Some(37.2), t.accent, t),
+                                        7 => engine_meter(ui, "3D", Some(37.2), t.accent, t),
                                         8 => {
                                             action_button(
                                                 ui,
@@ -869,7 +1032,13 @@ mod tests {
                                             );
                                         }
                                         9 => {
-                                            nav_button(ui, true, "02", "Performance", t);
+                                            nav_button(
+                                                ui,
+                                                true,
+                                                Icon::Performance,
+                                                "Performance",
+                                                t,
+                                            );
                                         }
                                         10 => {
                                             device_button(
@@ -886,6 +1055,16 @@ mod tests {
                                             control_row(ui, "Gradient", true, t, |ui| {
                                                 ui.checkbox(&mut true, "Enabled");
                                             });
+                                        }
+                                        13 => {
+                                            icon_button(
+                                                ui,
+                                                Icon::Theme,
+                                                "Theme Studio",
+                                                Vec2::new(240.0, 32.0),
+                                                t.accent_dim,
+                                                t,
+                                            );
                                         }
                                         12 => {
                                             history_graph(

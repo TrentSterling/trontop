@@ -5,6 +5,14 @@ The alpha.2 checkpoint had no provider. Alpha.3 now implements the first NVIDIA 
 
 ## Implemented in alpha.3
 
+This section is the historical first sensor implementation. Alpha.6 adds an
+Overview and Hardware sensors route, explicit provider freshness and stable fields
+during initial/missing data. On whole-provider failure it retains the last complete
+NVML adapter snapshot with a prominent Cached label and original success timestamp.
+It does not append cached values to live history. Individual unsupported fields
+remain unavailable. CPU/motherboard and drive temperature fields are placeholders
+until their real providers are connected, not simulated telemetry.
+
 - Optional NVML library, loaded using `LoadLibraryExW` and `LOAD_LIBRARY_SEARCH_SYSTEM32`.
   No PATH/current-directory search, static NVML import, bundled vendor DLL, driver
   installation, elevation, or hardware-setting writes. Initial support is Windows
@@ -101,6 +109,39 @@ Primary references:
 - Local Windows SDK 10.0.26100.0 `winioctl.h`: property IDs, IOCTL and unavailable sentinel.
 
 ## Remaining implementation order
+
+### GitHub research requested by Trent (2026-09-05)
+
+Checked primary source, not download sites or inferred screenshots:
+
+- [RIGStats](https://github.com/dvalfrid/rigstats#architecture) is a Windows Rust/egui
+  dashboard. Its telemetry design includes a .NET service embedding LibreHardwareMonitor
+  and a bundled signed PawnIO driver. Its documented CPU package temperature source
+  is LHM, not `sysinfo`. This is one concrete design example, not permission to install
+  its service/driver or a recommendation to copy its distribution architecture.
+- [LibreHardwareMonitor Intel MSR access](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/PawnIo/IntelMsr.cs)
+  loads a PawnIO module and invokes an MSR-read operation. Its [repository](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+  documents broad hardware coverage and some administrator requirements. Source was
+  studied only; no third-party code was copied and no driver was installed.
+- [sysinfo's Windows component source](https://github.com/GuillaumeGomez/sysinfo/blob/main/src/windows/component.rs)
+  queries `root\\WMI` / `MSAcpi_ThermalZoneTemperature` and labels the result Computer.
+  It is not an all-core CPU thermal backend. Do not label its generic thermal-zone
+  reading CPU Package without verified hardware attribution.
+
+Read-only capability checks in this tool context returned Invalid namespace for
+`root/LibreHardwareMonitor` and `root/OpenHardwareMonitor`, and Not supported for
+`MSAcpi_ThermalZoneTemperature`. No matching HWiNFO/LHM/OHM/FanControl process was
+observed. This only describes those checked interfaces in the current context; it
+does not prove the hardware lacks sensors or rule out every existing provider.
+
+Decision: retain portable base EXE with optional installed NVIDIA driver telemetry;
+implement the verified Windows storage query in an isolated slow worker next. Further
+CPU provider research should check existing vendor interfaces and authorized existing
+monitoring providers before proposing an optional low-level backend. Any driver/service
+installation, elevation or security-setting change needs explicit approval. Trent has
+not approved it. No driver-free all-CPU-temperature solution has been verified here.
+
+### Pending runtime work
 
 1. Broader vendor/legacy-driver coverage, stronger per-field error explanations and
    provider recovery tests. Validate unsupported-driver startup on another machine.

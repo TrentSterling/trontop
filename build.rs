@@ -5,6 +5,48 @@ use std::path::Path;
 
 fn main() -> io::Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
+    for path in ["src", "Cargo.toml", "Cargo.lock", ".cargo/config.toml"] {
+        println!("cargo:rerun-if-changed={path}");
+    }
+    let git_output = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+    };
+    for path in ["HEAD", "index", "refs"] {
+        if let Some(path) = git_output(&["rev-parse", "--git-path", path]) {
+            println!("cargo:rerun-if-changed={}", path.trim());
+        }
+    }
+    let commit = git_output(&["rev-parse", "--verify", "HEAD"])
+        .map(|value| value.trim().to_owned())
+        .filter(|value| value.len() == 40 && value.bytes().all(|b| b.is_ascii_hexdigit()));
+    let dirty = git_output(&[
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+        "--",
+        "src",
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.rs",
+        ".cargo/config.toml",
+    ]);
+    let identity = match (commit, dirty) {
+        (Some(commit), Some(status)) => format!(
+            "{commit}{}",
+            if status.is_empty() { "" } else { "+modified" }
+        ),
+        _ => "source identity unavailable".into(),
+    };
+    println!("cargo:rustc-env=TRONTOP_BUILD_ID={identity}");
+    println!(
+        "cargo:rustc-env=TRONTOP_BUILD_TARGET={}",
+        env::var("TARGET").unwrap_or_default()
+    );
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return Ok(());
     }

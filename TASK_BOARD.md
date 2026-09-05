@@ -2,6 +2,32 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
+## Current: alpha.6 diagnostics, overview and icon polish
+
+- [x] Provider-health model, safe report formatter and background sampler metadata
+- [x] Native read-only startup inventory with distinct missing/failed source results
+- [x] Validate both PDH API/status results and preserve valid zero counter readings
+- [x] Periodically refresh CPU frequency; label missing process accounts as unknown
+- [x] Refresh Trent's old alpha.1 EXE with the optimized alpha.5 development preview
+  on explicit request; PID 255824, backup and checksum in `docs/CURRENT_STATE.md`
+- [x] Connect About/status UI and explicit privacy-safe report copy
+- [x] Overview dashboard and Hardware sensors page with honest missing fields
+- [x] Preserve last complete NVIDIA snapshot as explicitly cached after provider failure
+- [x] Stable GPU Engine fields and graph gaps instead of invented missing zeros
+- [x] Bound sampler/tray worker waiting during shutdown; blocked-worker regression test
+- [x] Original vector navigation/window/action/tree icons, including accessible names
+  and disabled-action/hover/geometry tests; no emoji/font-icon dependency
+- [x] Save four supplied mockup boards and transparent Signal identity candidate
+  under `docs/inspiration`; candidate is not the shipped icon
+- [ ] Preserve/display startup-source details and independently stale service rows
+- [ ] Complete unavailable/warming/zero presentation for GPU activity consumers
+- [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
+  geometry coverage: 48 tests pass, strict Clippy clean, 25 offscreen review PNGs
+- [ ] Verify alpha.6 in remote Windows CI; no alpha.6 release is published
+- [ ] Integrate CPU/motherboard/drive sensor providers. Existing GPU readings are real;
+  CPU/drive temperature fields remain unconnected, not simulated.
+- [ ] Measure real close latency only with a freshly authorized isolated app instance
+
 ## Shipped in 0.2
 
 - [x] Frameless Trontop chrome and native window controls
@@ -74,9 +100,9 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Embed version metadata and a generated multi-resolution Trontop application icon in the PE
 - [x] Add a Windows GitHub Actions gate that uploads the portable review executable
 - [ ] Update deprecated workflow action runtimes and add a correctly keyed Rust dependency cache; preserve cold-build and test gates
-- [ ] Add an About panel with build hash, provider health/freshness and privacy-safe support report: `docs/DIAGNOSTICS_PLAN.md`
+- [x] Add an About panel with build hash, provider health/freshness and privacy-safe support report: `docs/DIAGNOSTICS_PLAN.md`
 - [ ] Add snapshot export to JSON/CSV
-- [x] Add a HEADLESS fixture harness for all seven pages, compact layouts, themes, search, selection and text bounds, plus offscreen PNG output: `docs/HEADLESS_QA.md`
+- [x] Add a HEADLESS fixture harness for all nine pages, compact layouts, themes, search, selection and text bounds, plus offscreen PNG output: `docs/HEADLESS_QA.md`
 - [ ] Sign the portable executable when the Tront signing pipeline is available
 
 ## Non-negotiables
