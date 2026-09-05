@@ -2,7 +2,55 @@
 
 Last updated: 2026-09-05
 
-## Latest candidate: alpha.25 non-blocking recovery diagnostics
+## Latest candidate: alpha.26 non-blocking settings
+
+Settings no longer use eframe's synchronous startup read or unbounded save-thread
+joins. One app-owned worker handles bounded reads, parsing, serialization and
+staged replacement. The old `state-v2.ron` is migrated read-only into the new
+`settings-v3.json` path on a later save; named palettes, theme and egui memory
+remain supported. Cooperative instance conflicts, invalid files and write errors
+preserve the existing data. See `SETTINGS_PERSISTENCE.md` for limits and policy.
+
+The app stays navigable while settings load, with editing disabled until the
+saved library is known. Close dispatches the final snapshot and lets the UI keep
+processing events. Slow/failed saving exposes Keep open, Retry save and explicit
+Close anyway. A fixed-height status footer reports load/save/error state. The
+existing-app redesign audit caught a translucent disabled editor and cramped
+warning dialog; the final frame/explanation remain readable with inset actions.
+
+Final ordinary gate: **225 passed, 0 failed, 13 ignored** (26.16 s), strict Clippy
+PASS (1.97 s), format/diff checks PASS, optimized build PASS (1 min 00 s). Twelve
+new regressions cover migration, real app/worker/file/fresh-app persistence,
+coalescing, invalid/read-only/conflicting saves, blocked reads/writes, non-waiting
+drop and production-UI close choices. Eframe's feature tree confirms its file
+persistence feature is disabled; egui memory serialization remains enabled.
+
+Final offscreen pass: **101 PNGs** in **60.26 s** on RTX 5070 Ti/Vulkan, with all
+eight new compact loading/saved/pending/error dark/light views plus normal
+dark/light Theme Studio inspected after the final fixes. Default historical
+fixtures keep persistence disabled; dedicated new fixtures cover the runtime
+status footer and synthetic close events. No native window or OS input is used.
+This is not measured native startup/drag/close/soak performance. No actual user
+preferences were read, migrated or modified by these fixture tests.
+
+Candidate: **`target/release/trontop.exe`**, **0.3.0-alpha.26**,
+**13,598,208 bytes**, built **2026-09-05 23:20:30.442 UTC** from modified 3b80efb source.
+SHA-256 **`C88474F57882E767E0C70A83C56F55E12BD87ACA162800268395930E08016450`**.
+PE import inspection shows only Windows libraries, with no dynamic MSVC CRT.
+Clean-machine portability remains unverified; no additional runtime assets.
+
+Next scoped wait: `TrayController::new` still blocks on `ready_rx.recv()` and
+can join a failed worker during startup. Address under A22 with bounded worker
+lifecycle and honest pending/failure states; no native tray test is authorized.
+Removing settings joins does not prove GPU/window/tray teardown is fast or that
+storage caused Trent's reported lag/crash. A13/A20/A21/A22/A25 remain unchecked.
+
+Local only. No preview launched/replaced/closed, no other windows touched and no
+upload attempt. Relaunch, isolated-desktop and explicit source-upload approval
+remain unanswered. Remote last verified at alpha.21; no alpha.26 CI/tag/release.
+The persistent goal stays active and this is a checkpoint, not a finished app.
+
+## Previous candidate: alpha.25 non-blocking recovery diagnostics
 
 Recoverable GPU events now update recovery state before trying a bounded
 background-log enqueue; slow disk I/O cannot directly block that callback.

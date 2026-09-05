@@ -13,6 +13,7 @@ mod disks;
 mod export;
 mod failure;
 mod offscreen;
+mod preferences;
 mod process_perf;
 mod process_sort;
 mod renderer_recovery;
@@ -1706,6 +1707,14 @@ fn render_offscreen_visual_pass() {
         "process-tree-deep-light",
         "process-sort-totals",
         "process-sort-totals-light",
+        "preferences-saved",
+        "preferences-saved-light",
+        "preferences-loading",
+        "preferences-loading-light",
+        "preferences-pending",
+        "preferences-pending-light",
+        "preferences-error",
+        "preferences-error-light",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1713,7 +1722,22 @@ fn render_offscreen_visual_pass() {
             ..Default::default()
         };
         theme::install(&ctx, settings);
-        let mut app = app(settings, variant != "overview-empty");
+        let mut preferences_fixture = variant.starts_with("preferences-").then(|| {
+            preferences::install(
+                &ctx,
+                settings.dark,
+                variant
+                    .trim_start_matches("preferences-")
+                    .trim_end_matches("-light"),
+            )
+        });
+        let mut app = preferences_fixture
+            .as_mut()
+            .and_then(|fixture| fixture.app.take())
+            .unwrap_or_else(|| app(settings, variant != "overview-empty"));
+        if variant.contains("preferences-pending") || variant.contains("preferences-error") {
+            app.closing_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+        }
         app.page = if variant == "inspector" {
             Page::Processes
         } else {
@@ -1755,6 +1779,9 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant.starts_with("theme-");
+        if variant.contains("preferences-loading") {
+            app.show_theme_editor = true;
+        }
         app.theme_studio.tab = if variant.starts_with("theme-appearance") {
             1
         } else if variant.starts_with("theme-presets") {
@@ -1898,7 +1925,7 @@ fn render_offscreen_visual_pass() {
             app.snapshot.gpu_sensors.error =
                 Some("Fixture: NVIDIA driver unavailable. Other telemetry still works.".into());
         }
-        let size = if variant.ends_with("-compact") {
+        let size = if variant.ends_with("-compact") || variant.starts_with("preferences-") {
             Vec2::new(1040.0, 640.0)
         } else {
             Vec2::new(1280.0, 760.0)
@@ -1922,7 +1949,7 @@ fn render_offscreen_visual_pass() {
     contrast::render_cases(&mut renderer, &directory);
     compact_layout::render_cases(&mut renderer, &directory);
     println!(
-        "Offscreen visual pass: 93 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 101 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

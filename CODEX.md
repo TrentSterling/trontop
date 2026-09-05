@@ -5,6 +5,25 @@ must not modify this repository.
 
 ## Current checkpoint
 
+Alpha.26 is the local settings-responsiveness candidate. Eframe file persistence
+is disabled; one bounded app-owned worker loads/migrates/saves settings. Staged
+replacement preserves the existing file, conflicting instances are refused, and
+pending close offers Keep open/Retry/Close anyway rather than joining storage.
+Theme Studio editing waits for loaded preferences; its frame stays readable and
+Revert uses the loaded baseline. Twelve new tests, including a real fixture-file
+app-to-worker-to-fresh-app round trip. Final gate: 225 passed, 13 ignored,
+strict Clippy/format/release PASS. Final offscreen pass: 101 PNGs, all eight new
+settings states plus normal dark/light Theme Studio reviewed. Read
+`docs/SETTINGS_PERSISTENCE.md` and latest `docs/CURRENT_STATE.md` for exact identity.
+No user settings, previews, desktop input or remote uploads were touched. The
+headless synthetic-close tests are not native drag/close/soak evidence. Tray
+startup still has an unbounded ready/failed-worker wait; this is the next bounded
+A22 code-level task, not proven as the reported crash trigger. A13/A20/A21/A22/A25
+remain open. Relaunch, isolated-desktop and upload approval remain unanswered.
+Do not retry the rejected upload by any route. Keep the persistent goal active.
+
+The alpha.25 and older checkpoints below are historical.
+
 Alpha.25 is the local callback-responsiveness candidate: recoverable GPU diagnostics
 use one bounded background writer, and service-result polling uses `try_lock`.
 Four new regressions; final gate 213 passed, 13 ignored, strict Clippy/format/release
@@ -85,7 +104,7 @@ diminishing returns and requested one consolidated ask ledger. The resumed stabi
 objective takes priority. Keep work tied to its asks; do not add unrelated features
 or restart an open-ended visual concept loop.
 
-Working branch: `feat/provider-diagnostics`, alpha.22 source. Read the newest
+Working branch: `feat/provider-diagnostics`. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Alpha.19 implements four-peg gradients and a tabbed Theme Studio: editable positions,

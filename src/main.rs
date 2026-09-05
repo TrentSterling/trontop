@@ -12,6 +12,7 @@ mod icons;
 mod inventory;
 mod model;
 mod platform;
+mod preferences;
 mod process_actions;
 mod process_icons;
 mod sampler;
@@ -51,7 +52,6 @@ fn record_run_failure(failures: &failure::Recorder, result: &eframe::Result) {
 }
 
 fn run(failures: std::sync::Arc<failure::Recorder>) -> eframe::Result {
-    let persistence_path = trontop_state_path();
     let graphics_recovering = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let recovery_signal = std::sync::Arc::clone(&graphics_recovering);
     let graphics_events = failure::BackgroundRecorder::new(failures);
@@ -72,7 +72,6 @@ fn run(failures: std::sync::Arc<failure::Recorder>) -> eframe::Result {
         },
         centered: true,
         persist_window: false,
-        persistence_path,
         ..Default::default()
     };
 
@@ -101,12 +100,6 @@ fn handle_renderer_event(
         std::sync::atomic::Ordering::Release,
     );
     events.record(kind);
-}
-
-fn trontop_state_path() -> Option<std::path::PathBuf> {
-    let directory = trontop_state_directory()?;
-    let _ = std::fs::create_dir_all(&directory);
-    Some(directory.join("state-v2.ron"))
 }
 
 fn trontop_state_directory() -> Option<std::path::PathBuf> {

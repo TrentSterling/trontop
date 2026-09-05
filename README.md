@@ -35,6 +35,8 @@ Version 0.3 alpha provides:
 - a frameless Tront shell and four-peg gradient Theme Studio: draggable stops,
   hex/position edits, eight presets, named saves, import/export, live surfaces and
   legacy-theme migration; remaining acceptance checks: `docs/THEME_STUDIO.md`
+- background settings load/save, staged file replacement, retained palettes and
+  explicit unsaved-close choices; per-user paths and limits: `docs/SETTINGS_PERSISTENCE.md`
 - alternating row and gradient column bands, padded cells, and high-contrast selection
 - a live full-width CPU tray meter with scrolling history and a resource tooltip,
   updated on its own native thread even when the main window is hidden

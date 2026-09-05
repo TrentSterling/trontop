@@ -23,6 +23,7 @@ mod disks;
 mod export;
 mod inventory;
 mod overview;
+mod preferences;
 mod sensors;
 mod service_controls;
 mod storage;
@@ -102,6 +103,12 @@ struct PendingEndTask {
 }
 
 pub struct TrontopApp {
+    preferences: crate::preferences::Controller,
+    preferences_theme: ThemeSettings,
+    preferences_library_revision: u64,
+    next_memory_save: std::time::Instant,
+    closing_at: Option<std::time::Instant>,
+    close_authorized: bool,
     graphics_recovering: std::sync::Arc<std::sync::atomic::AtomicBool>,
     sampler: Option<Sampler>,
     process_icons: crate::process_icons::Cache,
@@ -160,30 +167,21 @@ impl TrontopApp {
         cc: &eframe::CreationContext<'_>,
         graphics_recovering: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
-        let saved_theme = cc
-            .storage
-            .and_then(|storage| {
-                storage
-                    .get_string(theme::STORAGE_KEY)
-                    .or_else(|| storage.get_string(theme::LEGACY_STORAGE_KEY))
-            })
-            .and_then(|value| ThemeSettings::decode(&value))
-            .unwrap_or_default();
+        let preferences = crate::preferences::Controller::native(
+            crate::trontop_state_directory(),
+            cc.egui_ctx.clone(),
+        );
+        let saved_theme = ThemeSettings::default();
         theme::install(&cc.egui_ctx, saved_theme);
         let tray = TrayController::new(cc.egui_ctx.clone());
         let sampler = Sampler::spawn(cc.egui_ctx.clone(), tray.as_ref().map(TrayController::sink));
         let mut app = Self::with_services(saved_theme, Some(sampler), tray);
+        app.preferences = preferences;
         app.graphics_recovering = graphics_recovering;
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
         app.process_actions = crate::process_actions::Controller::spawn(cc.egui_ctx.clone());
         app.exporter = crate::export::Exporter::native();
-        if let Some(value) = cc
-            .storage
-            .and_then(|s| s.get_string(crate::theme_studio::LIBRARY_KEY))
-        {
-            app.theme_studio.load_library(&value);
-        }
         app
     }
 
@@ -193,6 +191,12 @@ impl TrontopApp {
         tray: Option<TrayController>,
     ) -> Self {
         Self {
+            preferences: Default::default(),
+            preferences_theme: saved_theme,
+            preferences_library_revision: 0,
+            next_memory_save: std::time::Instant::now() + std::time::Duration::from_secs(30),
+            closing_at: None,
+            close_authorized: false,
             graphics_recovering: Default::default(),
             sampler,
             process_icons: crate::process_icons::Cache::default(),
@@ -478,7 +482,7 @@ impl TrontopApp {
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if chrome_button(ui, Icon::Close, "Close", t, true).clicked() {
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                            self.request_close(ui.ctx());
                         }
                         let maximized = ui
                             .ctx()
@@ -2465,8 +2469,12 @@ impl TrontopApp {
     }
 
     fn theme_editor(&mut self, ctx: &egui::Context) {
-        self.theme_studio
-            .show(ctx, &mut self.theme, &mut self.show_theme_editor);
+        self.theme_studio.show(
+            ctx,
+            &mut self.theme,
+            &mut self.show_theme_editor,
+            self.preferences.can_edit(),
+        );
     }
 
     fn submit_process_action(
@@ -2548,7 +2556,14 @@ impl TrontopApp {
 }
 
 impl eframe::App for TrontopApp {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, _raw_input: &mut egui::RawInput) {
+        // Restore once before begin_pass, never replace Memory halfway through a
+        // layout. Theme editing stays disabled until the saved library is loaded.
+        self.poll_preferences(ctx);
+    }
+
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.preferences_logic(ctx);
         if let Some(snapshot) = self
             .sampler
             .as_ref()
@@ -2563,7 +2578,7 @@ impl eframe::App for TrontopApp {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
-                TrayAction::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                TrayAction::Quit => self.request_close(ctx),
             }
         }
     }
@@ -2581,10 +2596,12 @@ impl eframe::App for TrontopApp {
             // service actions against an old frozen picture while GPU work recovers.
             // App state and telemetry remain owned by this same app/context.
             self.custom_chrome(ui);
+            self.preferences_bar(ui);
             egui::CentralPanel::default().show(ui, |ui| {
                 ui.heading("Reconnecting graphics");
                 ui.label("Your view and theme are retained. Process controls resume when drawing recovers.");
             });
+            self.preferences_close_dialog(&ctx);
             return;
         }
         self.process_icons.begin_frame(&ctx);
@@ -2595,6 +2612,7 @@ impl eframe::App for TrontopApp {
         self.keyboard_shortcuts(&ctx);
         theme::paint_background(&ctx, self.theme);
         self.custom_chrome(ui);
+        self.preferences_bar(ui);
         self.message_bar(ui);
         self.navigation(ui);
         self.command_bar(ui);
@@ -2627,14 +2645,15 @@ impl eframe::App for TrontopApp {
         self.theme_editor(&ctx);
         self.diagnostics_window(&ctx);
         self.export_window(&ctx);
-    }
-
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        storage.set_string(theme::STORAGE_KEY, self.theme.encode());
-        storage.set_string(
-            crate::theme_studio::LIBRARY_KEY,
-            self.theme_studio.encode_library(),
-        );
+        if self.preferences.can_edit()
+            && (self.theme != self.preferences_theme
+                || self.theme_studio.revision() != self.preferences_library_revision)
+        {
+            self.capture_preferences(&ctx);
+        }
+        self.preferences.dispatch(self.closing_at.is_some());
+        self.preferences.schedule(&ctx);
+        self.preferences_close_dialog(&ctx);
     }
 }
 

@@ -15,6 +15,7 @@ struct Saved {
 
 #[derive(Default)]
 pub struct Studio {
+    revision: u64,
     pub(crate) tab: usize,
     selected: usize,
     baseline: Option<ThemeSettings>,
@@ -27,12 +28,24 @@ pub struct Studio {
 }
 
 impl Studio {
-    pub fn show(&mut self, ctx: &egui::Context, settings: &mut ThemeSettings, open: &mut bool) {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        settings: &mut ThemeSettings,
+        open: &mut bool,
+        editable: bool,
+    ) {
         if !*open {
             self.baseline = None;
             return;
         }
-        self.baseline.get_or_insert(*settings);
+        if editable {
+            self.baseline.get_or_insert(*settings);
+        } else {
+            // Opening the editor before async load must not make the temporary
+            // defaults the later Revert session target.
+            self.baseline = None;
+        }
         let before = *settings;
         self.sync_hex(*settings);
         let t = theme::tokens(*settings);
@@ -53,7 +66,8 @@ impl Studio {
                         widgets::hover_label(ui, RichText::new("Four color pegs. Live throughout Trontop.").size(11.0).color(t.text_muted));
                     });
                 });
-                ui.horizontal(|ui| {
+                ui.add_enabled_ui(editable, |ui| {
+                  ui.horizontal(|ui| {
                     for (i, name) in ["Palette", "Appearance", "Presets", "My themes"].iter().enumerate() {
                         ui.selectable_value(&mut self.tab, i, *name);
                     }
@@ -84,7 +98,8 @@ impl Studio {
                         if widgets::action_button(ui, "Done", Vec2::new(74.0, 28.0), t.accent_dim, t).clicked() { close = true; }
                     });
                 });
-                widgets::hover_label(ui, RichText::new("Changes apply live and persist in this Windows account. Revert before closing to undo.").size(10.0).color(t.text_muted));
+                });
+                widgets::hover_label(ui, RichText::new(if editable { "Changes apply live. Save status is in the app footer. Revert session before closing to undo." } else { "Loading saved settings. Theme editing waits so your saved palettes cannot be overwritten." }).size(10.0).color(t.text_muted));
             });
         if close {
             *open = false;
@@ -346,6 +361,7 @@ impl Studio {
         }
         if let Some(index) = remove {
             self.saved.remove(index);
+            self.revision += 1;
         }
         ui.separator();
         widgets::hover_label(ui, RichText::new("Share a theme").strong().color(t.text));
@@ -415,15 +431,20 @@ impl Studio {
                 theme: theme.normalized(),
             });
         }
+        self.revision += 1;
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub fn encode_library(&self) -> String {
         serde_json::json!({"version": 1, "themes": self.saved.iter().map(|p| serde_json::json!({"name": p.name, "theme": p.theme.encode()})).collect::<Vec<_>>()}).to_string()
     }
 
-    pub fn load_library(&mut self, text: &str) {
+    pub fn load_library(&mut self, text: &str) -> bool {
         if text.len() > 128 * 1024 {
-            return;
+            return false;
         }
         let parse = || -> Option<Vec<Saved>> {
             let value: serde_json::Value = serde_json::from_str(text).ok()?;
@@ -449,6 +470,10 @@ impl Studio {
         };
         if let Some(saved) = parse() {
             self.saved = saved;
+            self.revision += 1;
+            true
+        } else {
+            false
         }
     }
 }

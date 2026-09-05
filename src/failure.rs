@@ -164,6 +164,7 @@ fn thread_role(name: Option<&str>) -> &'static str {
         Some("trontop-icons") => "process_icons",
         Some("trontop-service-control") => "service_control",
         Some("trontop-export") => "export",
+        Some("trontop-preferences") => "preferences",
         Some("trontop-startup-inventory") => "startup_inventory",
         Some("trontop-service-inventory") => "service_inventory",
         Some("trontop-drive-sensor") => "drive_sensor",

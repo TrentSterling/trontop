@@ -14,7 +14,7 @@ fn frame(
             events,
             ..Default::default()
         },
-        |ui| studio.show(ui.ctx(), settings, open),
+        |ui| studio.show(ui.ctx(), settings, open, true),
     )
 }
 

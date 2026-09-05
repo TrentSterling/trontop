@@ -33,6 +33,19 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.26 adds twelve settings regressions covering bounded workers, legacy
+  migration, staged replacement, invalid/read-only/conflicting files, coalescing,
+  retained failures/retry, and blocked read/write drop. Production lifecycle tests
+  call raw_input_hook, logic and UI, check local close/cancel commands without
+  executing them, and verify loading navigation, Revert baseline and all close
+  choices. A real app/worker/file/fresh-app round trip restores theme, named
+  palette and zoom in an exclusively owned fixture directory. No user settings.
+  Final ordinary gate: 225 pass, 13 ignored; strict Clippy/format/release PASS.
+  Final matrix: 101 PNGs in 60.26 s; all eight new compact settings states and
+  normal dark/light Theme Studio reviewed. This caught and fixed disabled-window
+  translucency and tight warning padding. See `SETTINGS_PERSISTENCE.md`.
+  Native restart, close timing, drag and soak remain separate unresolved gates.
+
 - Alpha.25 adds four regressions for bounded background graphics diagnostics and
   non-waiting service-result polling. The actual renderer callback is exercised
   with a saturated queue and blocked writer. Final ordinary suite: 213 pass,

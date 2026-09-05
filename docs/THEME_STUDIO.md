@@ -33,7 +33,10 @@ that final audit remains A16. Panel opacity is tint compositing, not desktop blu
 
 ## Persistence and portability
 
-Current settings use `trontop.theme.v3` in eframe's existing per-user storage.
+From alpha.26, app-owned background persistence replaces eframe's blocking file
+store. See `SETTINGS_PERSISTENCE.md` for read/write limits, migration, conflicts
+and explicit unsaved-close behavior. Current settings use `trontop.theme.v3` in
+`%LOCALAPPDATA%/Trontop/settings-v3.json`, with read-only migration from `state-v2.ron`.
 When no v3 key exists, the app reads `trontop.theme.v2`. The original two-color ramp
 migrates into four collinear stops, within one RGB code value of the original ramp.
 The legacy key is not deliberately removed. Preset library uses
@@ -48,10 +51,11 @@ apply. Library loading is bounded/atomic; malformed or duplicate-name input does
 not replace the current in-memory library. Files are not opened by the theme UI;
 copy happens only after the user's explicit button click.
 
-Restart serialization/migration has unit coverage; no current preview was closed
-or reopened to test real eframe disk persistence. Concurrent older previews share
-the per-user eframe storage file. Avoid concurrent settings edits while reviewing;
-multi-instance last-save behavior is not a travelling-settings solution.
+Restart serialization/migration has unit and headless app-to-file-to-fresh-app
+coverage; no current preview was closed or reopened for native validation. Older
+previews keep using the untouched legacy file. New instances reject conflicting
+saves instead of silently overwriting each other. This remains per-user storage,
+not a travelling-settings solution.
 
 ## Verification
 

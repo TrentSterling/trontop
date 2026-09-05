@@ -84,9 +84,11 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   No forced random theme on the real app. Implemented in alpha.19; 175 ordinary
   tests pass, including new theme checks. Six theme views inspected among 67 PNGs.
   Native restart persistence and Trent's visual review remain. See `docs/THEME_STUDIO.md`.
-  Alpha.25 audit also found blocking eframe settings-save joins and direct file
-  truncation. Replace that persistence path without silently losing unsaved themes;
-  include migration, failed writes and close behavior in the acceptance gate.
+  Alpha.26 replaces eframe's blocking file store with bounded app-owned background
+  persistence, staged replacement, read-only legacy migration and explicit unsaved
+  close choices. Twelve new tests include a real app/worker/file/fresh-app theme,
+  named-palette and zoom round trip. Eight new settings views reviewed. See
+  `docs/SETTINGS_PERSISTENCE.md`. Native restart and Trent's review remain open.
 - [ ] **A14: Zebra rows AND columns throughout. PARTIAL / REVIEW.** Check every
   table, device list, inspector/detail list, History/Startup/Users/Services list,
   sensor group and dialog. Alternation must remain distinct beneath selection and
@@ -134,9 +136,11 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   actual native close latency still needs an authorized isolated measurement,
   including a slow provider. Window/tray should disappear promptly with no orphaned
   app instance. Do not call the thread unit test an end-to-end close test.
-  Alpha.25 code audit found an unbounded `FileStorage::drop` save-thread join in
-  pinned eframe 0.35.0. This path is not fixed or proven to explain Trent's slow
-  close. The next scoped task is persistence safety/responsiveness (A13/A21/A22).
+  Alpha.26 disables eframe's file store and removes its unbounded settings join.
+  Close queues the final save without waiting on the UI thread; failures/slow
+  storage offer Keep open, Retry and explicitly lossy Close anyway. Blocked-worker
+  and synthetic OS-close tests pass. This is not native teardown timing or proof
+  that settings caused Trent's reported slow close. See `docs/SETTINGS_PERSISTENCE.md`.
 - [ ] **A22: Low overhead and stable responsiveness. PARTIAL.** Indexed process views,
   iterative trees and isolated workers have real improvements and synthetic timing
   evidence. Final release needs visible/hidden/tray/mixed-load CPU, memory, handles,
@@ -151,8 +155,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   Alpha.25 moves recoverable GPU diagnostics off renderer callbacks and makes
   service-result mailbox polling non-waiting. Four new tests pass, including
   callback state changes with a saturated queue. See `docs/FAILURE_REPORTS.md`.
-  Settings autosave still joins a prior writer; tray startup still waits for its
-  worker. These audited waits remain open, not assumed causes of the crash.
+  Alpha.26 moves settings read/parse/serialization/write off the UI thread, with
+  bounded coalescing, preserved failures and no worker join. Migration/blocked
+  storage tests pass. Tray startup still waits for its worker; this audited wait
+  remains open, not an assumed cause of the crash. See `docs/SETTINGS_PERSISTENCE.md`.
 - [x] **A23: Safe automation that does not mess with other work.** Headless fixtures
   do not open native windows, inject global input, change focus or execute viewport
   commands. `AGENTS.md` forbids the previous unsafe desktop behavior. Any future
@@ -232,9 +238,10 @@ expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
    (A20/A22/A25), plus focused A15/A16 alignment polish, not a feature expansion.
    Alpha.22 additionally removes synchronous UI process/shell calls (A22).
    Deliver the current tested candidate with its exact identity and native limits.
-2. Address the audited settings-save/startup waits under A13/A21/A22, preserving
-   existing themes and explicit unsaved/error behavior. Keep A13 unchecked until
-   native restart persistence and visual acceptance are confirmed.
+2. Alpha.26 addresses the settings-store wait under A13/A21/A22 with preservation
+   and unsaved/error tests. Next bounded code-level wait is tray initialization:
+   remove the synchronous ready/failed-worker join without duplicating workers or
+   making tray availability dishonest. Keep A13/A21 unchecked until native gates.
 3. Resolve permission for isolated native measurements before touching any windows.
    Work the remaining bounded asks and release decisions, not new alpha features.
 
