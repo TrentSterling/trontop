@@ -9,7 +9,7 @@ use crate::windows_metrics::GpuSampler;
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System, Users};
@@ -19,30 +19,63 @@ const GPU_INVENTORY_INTERVAL: u64 = 30;
 const CONTROL_REFRESH_INTERVAL: u64 = 5;
 
 pub struct Sampler {
-    latest: Arc<RwLock<SystemSnapshot>>,
-    generation: Arc<AtomicU64>,
+    latest: Arc<SnapshotMailbox>,
     stop: Arc<AtomicBool>,
     service_refresh: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
 
+/// Single producer, single UI consumer. Transfer ownership instead of cloning
+/// every process name/path/command while holding a lock on the render thread.
+#[derive(Default)]
+struct SnapshotMailbox {
+    pending: Mutex<Option<SystemSnapshot>>,
+    generation: AtomicU64,
+}
+
+impl SnapshotMailbox {
+    fn publish(&self, snapshot: SystemSnapshot) {
+        let sequence = snapshot.sequence;
+        let retired = if let Ok(mut slot) = self.pending.lock() {
+            let retired = slot.replace(snapshot);
+            self.generation.store(sequence, Ordering::Release);
+            retired
+        } else {
+            return;
+        };
+        // A large superseded snapshot is destroyed on the worker, outside the
+        // publication lock. Slow readers never cause an unbounded backlog.
+        drop(retired);
+    }
+
+    fn take_after(&self, seen_generation: u64) -> Option<SystemSnapshot> {
+        if self.generation.load(Ordering::Acquire) == seen_generation {
+            return None;
+        }
+        // Never park the UI behind a descheduled publisher. It can keep drawing
+        // the accepted snapshot; the publisher requests a repaint after unlock.
+        let mut slot = self.pending.try_lock().ok()?;
+        if slot.as_ref()?.sequence == seen_generation {
+            return None;
+        }
+        slot.take()
+    }
+}
+
 impl Sampler {
     pub fn spawn(ctx: egui::Context, tray: Option<TraySink>) -> Self {
-        let latest = Arc::new(RwLock::new(SystemSnapshot::default()));
-        let generation = Arc::new(AtomicU64::new(0));
+        let latest = Arc::new(SnapshotMailbox::default());
         let stop = Arc::new(AtomicBool::new(false));
         let service_refresh = Arc::new(AtomicBool::new(false));
         let worker_service_refresh = Arc::clone(&service_refresh);
 
         let worker_latest = Arc::clone(&latest);
-        let worker_generation = Arc::clone(&generation);
         let worker_stop = Arc::clone(&stop);
         let worker = thread::Builder::new()
             .name("trontop-sampler".into())
             .spawn(move || {
                 sample_loop(
                     worker_latest,
-                    worker_generation,
                     worker_stop,
                     worker_service_refresh,
                     ctx,
@@ -53,7 +86,6 @@ impl Sampler {
 
         Self {
             latest,
-            generation,
             stop,
             service_refresh,
             worker: Some(worker),
@@ -61,10 +93,7 @@ impl Sampler {
     }
 
     pub fn latest_after(&self, seen_generation: u64) -> Option<SystemSnapshot> {
-        if self.generation.load(Ordering::Acquire) == seen_generation {
-            return None;
-        }
-        self.latest.read().ok().map(|snapshot| snapshot.clone())
+        self.latest.take_after(seen_generation)
     }
 
     pub fn request_service_refresh(&self) {
@@ -82,8 +111,7 @@ impl Drop for Sampler {
 }
 
 fn sample_loop(
-    latest: Arc<RwLock<SystemSnapshot>>,
-    generation: Arc<AtomicU64>,
+    latest: Arc<SnapshotMailbox>,
     stop: Arc<AtomicBool>,
     service_refresh: Arc<AtomicBool>,
     ctx: egui::Context,
@@ -394,10 +422,7 @@ fn sample_loop(
                 process_count: snapshot.process_count,
             });
         }
-        if let Ok(mut slot) = latest.write() {
-            *slot = snapshot;
-            generation.store(sequence, Ordering::Release);
-        }
+        latest.publish(snapshot);
         ctx.request_repaint();
 
         let remaining = SAMPLE_INTERVAL.saturating_sub(cycle_started.elapsed());
@@ -447,6 +472,91 @@ fn wait_for_stop(stop: &AtomicBool, duration: Duration) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot(sequence: u64) -> SystemSnapshot {
+        SystemSnapshot {
+            sequence,
+            processes: vec![ProcessRow {
+                name: format!("Fixture process {sequence}"),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn snapshot_mailbox_transfers_allocations_without_cloning() {
+        let mailbox = SnapshotMailbox::default();
+        assert!(mailbox.take_after(0).is_none());
+        let sample = snapshot(1);
+        let processes_address = sample.processes.as_ptr();
+        let name_address = sample.processes[0].name.as_ptr();
+        mailbox.publish(sample);
+        let accepted = mailbox.take_after(0).unwrap();
+        assert_eq!(accepted.processes.as_ptr(), processes_address);
+        assert_eq!(accepted.processes[0].name.as_ptr(), name_address);
+        assert_eq!(accepted.sequence, 1);
+        assert!(mailbox.take_after(0).is_none());
+        assert!(mailbox.take_after(1).is_none());
+    }
+
+    #[test]
+    fn snapshot_mailbox_coalesces_to_latest_without_replaying_old_data() {
+        let mailbox = SnapshotMailbox::default();
+        for sequence in 1..=100 {
+            mailbox.publish(snapshot(sequence));
+        }
+        assert_eq!(mailbox.take_after(0).unwrap().sequence, 100);
+        assert!(mailbox.take_after(100).is_none());
+        mailbox.publish(snapshot(101));
+        assert_eq!(mailbox.take_after(100).unwrap().sequence, 101);
+    }
+
+    #[test]
+    fn snapshot_mailbox_ui_does_not_wait_for_a_stalled_publisher() {
+        let mailbox = Arc::new(SnapshotMailbox::default());
+        mailbox.publish(snapshot(1));
+        let guard = mailbox.pending.lock().unwrap();
+        let reader = Arc::clone(&mailbox);
+        let (sent, received) = std::sync::mpsc::sync_channel(1);
+        let thread = thread::spawn(move || {
+            sent.send(reader.take_after(0).is_none()).unwrap();
+        });
+        let result = received.recv_timeout(Duration::from_secs(2));
+        // Release before assertions/join, even on failure, so a regressed blocking
+        // implementation fails the test instead of hanging the entire suite.
+        drop(guard);
+        thread.join().unwrap();
+        assert_eq!(result, Ok(true));
+        assert_eq!(mailbox.take_after(0).unwrap().sequence, 1);
+    }
+
+    #[test]
+    fn snapshot_mailbox_concurrent_updates_are_monotonic_and_complete() {
+        let mailbox = Arc::new(SnapshotMailbox::default());
+        let publisher = Arc::clone(&mailbox);
+        let thread = thread::spawn(move || {
+            for sequence in 1..=2000 {
+                publisher.publish(snapshot(sequence));
+            }
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut seen = 0;
+        while seen < 2000 && Instant::now() < deadline {
+            if let Some(sample) = mailbox.take_after(seen) {
+                assert!(sample.sequence > seen);
+                assert_eq!(
+                    sample.processes[0].name,
+                    format!("Fixture process {}", sample.sequence)
+                );
+                seen = sample.sequence;
+            }
+            thread::yield_now();
+        }
+        thread.join().unwrap();
+        assert_eq!(seen, 2000);
+    }
+
     #[test]
     fn user_gpu_totals_do_not_turn_missing_process_data_into_zero() {
         use crate::gpu_activity::Usage;

@@ -22,10 +22,14 @@ jobs:
         run: rustup override set 1.93.0
       - name: Check formatting
         run: cargo fmt --all --check
+      - name: Check local renderer patch formatting
+        run: rustfmt --edition 2024 --check vendor/egui-wgpu/src/recovery.rs vendor/egui-wgpu/src/winit.rs vendor/egui-wgpu/src/renderer.rs vendor/egui-wgpu/src/lib.rs
       - name: Run tests
         run: cargo test
       - name: Run strict Clippy
         run: cargo clippy --all-targets -- -D warnings
+      - name: Check local renderer patch
+        run: cargo clippy -p egui-wgpu --all-targets -- -D warnings
       - name: Build portable release executable
         run: cargo build --release
       - name: Upload portable executable

@@ -32,7 +32,7 @@ fn main() -> eframe::Result {
         trontop_state_directory().map(|root| root.join(failure::LOG_NAME)),
     ));
     failures.clone().install();
-    let result = run();
+    let result = run(std::sync::Arc::clone(&failures));
     record_run_failure(&failures, &result);
     result
 }
@@ -49,8 +49,10 @@ fn record_run_failure(failures: &failure::Recorder, result: &eframe::Result) {
     }
 }
 
-fn run() -> eframe::Result {
+fn run(failures: std::sync::Arc<failure::Recorder>) -> eframe::Result {
     let persistence_path = trontop_state_path();
+    let graphics_recovering = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let recovery_signal = std::sync::Arc::clone(&graphics_recovering);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Trontop")
@@ -59,6 +61,25 @@ fn run() -> eframe::Result {
             .with_min_inner_size([1040.0, 640.0])
             .with_decorations(false),
         renderer: eframe::Renderer::Wgpu,
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            recover_device: true,
+            on_renderer_event: std::sync::Arc::new(move |event| {
+                use eframe::egui_wgpu::RendererEvent;
+                let kind = match event {
+                    RendererEvent::DeviceLost => failure::Kind::GpuDeviceLost,
+                    RendererEvent::UploadFailed => failure::Kind::GpuUploadFailed,
+                    RendererEvent::RecoveryStarted => failure::Kind::GpuRecoveryStarted,
+                    RendererEvent::Recovered => failure::Kind::GpuRecovered,
+                    RendererEvent::RecoveryFailed => failure::Kind::GpuRecoveryFailed,
+                };
+                recovery_signal.store(
+                    !matches!(event, RendererEvent::Recovered),
+                    std::sync::atomic::Ordering::Release,
+                );
+                failures.record(kind, None);
+            }),
+            ..Default::default()
+        },
         centered: true,
         persist_window: false,
         persistence_path,
@@ -68,7 +89,7 @@ fn run() -> eframe::Result {
     eframe::run_native(
         "Trontop",
         options,
-        Box::new(|cc| Ok(Box::new(TrontopApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(TrontopApp::new(cc, graphics_recovering)))),
     )
 }
 

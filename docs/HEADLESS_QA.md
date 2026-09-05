@@ -33,6 +33,12 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.20 adds non-blocking snapshot transfer, renderer replay/state-gating and
+  recovery-log tests. Separately selected offscreen device-loss and stalled-setup
+  probes run the production recovery helper with no native windows or adapter reset.
+  A full-UI CPU probe includes tessellation. See `RENDERER_RECOVERY.md` for numbers
+  and the explicitly unverified native surface/drag/close/soak boundaries.
+
 - Alpha.19 adds four-stop math/mesh, strict theme migration/import, bounded named
   library, backdrop contrast and local ramp drag/keyboard checks. All four Studio
   tabs keep their footer visible in dark/light at compact/normal sizes. The

@@ -2,6 +2,13 @@
 
 Checkpoint: September 4, 2026. Trent chose to save findings and switch projects.
 
+September 5 alpha.20 stability update: the later alpha.19 disappearance was a
+confirmed renderer panic, not a verified drag-loop failure. See
+`RENDERER_RECOVERY.md`. The current local renderer configuration inherits
+`SurfaceConfig::HIGH_THROUGHPUT` (AutoVsync, desired frame latency 2). The
+`LOW_LATENCY` note below describes the earlier investigation, not alpha.20's
+current default. No new native drag measurement or cross-project fix is claimed.
+
 ## Report and current conclusion
 
 Later update (September 4, about 23:06): Trent is now confident dragging feels

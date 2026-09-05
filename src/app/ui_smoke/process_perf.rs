@@ -248,3 +248,43 @@ fn process_view_timing_probe() {
         }
     }
 }
+
+#[test]
+#[ignore = "Opt-in full UI CPU timing, no native window or GPU submission"]
+fn full_ui_cpu_timing_probe() {
+    for count in [500, 5000] {
+        let mut app = workload(count);
+        app.selected_pid = Some(900_000);
+        let ctx = egui::Context::default();
+        theme::install(&ctx, app.theme);
+        let size = Vec2::new(1280.0, 760.0);
+        for (page, _, label) in Page::ALL {
+            app.page = page;
+            let mut times = Vec::with_capacity(60);
+            for sample in 0..76 {
+                // Every measured frame changes the hover location. Includes the
+                // real chrome/sidebar/inspector/layout plus CPU tessellation.
+                let at = Instant::now();
+                let output = frame(
+                    &ctx,
+                    &mut app,
+                    size,
+                    vec![egui::Event::PointerMoved(egui::pos2(
+                        420.0 + (sample % 20) as f32 * 8.0,
+                        465.0,
+                    ))],
+                );
+                let jobs = ctx.tessellate(output.shapes, output.pixels_per_point);
+                black_box(jobs);
+                if sample >= 16 {
+                    times.push(at.elapsed().as_secs_f64() * 1e6);
+                }
+            }
+            times.sort_by(f64::total_cmp);
+            println!(
+                "FULL_UI_CPU count={count} page={label} median_us={:.1} p95_us={:.1} max_us={:.1}",
+                times[30], times[57], times[59]
+            );
+        }
+    }
+}

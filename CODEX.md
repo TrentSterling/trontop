@@ -5,10 +5,28 @@ must not modify this repository.
 
 ## Current checkpoint
 
+New active request after alpha.19 crashed: fix the app, make it fast/snappy and
+polish it. Alpha.20 is a stability candidate for A20/A22/A25: non-blocking snapshot
+transfer and local egui-wgpu device recovery. Read `docs/RENDERER_RECOVERY.md` and
+the newest `docs/CURRENT_STATE.md`. Offscreen fault/rebuild tests pass; native
+surface/drag/close/soak remain unproven. No alpha.20 preview has been opened.
+Permission for a separate non-visible test desktop was asked but not received.
+No cross-project rollout or new visible test windows.
+
+The alpha.19 preview below crashed at 18:29:11.956 UTC, confirmed by local logging
+and Windows events. Initial Responding was not a stability test. The remaining
+alpha.19 and older notes are historical checkpoints.
+
+Latest explicitly requested preview: alpha.19 opened at 18:27:00 UTC on 2026-09-05
+from `target/preview/alpha19-20260905-182659/trontop.exe`, PID 280516. Initial
+read-only check: Responding=true/native HWND present; hash matches the review build.
+Older previews and unrelated windows were untouched. No further restart/replace
+or desktop interaction is authorized by that completed launch request.
+
 Read `ASK_LEDGER.md` first for the finite completion checklist. Trent called out
-diminishing returns and requested one consolidated ask ledger. Finish the already
-written four-peg theme slice, verify/build and hand it back. Do not add more features
-or start another open-ended polish loop. Choose the next unchecked ask with Trent.
+diminishing returns and requested one consolidated ask ledger. The resumed stability
+objective takes priority. Keep work tied to its asks; do not add unrelated features
+or restart an open-ended visual concept loop.
 
 Working branch: `feat/provider-diagnostics`, alpha.19 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.

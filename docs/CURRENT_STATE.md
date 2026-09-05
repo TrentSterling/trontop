@@ -2,7 +2,57 @@
 
 Last updated: 2026-09-05
 
-## Latest explicitly requested preview: alpha.17
+## Latest candidate: alpha.20 renderer recovery / UI handoff
+
+Trent reported that alpha.19 froze and closed. Both local failure metadata and
+Windows events confirm its renderer panic at **18:29:11.956 UTC**. The resumed
+objective is to fix responsiveness/stability and polish the app, still scoped by
+`../ASK_LEDGER.md`, not to add unrelated features. `RENDERER_RECOVERY.md` documents
+the exact failure branch, patch, evidence and limitations.
+
+Alpha.20 replaces the UI's blocking snapshot read/deep clone with non-blocking
+ownership transfer. Its repository-local egui-wgpu patch rebuilds a lost device
+on one background worker, replays managed textures and recreates surfaces on
+existing windows. It suspends stale process actions during recovery. No app,
+window, global input, driver or unrelated project was manipulated for testing.
+
+Final local gate: **182 passed, 0 failed, 13 ignored** (28.83 s), root/vendor strict
+Clippy and formatting PASS; optimized build PASS (1m 17s). Selected optimized GPU
+fault tests: three pixel-identical recoveries, first **210.72 ms**, repeated immediate
+losses **888.40 / 1018.02 ms** (intentional retry spacing), longest polling call
+**0.088 ms**. Injected stalled setup: 1,000 polls **17.6 us**, drop **4.6 us**, no
+extra worker. UI-only p95 including CPU tessellation: **0.13-1.01 ms** over nine
+pages at 500/5,000 fixture processes. This is not native drag/present FPS.
+
+Offscreen pass generated **67 PNGs** (49.44 s); compact About and Processes inspected.
+Existing compact horizontal table scrolling is unchanged, not a completed A15 audit.
+
+Candidate EXE: **`target/release/trontop.exe`**, version **0.3.0-alpha.20**,
+**13,458,944 bytes**, built **2026-09-05 20:35:16 UTC**, build ID
+`5e845dffcb9804fc52dab1e7dfa16322490f0033+modified`.
+SHA-256 **`16F2655AA3AFE23996A2AFAF51DC15D95082AD4189B6E4A3CDEC2F8671E1518F`**.
+PE import inspection lists Windows DLLs only, no dynamic MSVC runtime or app asset
+dependency. This is not clean-machine portability proof. The old
+`target/review-build/release` still contains alpha.19; do not open that as latest.
+
+No alpha.20 preview was launched/replaced. Native surface recovery, real dragging,
+close timing and mixed-load soak remain unverified. A separate non-visible desktop
+test was requested but not authorized yet. Do not interfere with existing previews.
+No release/tag/publication or cross-project patch. Private CI for alpha.20 pending.
+Previous alpha.19 Windows CI 33983943962 passed for 5e845df (checked September 5).
+The repository is still private. Source checkpoints are not released artifacts.
+
+## Latest explicitly requested preview: alpha.19
+
+On Trent's explicit "open the new build" request, the hash-verified optimized
+alpha.19 EXE was copied to `target/preview/alpha19-20260905-182659/trontop.exe`
+and opened at **18:27:00 UTC**, PID **280516**. Initial read-only observation:
+Responding=true and a native window handle present. SHA-256 matches the alpha.19
+review identity below. Older instances and all unrelated windows were untouched.
+No automated UI input or feature testing was performed. This launch does not close
+the native persistence/visual acceptance gates in `../ASK_LEDGER.md`.
+
+## Previous explicitly requested preview: alpha.17
 
 On Trent's explicit request, the hash-verified optimized alpha.17 EXE was copied
 to `target/preview/alpha17-20260905-134108/trontop.exe` and opened at
@@ -25,7 +75,7 @@ Older instances and other windows were untouched. Do not automatically replace,
 restart or manipulate this preview. This observation is not an ongoing liveness
 guarantee or a native performance test.
 
-## Latest source: alpha.19 four-peg themes and finite ask ledger
+## Previous source: alpha.19 four-peg themes and finite ask ledger
 
 Trent called out diminishing returns and requested one checklist of every ask with
 a clear stopping condition. **`../ASK_LEDGER.md` is now authoritative for product

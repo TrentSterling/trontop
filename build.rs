@@ -5,7 +5,13 @@ use std::path::Path;
 
 fn main() -> io::Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
-    for path in ["src", "Cargo.toml", "Cargo.lock", ".cargo/config.toml"] {
+    for path in [
+        "src",
+        "vendor",
+        "Cargo.toml",
+        "Cargo.lock",
+        ".cargo/config.toml",
+    ] {
         println!("cargo:rerun-if-changed={path}");
     }
     let git_output = |args: &[&str]| {
@@ -30,6 +36,7 @@ fn main() -> io::Result<()> {
         "--untracked-files=normal",
         "--",
         "src",
+        "vendor",
         "Cargo.toml",
         "Cargo.lock",
         "build.rs",

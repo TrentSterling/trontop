@@ -1,5 +1,10 @@
 # Local failure reports (alpha.17)
 
+Alpha.20 also records closed-category GPU device loss, failed uploads, recovery
+attempt/success/failure and the `gpu_recovery` worker role. Schema/retention/privacy
+limits are unchanged. Healthy execution still creates no log. See
+`RENDERER_RECOVERY.md` for the renderer patch and real alpha.19 incident.
+
 Trontop records Rust panics and errors returned by its native application runner
 at `%LOCALAPPDATA%/Trontop/failures-v1.jsonl`. No upload, account, service, driver,
 dump collector or new runtime dependency is involved. The portable app remains
@@ -14,8 +19,9 @@ The first JSON line identifies `trontop-failure-log-v1`. Each subsequent JSON li
 is one `trontop-failure-v1` record with only these fields:
 
 - Build hash/modification marker, package version, target and build profile.
-- Closed failure category: Rust panic, app creation, window system, event loop or
-  graphics initialization/runtime error returned by eframe.
+- Closed failure category: Rust panic, app creation, window system, event loop,
+  graphics initialization/runtime error returned by eframe, or one of the five
+  typed GPU recovery events listed above.
 - UTC Unix milliseconds (null if unavailable), allowlisted application thread role,
   compiled source basename and line/column when a panic provides them.
 

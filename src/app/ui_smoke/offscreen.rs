@@ -73,6 +73,10 @@ impl Renderer {
             &paint_jobs,
             &screen,
         );
+        assert!(
+            !self.renderer.upload_failed(),
+            "offscreen GPU upload failed"
+        );
         {
             let mut pass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {

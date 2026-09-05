@@ -101,6 +101,7 @@ struct PendingEndTask {
 }
 
 pub struct TrontopApp {
+    graphics_recovering: std::sync::Arc<std::sync::atomic::AtomicBool>,
     sampler: Option<Sampler>,
     process_icons: crate::process_icons::Cache,
     snapshot: SystemSnapshot,
@@ -152,7 +153,10 @@ pub struct TrontopApp {
 }
 
 impl TrontopApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        graphics_recovering: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
         let saved_theme = cc
             .storage
             .and_then(|storage| {
@@ -166,6 +170,7 @@ impl TrontopApp {
         let tray = TrayController::new(cc.egui_ctx.clone());
         let sampler = Sampler::spawn(cc.egui_ctx.clone(), tray.as_ref().map(TrayController::sink));
         let mut app = Self::with_services(saved_theme, Some(sampler), tray);
+        app.graphics_recovering = graphics_recovering;
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
         app.exporter = crate::export::Exporter::native();
@@ -184,6 +189,7 @@ impl TrontopApp {
         tray: Option<TrayController>,
     ) -> Self {
         Self {
+            graphics_recovering: Default::default(),
             sampler,
             process_icons: crate::process_icons::Cache::default(),
             snapshot: SystemSnapshot::default(),
@@ -2491,6 +2497,20 @@ impl eframe::App for TrontopApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if self
+            .graphics_recovering
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            // Keep native window controls available, but never execute process or
+            // service actions against an old frozen picture while GPU work recovers.
+            // App state and telemetry remain owned by this same app/context.
+            self.custom_chrome(ui);
+            egui::CentralPanel::default().show(ui, |ui| {
+                ui.heading("Reconnecting graphics");
+                ui.label("Your view and theme are retained. Process controls resume when drawing recovers.");
+            });
+            return;
+        }
         self.process_icons.begin_frame(&ctx);
         self.poll_service_command();
         if let Some(result) = self.exporter.poll() {

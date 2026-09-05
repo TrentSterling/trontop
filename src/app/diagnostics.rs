@@ -45,7 +45,10 @@ impl TrontopApp {
                         ctx.copy_text(crate::failure::LOCATION_HINT.into());
                         self.message = Some(("Log location copied. Paste into Explorer; the file exists only after a recorded failure.".into(), false));
                     }
-                    widgets::hover_label(ui, RichText::new("Rust panics and native-runner errors only; no raw messages or memory dumps. Forced exits, hangs and native crashes may leave no record. File access failures can also prevent logging.").size(11.0).color(t.text_muted));
+                    widgets::hover_label(ui, RichText::new("Rust panics, native-runner errors and GPU recovery events; no raw messages or memory dumps. Forced exits, hangs and native crashes may leave no record. File access failures can also prevent logging.").size(11.0).color(t.text_muted));
+                });
+                egui::CollapsingHeader::new("Renderer license (egui-wgpu / MIT)").show(ui, |ui| {
+                    ui.label(include_str!("../../vendor/egui-wgpu/LICENSE-MIT"));
                 });
                 ui.add_space(12.0);
                 widgets::section_label(ui, "Provider health", t);

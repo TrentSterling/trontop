@@ -1,6 +1,6 @@
 [package]
 name = "trontop"
-version = "0.3.0-alpha.19"
+version = "0.3.0-alpha.20"
 edition = "2024"
 rust-version = "1.93"
 description = "A fast, native Windows process and performance manager"
@@ -40,6 +40,10 @@ winresource = "0.1.31"
 # Offscreen visual QA only. No runtime assets, windows, or new EXE dependencies.
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 pollster = "=0.4.0"
+
+[patch.crates-io]
+# Repository-local device-loss recovery; no global Cargo cache modifications.
+egui-wgpu = { path = "vendor/egui-wgpu" }
 
 [profile.release]
 codegen-units = 1

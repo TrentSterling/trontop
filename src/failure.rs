@@ -20,6 +20,11 @@ pub enum Kind {
     WindowSystem,
     EventLoop,
     Graphics,
+    GpuDeviceLost,
+    GpuUploadFailed,
+    GpuRecoveryStarted,
+    GpuRecovered,
+    GpuRecoveryFailed,
 }
 
 impl Kind {
@@ -30,6 +35,11 @@ impl Kind {
             Self::WindowSystem => "window_system",
             Self::EventLoop => "event_loop",
             Self::Graphics => "graphics",
+            Self::GpuDeviceLost => "gpu_device_lost",
+            Self::GpuUploadFailed => "gpu_upload_failed",
+            Self::GpuRecoveryStarted => "gpu_recovery_started",
+            Self::GpuRecovered => "gpu_recovered",
+            Self::GpuRecoveryFailed => "gpu_recovery_failed",
         }
     }
 }
@@ -90,6 +100,7 @@ fn thread_role(name: Option<&str>) -> &'static str {
     match name {
         Some("main") => "main",
         Some("trontop-sampler") => "sampler",
+        Some("trontop-gpu-recovery") => "gpu_recovery",
         Some("trontop-disk-activity") => "disk_activity",
         Some("trontop-tray") => "tray",
         Some("trontop-icons") => "process_icons",

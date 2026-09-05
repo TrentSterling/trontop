@@ -68,6 +68,25 @@ fn record(at: u64) -> Vec<u8> {
 }
 
 #[test]
+fn gpu_failure_events_are_closed_categories_without_driver_messages() {
+    for (kind, label) in [
+        (Kind::GpuDeviceLost, "gpu_device_lost"),
+        (Kind::GpuUploadFailed, "gpu_upload_failed"),
+        (Kind::GpuRecoveryStarted, "gpu_recovery_started"),
+        (Kind::GpuRecovered, "gpu_recovered"),
+        (Kind::GpuRecoveryFailed, "gpu_recovery_failed"),
+    ] {
+        let bytes = encode(kind, None, Some("trontop-gpu-recovery"), Some(123)).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["kind"], label);
+        assert_eq!(value["thread_role"], "gpu_recovery");
+        assert!(value["source_file"].is_null());
+        assert!(value.get("message").is_none());
+        assert!(value.get("payload").is_none());
+    }
+}
+
+#[test]
 fn failure_record_has_fixed_fields_and_excludes_paths_thread_payloads_and_unknown_time() {
     let bytes = encode(
         Kind::RustPanic,

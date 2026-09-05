@@ -12,6 +12,7 @@ mod failure;
 mod offscreen;
 mod process_perf;
 mod process_sort;
+mod renderer_recovery;
 mod service_retention;
 
 fn fixture() -> SystemSnapshot {

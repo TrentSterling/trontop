@@ -125,6 +125,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   evidence. Final release needs visible/hidden/tray/mixed-load CPU, memory, handles,
   frame-time and growth measurements over a 60-minute soak. Investigate only failed
   budgets/reproducible stalls, not open-ended optimization. See A25 and D04.
+  Alpha.19 suffered a verified renderer crash. Alpha.20 adds non-blocking snapshot
+  transfer and device recovery, with 3/3 offscreen pixel-identical fault recoveries.
+  Native surface recovery/drag/soak are still open: `docs/RENDERER_RECOVERY.md`.
 - [x] **A23: Safe automation that does not mess with other work.** Headless fixtures
   do not open native windows, inject global input, change focus or execute viewport
   commands. `AGENTS.md` forbids the previous unsafe desktop behavior. Any future
@@ -200,10 +203,12 @@ expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
 
 ## Next handoff, then stop expanding
 
-1. Hand over the already-tested A13 theme slice and its optimized review EXE.
+1. Current resumed slice is the alpha.19 crash and responsiveness regression
+   (A20/A22/A25), not another feature expansion. Deliver the tested alpha.20
+   stability candidate with its exact identity and remaining native-test limits.
 2. Keep A13 unchecked until restart persistence and visual acceptance are confirmed.
-3. Choose the next unchecked ask with Trent, resolve release decisions, and work
-   that bounded item. Do not autonomously cycle through new alpha features again.
+3. Resolve permission for isolated native measurements before touching any windows.
+   Work the remaining bounded asks and release decisions, not new alpha features.
 
 Historical progress is not a percentage-complete estimate. Remaining items differ
 greatly in effort, and CPU sensors/native safety tests have unresolved dependencies.

@@ -599,8 +599,6 @@ dependencies = [
 [[package]]
 name = "egui-wgpu"
 version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2e6cfac0725563555fa4f91e9f799b9d7c6c5dd831fca6abc8234afc64b7a34"
 dependencies = [
  "ahash",
  "bytemuck",
@@ -608,6 +606,7 @@ dependencies = [
  "egui",
  "epaint",
  "log",
+ "pollster",
  "profiling",
  "thiserror 2.0.20",
  "type-map",
@@ -3294,7 +3293,7 @@ dependencies = [
 
 [[package]]
 name = "trontop"
-version = "0.3.0-alpha.19"
+version = "0.3.0-alpha.20"
 dependencies = [
  "eframe",
  "egui_extras",
