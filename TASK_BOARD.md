@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.8 GPU lifecycle, diagnostics, drive sensors and icon polish
+## Current: alpha.9 executable icons, diagnostics, GPU/drive sensors
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -25,7 +25,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 64 tests pass, strict Clippy clean, 33 offscreen review PNGs
+  geometry coverage: 74 tests pass, strict Clippy clean, 36 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -34,7 +34,14 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Native GPU refresh retained 690 handles with 690/690 valid rates afterward;
   2.938 ms inventory in one read-only run, not a whole-app performance benchmark
 - [x] Separate optimized alpha.8 EXE and Windows-only import inspection; not launched
-- [ ] Verify alpha.8 in remote Windows CI; no alpha release is published
+- [x] Alpha.8 Windows CI 33955277229 passed formatting/tests/Clippy/release/artifact
+- [x] Real embedded executable artwork in process/Details rows and inspector, with
+  bounded background cache, negative retry, fixed fallback geometry and safe drop
+- [x] Native icon probe: 40 extracts, GDI/USER counts (4, 2) to (4, 2); source path
+  gate and queued-upload limits tested; `docs/PROCESS_ICONS.md`
+- [x] Separate optimized alpha.9 EXE, Windows-only import scan and light/dark visual
+  review; not launched and no deployed-copy replacement
+- [ ] Verify alpha.9 in remote Windows CI; no alpha release is published
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
@@ -96,7 +103,8 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Configurable table columns and saved widths
 - [ ] Per-device chart color controls in Theme Studio
 - [ ] Multi-chart GPU layout for 3D, Copy, Compute, Encode, and Decode
-- [ ] Process icons with a bounded background cache
+- [x] Process icons with a bounded background cache; unsupported paths keep vector
+  fallbacks, no shell association/UWP-specific icon provider yet
 - [ ] Better empty states for machines with no active disk/network/GPU counters
 - [ ] Optional 0.5, 1, 2, and 5 second sample intervals
 - [ ] Keyboard navigation, command palette, and shortcut reference

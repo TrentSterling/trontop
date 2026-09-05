@@ -5,7 +5,7 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.8 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.9 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Implemented: Overview and Hardware sensors navigation, About/provider diagnostics
@@ -24,10 +24,16 @@ unreported/unavailable process values. Missing data no longer becomes fake zero 
 process, tree or user cells. Partial totals use `>=`; compact meters/tray omit partial
 values, and history records gaps. Inspector status stays one line with hover detail.
 
-Local tests: 64 passed, 0 failed, 5 opt-in tests ignored. Strict Clippy passes.
-Offscreen QA produced 33 PNGs without native windows/input. The read-only PDH refresh
-test retained 690 handles, with 690/690 valid rates afterward (2.938 ms inventory).
-The optimized alpha.8 review EXE is built and dependency-inspected, not launched.
+Alpha.9 adds real process executable icons with one bounded background worker/cache,
+fixed-size vector fallbacks and a hover-only inspector icon. See `docs/PROCESS_ICONS.md`
+for local-path restrictions, request/upload limits, stale artwork and native resource
+ownership. Test fixtures never start this worker or query their executable paths.
+
+Local tests: 74 passed, 0 failed, 6 opt-in tests ignored. Strict Clippy passes.
+Offscreen QA produced 36 PNGs without native windows/input. The read-only icon probe
+extracted this test EXE in 2.4387 ms; 40 repeats left GDI/USER counts at (4, 2).
+The earlier PDH refresh test retained 690 handles with 690/690 valid rates afterward.
+The optimized alpha.9 review EXE is built and dependency-inspected, not launched.
 Native end-to-end close
 latency and dragging performance are NOT measured. CPU provider research and the
 slow SSD/HDD probe findings are in `docs/SENSORS_PLAN.md`; no driver install authority.
@@ -42,11 +48,12 @@ Trontop. The previous EXE is backed up at
 This is a development preview, not a published alpha release. Do not automatically
 restart it again for subsequent edits. Read the newest `docs/CURRENT_STATE.md` section.
 
-Next: preserve/display individual startup-source results, investigate remaining
-CPU/motherboard sensor coverage, then continue
-slim components and real executable icons with a bounded background cache. Complete
-the release gates in `RELEASE_PLAN.md`. Alpha.7 Windows CI run 33953608787 passed;
-that run is not verification of the new alpha.8 source. No alpha release is published.
+Next: preserve/display individual startup-source results instead of replacing the
+whole cache on partial failure; expose cached service state on the Services page.
+Then continue CPU/motherboard coverage, slim components and the release gates in
+`RELEASE_PLAN.md`. Alpha.8 Windows CI run 33955277229 passed; that run does not verify
+the new alpha.9 source. No alpha release is published. No new permission to restart
+the deployed copy, manipulate windows or install a shortcut hook.
 
 ## Previous verified checkpoint
 

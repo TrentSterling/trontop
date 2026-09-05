@@ -8,6 +8,7 @@ mod gpu_sensors;
 mod icons;
 mod model;
 mod platform;
+mod process_icons;
 mod sampler;
 mod shutdown;
 mod storage_sensors;

@@ -33,6 +33,10 @@ fn fixture() -> SystemSnapshot {
                 accessible: true,
             },
             command: "fixture.exe --headless-test-only --deliberately-long-command-line".into(),
+            executable: Some(std::path::PathBuf::from(format!(
+                r"C:\Fixture\app-{}.exe",
+                index % 4
+            ))),
             ..Default::default()
         })
         .collect();
@@ -231,6 +235,38 @@ fn gpu_activity_fixture(app: &mut TrontopApp) {
     app.sort_column = SortColumn::Pid;
     app.sort_direction = SortDirection::Ascending;
     app.accept_sample(snapshot);
+}
+
+/// Synthetic artwork only, never invokes native extraction or supplies runtime icons.
+fn install_fixture_icons(app: &mut TrontopApp, ctx: &egui::Context) {
+    for index in 0..3 {
+        let mut pixels = vec![0; 32 * 32 * 4];
+        for y in 3usize..29 {
+            for x in 3usize..29 {
+                let edge = x.min(31 - x).min(y.min(31 - y));
+                if edge < 5 && !(5..=26).contains(&x) && !(5..=26).contains(&y) {
+                    continue;
+                }
+                let color = match index {
+                    0 => [32, 186, 177, 255],
+                    1 => [126, 76, 203, 255],
+                    _ => [239, 151, 55, 255],
+                };
+                let color =
+                    if (8..=23).contains(&x) && ((8..=11).contains(&y) || (20..=23).contains(&y)) {
+                        [235, 242, 248, 255]
+                    } else {
+                        color
+                    };
+                pixels[(y * 32 + x) * 4..(y * 32 + x + 1) * 4].copy_from_slice(&color);
+            }
+        }
+        app.process_icons.fixture_icon(
+            ctx,
+            &std::path::PathBuf::from(format!(r"C:\Fixture\app-{index}.exe")),
+            pixels,
+        );
+    }
 }
 
 fn frame(
@@ -992,6 +1028,64 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
 }
 
 #[test]
+fn executable_icons_and_fallbacks_keep_names_aligned_and_accept_row_selection() {
+    for dark in [true, false] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        gpu_activity_fixture(&mut app);
+        app.tree_mode = false;
+        app.page = Page::Processes;
+        let size = Vec2::new(1280.0, 760.0);
+        let mut previous = None;
+        for loaded in [false, true] {
+            if loaded {
+                install_fixture_icons(&mut app, &ctx);
+            }
+            let mut output = egui::FullOutput::default();
+            for _ in 0..3 {
+                output = frame(&ctx, &mut app, size, vec![]);
+            }
+            let texts = text_shapes(&output);
+            let (text, clip) = texts
+                .iter()
+                .find(|(t, _)| t.galley.job.text == "Fixture.Gpu.1.exe")
+                .unwrap();
+            let bounds = text.visual_bounding_rect();
+            assert!(clip.contains_rect(bounds));
+            if let Some(expected) = previous {
+                assert_eq!(bounds, expected);
+            }
+            previous = Some(bounds);
+        }
+        // The icon is immediately before the text, with a six-point gap.
+        let bounds = previous.unwrap();
+        let position = egui::pos2(bounds.left() - 15.0, bounds.center().y);
+        for pressed in [true, false] {
+            frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        assert_eq!(app.selected_pid, Some(900_000));
+    }
+}
+
+#[test]
 fn inspector_gpu_status_cannot_shift_neighboring_fields() {
     use crate::gpu_activity::Usage;
     for dark in [true, false] {
@@ -1146,6 +1240,9 @@ fn render_offscreen_visual_pass() {
         "gpu-activity-users",
         "gpu-activity-inspector-light",
         "gpu-activity-partial",
+        "process-icons",
+        "process-icons-light",
+        "process-icons-inspector",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1169,6 +1266,12 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant == "theme-studio";
+        if variant.starts_with("process-icons") {
+            gpu_activity_fixture(&mut app);
+            install_fixture_icons(&mut app, &ctx);
+            app.page = Page::Processes;
+            app.selected_pid = (variant == "process-icons-inspector").then_some(900_001);
+        }
         if variant.starts_with("gpu-activity") {
             gpu_activity_fixture(&mut app);
             app.page = Page::Processes;
@@ -1235,7 +1338,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 33 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 36 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

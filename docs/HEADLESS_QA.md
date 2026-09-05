@@ -22,6 +22,9 @@ previously identified TEAM SSD. It is not run by generic CI or the visual harnes
 The separately selected `native_gpu_refresh_preserves_warm_counters` test opens its
 own read-only PDH query, primes rates, refreshes inventory, and verifies retained
 handles keep their samples. It never creates windows or installs input hooks.
+The separately selected `native_executable_icon_read_only_probe` extracts the test
+EXE's own resource and checks GDI/USER counts across 40 repeats, with no windows or
+shell execution. Do not broaden it to arbitrary processes or the native tray test.
 
 ## Coverage
 
@@ -69,13 +72,22 @@ handles keep their samples. It never creates windows or installs input hooks.
 - Partial/unavailable GPU samples leave history gaps, preserve known engine rows,
   and recover to an explicit measured zero. Unknown values sort last in both
   directions; process-tree and user totals cannot silently treat them as zeros.
+- Executable icons retain identical process-name geometry through fallback/artwork
+  states in both themes, and local icon clicks select the corresponding PID. The
+  headless app has no native icon worker; fixture paths cannot trigger OS reads.
+- Icon cache tests cover native-path rejection using injected callbacks, duplicate
+  requests, malformed/missing results, refresh failure retention, cache/queue/upload
+  limits, eviction, disconnected workers and a blocked-loader drop. Pixel tests
+  preserve transparent, antialiased and opaque-black coverage.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes thirty-three PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes thirty-six PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 The five GPU-activity additions cover compact Processes, light process tree, Users,
 light selected inspector and partially available Performance counters.
+Three executable-icon additions cover mixed loaded/fallback rows in light/dark and
+the selected inspector. Their colored sample artwork is synthetic fixture data.
 
 ## Limits
 

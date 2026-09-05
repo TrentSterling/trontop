@@ -2,7 +2,56 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.8 GPU lifecycle and truthful activity states
+## Latest source: alpha.9 background executable icons
+
+Branch `feat/provider-diagnostics`. Processes/Details rows and the inspector now
+request real embedded executable artwork through one bounded background worker.
+No native file queries happen on the render thread. The in-memory cache has at most
+256 entries, 32 outstanding requests and eight texture uploads per frame. Failed
+lookups back off; a failed refresh keeps prior artwork. Fixed-size vector fallbacks
+keep names aligned before/after loading. The inspector icon is hover-only, not a
+dead button. The redesign skill's state/alignment audit guided this integration;
+Trent's gradient/zebra theme and existing vector vocabulary are preserved.
+
+Only local fixed-drive executable paths pass the native provider's best-effort
+ancestor checks. Remote/removable/reparse/cloud-placeholder paths fall back; no
+shell extension handlers, target execution, downloads or new runtime assets.
+Artwork is never used as process identity or publisher trust. Full architecture,
+limits and primary API references: `PROCESS_ICONS.md`.
+
+Final local gate: formatting PASS; **74 passed, 0 failed, 6 opt-in tests ignored**
+(23.16 s); strict Clippy PASS; optimized release build PASS (43.91 s). Explicit
+offscreen pass PASS, **36 PNGs** in 22.52 s on RTX 5070 Ti/Vulkan. Reviewed mixed
+loaded/fallback light/dark rows, selected inspector and compact copper Processes.
+The compact table remains horizontally scrollable; this is not universal layout or
+native DPI verification. No native window/input/clipboard commands were executed.
+
+The separately selected read-only icon probe extracted this test EXE's own embedded
+icon in 2.4387 ms, then ran 40 repeats: GDI/USER resources (4, 2) to (4, 2). An earlier
+run was 2.9378 ms with identical counts. This is a bounded resource-lifetime check,
+not total app overhead or end-to-end closing/dragging performance.
+
+Separate optimized review EXE: `target/review-build/release/trontop.exe`,
+12,960,256 bytes, PE version 0.3.0-alpha.9, SHA-256:
+`D17075C24E012E7465355BCDD8D494AE9548FDCA4DF34AFC3541683AC9C804B1`.
+Built from modified 2282469 source before checkpoint. `dumpbin /dependents` shows
+Windows-only imports, no dynamic MSVC runtime or required vendor DLL. It was not
+launched. The separately deployed alpha.5 EXE was not replaced/restarted.
+
+Alpha.8 private Windows CI
+[33955277229](https://github.com/TrentSterling/trontop/actions/runs/33955277229)
+passed formatting/tests/strict Clippy/release/artifact for
+2282469d6df0c7da2f16b1a4f6044e1574d5a947 at 08:47:16 UTC on 2026-09-05.
+That run is not verification of alpha.9, whose remote gate is pending. No tag or
+alpha release has been published.
+
+Next: startup still replaces its whole row cache after partial source failures.
+Preserve rows and freshness independently per source and show their state on the
+Startup page; service failures also need a visible cached-state explanation there.
+CPU/motherboard sensors, native performance measurements and all remaining release
+gates stay open. Ctrl+Shift+Esc remains a proposal only. No desktop automation.
+
+## Previous: alpha.8 GPU lifecycle and truthful activity states
 
 Branch `feat/provider-diagnostics`. GPU inventory reconciliation now preserves
 existing PDH handles and their rate samples. Only newly added counters warm up.

@@ -96,6 +96,7 @@ struct PendingEndTask {
 
 pub struct TrontopApp {
     sampler: Option<Sampler>,
+    process_icons: crate::process_icons::Cache,
     snapshot: SystemSnapshot,
     seen_generation: u64,
     page: Page,
@@ -141,7 +142,9 @@ impl TrontopApp {
         theme::install(&cc.egui_ctx, saved_theme);
         let tray = TrayController::new(cc.egui_ctx.clone());
         let sampler = Sampler::spawn(cc.egui_ctx.clone(), tray.as_ref().map(TrayController::sink));
-        Self::with_services(saved_theme, Some(sampler), tray)
+        let mut app = Self::with_services(saved_theme, Some(sampler), tray);
+        app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
+        app
     }
 
     fn with_services(
@@ -151,6 +154,7 @@ impl TrontopApp {
     ) -> Self {
         Self {
             sampler,
+            process_icons: crate::process_icons::Cache::default(),
             snapshot: SystemSnapshot::default(),
             seen_generation: 0,
             page: Page::Processes,
@@ -718,6 +722,11 @@ impl TrontopApp {
                 egui::ScrollArea::vertical().id_salt("inspector_scroll").auto_shrink([false, false]).show(ui, |ui| {
                 let selected = self.selected_process().cloned();
                 if let Some(process) = selected {
+                    ui.horizontal(|ui| {
+                        self.process_icons.paint(ui, process.executable.as_deref(), 32.0, t.text_muted, egui::Sense::hover()).on_hover_text("Executable icon; not a verified publisher identity");
+                        widgets::status_pill(ui, &process.status, if process.status == "Running" { t.good } else { t.text_muted });
+                    });
+                    ui.add_space(8.0);
                     widgets::hover_label(ui, RichText::new(&process.name).size(19.0).strong().color(t.text));
                     widgets::hover_label(ui,
                         RichText::new(format!("PID {} | {}", process.pid, process.user))
@@ -1207,6 +1216,19 @@ impl TrontopApp {
                                 }
                             } else if tree_mode {
                                 ui.add_space(21.0);
+                            }
+                            if self
+                                .process_icons
+                                .paint(
+                                    ui,
+                                    process.executable.as_deref(),
+                                    18.0,
+                                    t.text_muted,
+                                    egui::Sense::click(),
+                                )
+                                .clicked()
+                            {
+                                clicked_pid = Some(process.pid);
                             }
                             let name = if tree_mode && display.has_children {
                                 format!("{}  [{}]", process.name, display.descendant_count + 1)
@@ -2474,6 +2496,7 @@ impl eframe::App for TrontopApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.process_icons.begin_frame(&ctx);
         self.keyboard_shortcuts(&ctx);
         theme::paint_background(&ctx, self.theme);
         self.custom_chrome(ui);
