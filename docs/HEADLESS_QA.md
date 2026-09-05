@@ -11,9 +11,10 @@ Fixtures are synthetic TEST DATA and must never become a runtime telemetry fallb
 cargo test app::ui_smoke -- --nocapture
 cargo test shared_surfaces -- --nocapture
 cargo test render_offscreen_visual_pass -- --ignored --nocapture
+cargo test --release process_view_timing_probe -- --ignored --nocapture --test-threads=1
 ```
 
-The last command is specifically selected, not a blanket `--ignored` run. The native
+The last two commands are specifically selected, not a blanket `--ignored` run. The native
 tray ignored test creates a real icon and must not run on the working desktop. A
 separate, read-only `native_nvml_read_only_probe` opt-in test queries the installed
 NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
@@ -31,6 +32,10 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.14 adds four ordinary tests for source-index sorting, snapshot/History/search
+  invalidation, selection identity and unchanged view storage across paints. Its
+  opt-in headless timing probe compares 500/5,000 synthetic process workloads without
+  a window, sampler or tray. See `PROCESS_VIEW_PERFORMANCE.md`; not an FPS/drag test.
 - Alpha.13 export uses injected file-picker results only. Ten new encoding/worker/
   owned-file/UI tests cover privacy, Unicode, CSV parsing, unavailable/partial GPU,
   failed replacement, cancellation, one-job/drop behavior and explicit-only Save.

@@ -5,8 +5,22 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.13 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.14 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
+
+Alpha.14 replaces per-frame full-process copies with snapshot indices in Processes/
+Details and caches the History top twelve on view rebuild. Name/account comparisons
+no longer allocate folded strings. Four new ordinary regression tests pass. Local
+gate: 125 passed, 0 failed, 8 ignored; strict Clippy/release PASS; 53 offscreen PNGs,
+four process-related variants inspected. Three paired optimized headless runs measured
+5,000-process tree frame medians of 3,888.1 us before and 206.9 us after; 500-process
+tree 307.6 to 211.2 us. This is not GPU/native drag/FPS validation. Read
+`docs/PROCESS_VIEW_PERFORMANCE.md` for the exact fixture and remaining costs.
+No alpha.14 preview was launched. Alpha.13 CI run 33963422802 for 3142016 passed
+formatting, tests, strict Clippy, release and artifact upload at 11:49:30 UTC.
+Alpha.14 has not yet passed its remote gate.
+
+The alpha.13 section below is historical; use the newer gate and build above.
 
 Alpha.13 adds explicit JSON/CSV snapshot export with private fields off by default,
 one background picker/encoding/file worker, staged replacement, and stable compact

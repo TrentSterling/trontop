@@ -8,6 +8,7 @@ use eframe::App;
 
 mod export;
 mod offscreen;
+mod process_perf;
 mod service_retention;
 
 fn fixture() -> SystemSnapshot {

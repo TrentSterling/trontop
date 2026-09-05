@@ -2,7 +2,52 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.13 explicit JSON/CSV export
+## Latest source: alpha.14 snapshot-indexed process views
+
+Branch `feat/provider-diagnostics`. Processes/Details no longer clone every displayed
+process, command line and path on each repaint. Flat views hold indices into the
+current snapshot; Copy tree metadata references the same source. History caches its
+top twelve indices on view rebuild rather than cloning/sorting the whole filtered
+set every frame. ASCII-folded name/account ordering uses allocation-free comparisons.
+Indices are rebuilt at snapshot replacement and are not cross-sample identities.
+Selection and native action identity checks remain PID/creation-time based.
+
+Measured before/after with an opt-in, optimized, headless production-UI probe:
+three baseline/indexed pairs, 500 and 5,000 synthetic processes, five warmup frames
+then 60 measured frames per page. At 5,000 processes the median-of-medians tree
+frame fell **3,888.1 us to 206.9 us**; flat **4,106.8 to 205.7 us**, Details
+**4,389.5 to 299.0 us**, History **4,850.4 to 79.8 us**. At 500 processes the tree
+frame fell **307.6 to 211.2 us**. View rebuild mean also improved. Full methodology,
+binary identities and limitations: `PROCESS_VIEW_PERFORMANCE.md`. These are
+CPU-side headless timings, not a native FPS, drag or whole-app overhead claim.
+
+Final local gate: formatting PASS; **125 passed, 0 failed, 8 opt-in tests ignored**
+(26.30 s); strict Clippy PASS (3.13 s); optimized release PASS (32.49 s). Four new
+ordinary tests cover index/sort equivalence, snapshot replacement/empty/filter,
+History invalidation, reused-PID selection safety and repaint storage reuse. The
+eighth opt-in test is the new headless timing probe, not a native desktop test.
+Offscreen QA produced **53 PNGs** in 34.20 s; Processes, Details, History and the
+partial-GPU light tree were visually reviewed, not all 53 images.
+
+Review EXE: `target/review-build/release/trontop.exe`, **13,236,224 bytes**, PE version
+**0.3.0-alpha.14**, built from modified 3142016 source before checkpoint.
+SHA-256 `8E847CEA142ABC05B88F8F5E8AEE16EEEAF16DFA987B39B5BD737AEA617CA63C`.
+Final dependency inspection shows only Windows imports, no dynamic MSVC runtime;
+clean-machine portability remains unverified. No new preview was launched or old
+instance touched. The latest explicitly opened preview remains the alpha.12 final
+copy documented below, not this alpha.14 review binary.
+
+Alpha.13 Windows CI
+[33963422802](https://github.com/TrentSterling/trontop/actions/runs/33963422802)
+passed formatting, tests, strict Clippy, release and artifact upload for
+3142016d43a7b9937ff46cb04a2ea64e10f9cc1b at 11:49:30 UTC. Alpha.14 has not passed
+its remote gate. No release is published.
+
+Full Task Manager parity remains incomplete: sensors/vendor coverage, suspend/resume,
+startup controls, richer device counters, native export/service validation, crash
+logging, actual performance/accessibility/soak and release checks remain open.
+
+## Previous: alpha.13 explicit JSON/CSV export
 
 Branch `feat/provider-diagnostics`. Export now offers JSON for the published sampler
 snapshot and CSV for every process row. The user explicitly chooses a destination

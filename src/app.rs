@@ -3,7 +3,7 @@ use crate::gpu_sensors::SensorHistory;
 use crate::icons::Icon;
 use crate::model::{
     PriorityClass, ProcessIdentity, ProcessRow, ProcessTotals, ProcessTreeRow, SortColumn,
-    SortDirection, SystemSnapshot, build_process_tree, sort_processes,
+    SortDirection, SystemSnapshot, build_process_tree, sort_process_indices,
 };
 use crate::platform;
 use crate::sampler::Sampler;
@@ -108,8 +108,9 @@ pub struct TrontopApp {
     secondary_query: String,
     sort_column: SortColumn,
     sort_direction: SortDirection,
-    visible_processes: Vec<ProcessRow>,
+    visible_processes: Vec<usize>,
     visible_process_tree: Vec<ProcessTreeRow>,
+    history_processes: Vec<usize>,
     tree_mode: bool,
     tree_initialized: bool,
     expanded_pids: HashSet<u32>,
@@ -179,6 +180,7 @@ impl TrontopApp {
             sort_direction: SortDirection::Descending,
             visible_processes: Vec::new(),
             visible_process_tree: Vec::new(),
+            history_processes: Vec::new(),
             tree_mode: true,
             tree_initialized: false,
             expanded_pids: HashSet::new(),
@@ -356,14 +358,23 @@ impl TrontopApp {
             .snapshot
             .processes
             .iter()
-            .filter(|process| matching_pids.contains(&process.pid))
-            .cloned()
+            .enumerate()
+            .filter(|(_, process)| matching_pids.contains(&process.pid))
+            .map(|(index, _)| index)
             .collect();
-        sort_processes(
+        sort_process_indices(
             &mut self.visible_processes,
+            &self.snapshot.processes,
             self.sort_column,
             self.sort_direction,
         );
+        self.history_processes.clone_from(&self.visible_processes);
+        self.history_processes.sort_by(|&a, &b| {
+            self.snapshot.processes[b]
+                .accumulated_cpu_millis
+                .cmp(&self.snapshot.processes[a].accumulated_cpu_millis)
+        });
+        self.history_processes.truncate(12);
         self.visible_process_tree = build_process_tree(
             &self.snapshot.processes,
             &matching_pids,
@@ -1069,28 +1080,10 @@ impl TrontopApp {
     fn process_table_inner(&mut self, ui: &mut egui::Ui, detailed: bool) {
         let t = self.colors();
         let tree_mode = self.tree_mode && !detailed;
-        let visible = if tree_mode {
-            self.visible_process_tree.clone()
+        let visible_count = if tree_mode {
+            self.visible_process_tree.len()
         } else {
-            self.visible_processes
-                .iter()
-                .cloned()
-                .map(|process| ProcessTreeRow {
-                    totals: ProcessTotals {
-                        process_count: 1,
-                        cpu_percent: process.cpu_percent,
-                        gpu_percent: process.gpu_percent,
-                        memory_bytes: process.memory_bytes,
-                        read_bytes_per_sec: process.read_bytes_per_sec,
-                        write_bytes_per_sec: process.write_bytes_per_sec,
-                    },
-                    process,
-                    depth: 0,
-                    has_children: false,
-                    descendant_count: 0,
-                    expanded: false,
-                })
-                .collect()
+            self.visible_processes.len()
         };
         let selected_pid = self.selected_pid;
         let mut clicked_pid = None;
@@ -1216,9 +1209,23 @@ impl TrontopApp {
                 );
             })
             .body(|body| {
-                body.rows(32.0, visible.len(), |mut row| {
-                    let display = &visible[row.index()];
-                    let process = &display.process;
+                body.rows(32.0, visible_count, |mut row| {
+                    let display = if tree_mode {
+                        self.visible_process_tree[row.index()]
+                    } else {
+                        let process_index = self.visible_processes[row.index()];
+                        ProcessTreeRow {
+                            process_index,
+                            totals: ProcessTotals::from_process(
+                                &self.snapshot.processes[process_index],
+                            ),
+                            depth: 0,
+                            has_children: false,
+                            descendant_count: 0,
+                            expanded: false,
+                        }
+                    };
+                    let process = &self.snapshot.processes[display.process_index];
                     row.set_selected(selected_pid == Some(process.pid));
                     widgets::table_column(&mut row, t, |ui| {
                         ui.scope(|ui| {
@@ -1788,13 +1795,12 @@ impl TrontopApp {
             true,
         );
         ui.add_space(12.0);
-        let mut rows = self.visible_processes.clone();
-        rows.sort_by(|a, b| b.accumulated_cpu_millis.cmp(&a.accumulated_cpu_millis));
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 widgets::section_label(ui, "HEAVIEST LIFETIME CPU CONSUMERS", t);
-                for (rank, process) in rows.iter().take(12).enumerate() {
+                for (rank, &index) in self.history_processes.iter().enumerate() {
+                    let process = &self.snapshot.processes[index];
                     widgets::hover_frame(ui, widgets::surface(ui, t, rank % 2 == 1), |ui| {
                         ui.horizontal(|ui| {
                             widgets::hover_label(

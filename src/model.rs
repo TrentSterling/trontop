@@ -127,7 +127,7 @@ pub struct ProcessTotals {
 }
 
 impl ProcessTotals {
-    fn from_process(process: &ProcessRow) -> Self {
+    pub(crate) fn from_process(process: &ProcessRow) -> Self {
         Self {
             process_count: 1,
             cpu_percent: process.cpu_percent,
@@ -151,9 +151,10 @@ impl ProcessTotals {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ProcessTreeRow {
-    pub process: ProcessRow,
+    /// Valid only against the snapshot used to build this view.
+    pub process_index: usize,
     pub depth: usize,
     pub has_children: bool,
     pub descendant_count: usize,
@@ -315,8 +316,18 @@ impl SortDirection {
     }
 }
 
+#[cfg(test)]
 pub fn sort_processes(rows: &mut [ProcessRow], column: SortColumn, direction: SortDirection) {
     rows.sort_by(|a, b| compare_processes(a, b, column, direction));
+}
+
+pub fn sort_process_indices(
+    indices: &mut [usize],
+    processes: &[ProcessRow],
+    column: SortColumn,
+    direction: SortDirection,
+) {
+    indices.sort_by(|&a, &b| compare_processes(&processes[a], &processes[b], column, direction));
 }
 
 fn compare_processes(
@@ -362,7 +373,8 @@ pub fn build_process_tree(
 ) -> Vec<ProcessTreeRow> {
     let by_pid = processes
         .iter()
-        .map(|process| (process.pid, process))
+        .enumerate()
+        .map(|(index, process)| (process.pid, (index, process)))
         .collect::<HashMap<_, _>>();
     let mut included = matching_pids.clone();
     let mut effective_expanded = expanded_pids.clone();
@@ -371,7 +383,7 @@ pub fn build_process_tree(
         let mut cursor = pid;
         let mut visited = HashSet::new();
         while visited.insert(cursor) {
-            let Some(parent_pid) = by_pid.get(&cursor).and_then(|row| row.parent_pid) else {
+            let Some(parent_pid) = by_pid.get(&cursor).and_then(|(_, row)| row.parent_pid) else {
                 break;
             };
             if !by_pid.contains_key(&parent_pid) {
@@ -411,7 +423,7 @@ pub fn build_process_tree(
         .iter()
         .copied()
         .filter(|pid| {
-            by_pid.get(pid).is_some_and(|process| {
+            by_pid.get(pid).is_some_and(|(_, process)| {
                 process
                     .parent_pid
                     .is_none_or(|parent_pid| parent_pid == *pid || !included.contains(&parent_pid))
@@ -470,12 +482,12 @@ fn mark_reachable(pid: u32, children: &HashMap<u32, Vec<u32>>, reached: &mut Has
 
 fn sort_pid_rows(
     pids: &mut [u32],
-    by_pid: &HashMap<u32, &ProcessRow>,
+    by_pid: &HashMap<u32, (usize, &ProcessRow)>,
     column: SortColumn,
     direction: SortDirection,
 ) {
     pids.sort_by(|a, b| match (by_pid.get(a), by_pid.get(b)) {
-        (Some(a), Some(b)) => compare_processes(a, b, column, direction),
+        (Some((_, a)), Some((_, b))) => compare_processes(a, b, column, direction),
         _ => a.cmp(b),
     });
 }
@@ -484,7 +496,7 @@ fn sort_pid_rows(
 fn append_tree_rows(
     pid: u32,
     depth: usize,
-    by_pid: &HashMap<u32, &ProcessRow>,
+    by_pid: &HashMap<u32, (usize, &ProcessRow)>,
     all_children: &HashMap<u32, Vec<u32>>,
     visible_children: &HashMap<u32, Vec<u32>>,
     expanded_pids: &HashSet<u32>,
@@ -495,14 +507,14 @@ fn append_tree_rows(
     if !emitted.insert(pid) {
         return;
     }
-    let Some(process) = by_pid.get(&pid) else {
+    let Some((process_index, _)) = by_pid.get(&pid) else {
         return;
     };
     let totals = tree_totals(pid, by_pid, all_children, totals_cache, &mut HashSet::new());
     let has_children = all_children.get(&pid).is_some_and(|rows| !rows.is_empty());
     let expanded = has_children && expanded_pids.contains(&pid);
     output.push(ProcessTreeRow {
-        process: (*process).clone(),
+        process_index: *process_index,
         depth,
         has_children,
         descendant_count: totals.process_count.saturating_sub(1),
@@ -528,7 +540,7 @@ fn append_tree_rows(
 
 fn tree_totals(
     pid: u32,
-    by_pid: &HashMap<u32, &ProcessRow>,
+    by_pid: &HashMap<u32, (usize, &ProcessRow)>,
     all_children: &HashMap<u32, Vec<u32>>,
     cache: &mut HashMap<u32, ProcessTotals>,
     visiting: &mut HashSet<u32>,
@@ -536,7 +548,7 @@ fn tree_totals(
     if let Some(total) = cache.get(&pid) {
         return *total;
     }
-    let Some(process) = by_pid.get(&pid) else {
+    let Some((_, process)) = by_pid.get(&pid) else {
         return ProcessTotals::default();
     };
     if !visiting.insert(pid) {
@@ -562,12 +574,94 @@ fn float_cmp<T: PartialOrd>(a: T, b: T) -> Ordering {
 }
 
 fn natural_name_cmp(a: &str, b: &str) -> Ordering {
-    a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase())
+    // Preserve ASCII-folded UTF-8 ordering without allocating two strings per comparison.
+    a.bytes()
+        .map(|b| b.to_ascii_lowercase())
+        .cmp(b.bytes().map(|b| b.to_ascii_lowercase()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ascii_name_comparator_matches_previous_order_without_folded_string_storage() {
+        let names = [
+            "Alpha", "alpha", "zeta", "ZETA", "éApp", "ÉApp", "测试", "", "10.exe", "2.exe", "A\0B",
+        ];
+        for a in names {
+            for b in names {
+                assert_eq!(
+                    natural_name_cmp(a, b),
+                    a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn index_sort_keeps_snapshot_records_in_place_for_all_columns_and_directions() {
+        let processes = (0..50)
+            .map(|i| ProcessRow {
+                pid: i + 1,
+                name: format!("Fixture.{}", i % 7),
+                user: format!("User.{}", i % 3),
+                cpu_percent: (i % 13) as f32,
+                gpu_percent: if i % 5 == 0 {
+                    Usage::Unavailable
+                } else {
+                    Usage::Measured((i % 7) as f32)
+                },
+                memory_bytes: i as u64 * 10,
+                read_bytes_per_sec: (i % 17) as f64,
+                write_bytes_per_sec: (i % 11) as f64,
+                accumulated_cpu_millis: i as u64 * 100,
+                status: if i % 2 == 0 {
+                    "Running".into()
+                } else {
+                    "Unknown".into()
+                },
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        let original_names = processes
+            .iter()
+            .map(|p| p.name.as_ptr())
+            .collect::<Vec<_>>();
+        for column in [
+            SortColumn::Name,
+            SortColumn::Pid,
+            SortColumn::Status,
+            SortColumn::User,
+            SortColumn::Cpu,
+            SortColumn::Gpu,
+            SortColumn::Memory,
+            SortColumn::ReadRate,
+            SortColumn::WriteRate,
+            SortColumn::CpuTime,
+        ] {
+            for direction in [SortDirection::Ascending, SortDirection::Descending] {
+                let mut copied = processes.clone();
+                sort_processes(&mut copied, column, direction);
+                let mut indices = (0..processes.len()).collect::<Vec<_>>();
+                sort_process_indices(&mut indices, &processes, column, direction);
+                assert_eq!(
+                    indices
+                        .iter()
+                        .map(|&i| processes[i].pid)
+                        .collect::<Vec<_>>(),
+                    copied.iter().map(|p| p.pid).collect::<Vec<_>>()
+                );
+            }
+        }
+        assert_eq!(
+            processes
+                .iter()
+                .map(|p| p.name.as_ptr())
+                .collect::<Vec<_>>(),
+            original_names
+        );
+    }
 
     #[test]
     fn gpu_sort_keeps_missing_last_and_tree_preserves_incomplete_totals() {
@@ -689,7 +783,7 @@ mod tests {
         assert_eq!(
             expanded
                 .iter()
-                .map(|row| row.process.pid)
+                .map(|row| processes[row.process_index].pid)
                 .collect::<Vec<_>>(),
             [10, 11, 12]
         );
@@ -706,15 +800,18 @@ mod tests {
         child.parent_pid = Some(10);
         let mut grandchild = row(12, "target", 0.0);
         grandchild.parent_pid = Some(11);
+        let processes = [root, child, grandchild];
         let rows = build_process_tree(
-            &[root, child, grandchild],
+            &processes,
             &HashSet::from([12]),
             &HashSet::new(),
             SortColumn::Name,
             SortDirection::Ascending,
         );
         assert_eq!(
-            rows.iter().map(|row| row.process.pid).collect::<Vec<_>>(),
+            rows.iter()
+                .map(|row| processes[row.process_index].pid)
+                .collect::<Vec<_>>(),
             [10, 11, 12]
         );
     }

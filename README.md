@@ -7,6 +7,8 @@ Version 0.3 alpha provides:
 
 - live process CPU, GPU, memory, state, user, command, path, and disk I/O telemetry
 - searchable process-tree and flat-list views with subtree resource totals
+- snapshot-indexed process tables and cached History ordering, avoiding full-record
+  copies on repaint; synthetic before/after timings: `docs/PROCESS_VIEW_PERFORMANCE.md`
 - a persistent process inspector
 - current Windows priority and CPU affinity telemetry, plus confirmed scheduling controls
 - guarded process termination with explicit confirmation

@@ -105,7 +105,7 @@ fn export_status_geometry_and_disabled_save_survive_missing_data_and_failures() 
             click_local_text(&ctx, &mut app, size, "Save as...");
             assert!(!app.exporter.busy()); // Default test app has no native export backend.
         }
-        app.snapshot = SystemSnapshot::default();
+        app.accept_sample(SystemSnapshot::default());
         app.exporter = Exporter::with_backend(|_, _| panic!("Missing sample must not export"));
         click_local_text(&ctx, &mut app, size, "Save as...");
         assert!(!app.exporter.busy());

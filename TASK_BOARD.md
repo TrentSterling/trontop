@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.13 explicit snapshot export
+## Current: alpha.14 snapshot-indexed process views
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -28,7 +28,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 121 tests pass, strict Clippy clean, 53 offscreen review PNGs
+  geometry coverage: 125 tests pass, strict Clippy clean, 53 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -76,7 +76,15 @@ This is the durable resume board. Keep it honest and update it when a slice land
   11:15:53 UTC; `docs/CURRENT_STATE.md` records path/hash, older previews untouched
 - [ ] Validate the native export Save As flow in an authorized isolated instance;
   injected picker/owned-file tests do not satisfy this gate: `docs/EXPORTS.md`
-- [ ] Verify alpha.13 in remote Windows CI; no alpha release is published
+- [x] Alpha.13 Windows CI 33963422802 passed for 3142016 at 11:49:30 UTC;
+  no alpha release is published
+- [x] Snapshot-indexed flat/tree rows and cached History ordering; no whole-process
+  record copies on table repaint, allocation-free name/account comparisons
+- [x] Four index/sort/invalidation/identity/repaint tests and paired headless timings;
+  5,000-process tree 3,888.1 to 206.9 us, not native drag/whole-app performance proof
+- [x] Optimized alpha.14 EXE with Windows-only import scan and four process-page
+  visual reviews; no new preview launch or existing-window manipulation
+- [ ] Verify alpha.14 in remote Windows CI
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
@@ -134,7 +142,10 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Continue remaining app-wide spacing, zebra details and visual-state audit; new QA is not a universal proof
 - [ ] Diagnose sustained window-drag lag; findings in `docs/DRAG_INVESTIGATION.md`
 - [ ] Port a VERIFIED drag fix to other egui apps only after isolated before/after measurement
-- [ ] Replace the cloned/sorted process view with stable snapshot indices and cached sort keys
+- [x] Replace cloned/sorted process records with snapshot indices and allocation-free
+  name/account comparisons; History sorting happens only on view rebuild
+- [ ] Cache expensive search metadata and stress deep/cyclic process hierarchies;
+  current timing probe uses all-root fixtures: `docs/PROCESS_VIEW_PERFORMANCE.md`
 - [ ] Responsive compact navigation below 1150 logical pixels
 - [ ] Configurable table columns and saved widths
 - [ ] Per-device chart color controls in Theme Studio
