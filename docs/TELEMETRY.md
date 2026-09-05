@@ -2,29 +2,37 @@
 
 ## Current sampler
 
-The 0.1 sampler owns one long-lived `sysinfo::System` on a dedicated thread. It
-refreshes CPU, memory, and processes every second, publishes one immutable snapshot,
-and requests one UI repaint. The render thread performs no operating-system queries.
+The 0.2 sampler owns one long-lived `sysinfo::System`, disk list, network list, user
+list, and GPU PDH query on a dedicated thread. It refreshes live counters every
+second, publishes one immutable snapshot, and requests one UI repaint. Startup and
+service inventory refresh every 30 seconds. The render thread performs no
+operating-system queries.
 
 `sysinfo` reports process CPU as a percentage of one logical processor, so Trontop
 divides it by the logical processor count. This matches the whole-machine percentage
 users expect from Task Manager. Disk byte deltas are divided by the measured interval,
 not an assumed perfect one-second interval.
 
-## Native Windows expansion
+## Native Windows providers
 
-The next provider should supplement the portable sampler with these Windows sources:
+Current providers use these Windows sources:
 
-1. Enumerate the `GPU Engine` PDH object and its exact instances. Extract PIDs from
-   instance names and sum engine utilization by PID. Never guess instance names.
-2. Prefer the Windows 11 `Process V2` counterset for advanced per-process counters.
+1. The `GPU Engine` PDH object is enumerated for exact instances. PIDs and engine
+   types are parsed from returned instance names and aggregated. Query counters are
+   rebuilt periodically as engines appear and disappear.
+2. Service inventory comes from `EnumServicesStatusExW` and includes state and PID.
+3. Startup inventory reads the documented HKCU/HKLM Run keys and both Startup folders.
+
+Future providers should:
+
+1. Prefer the Windows 11 `Process V2` counterset for advanced per-process counters.
    Its instance identity avoids the name churn that affects the older `Process`
    object when processes exit between samples.
-3. Keep PDH queries long-lived and collect at least two samples before publishing a
+2. Keep PDH queries long-lived and collect at least two samples before publishing a
    rate. Counter rates are deltas and do not have meaning from one observation.
-4. Use `QueryFullProcessImageNameW` as a fallback when the base sampler cannot obtain
+3. Use `QueryFullProcessImageNameW` as a fallback when the base sampler cannot obtain
    an executable path. Access failures are normal and should remain non-fatal.
-5. Add ETW only where cumulative counters cannot provide a useful rate, most likely
+4. Add ETW only where cumulative counters cannot provide a useful rate, most likely
    per-process network traffic. ETW collection belongs on its own worker and must have
    a bounded handoff to the UI snapshot.
 
@@ -47,4 +55,3 @@ Primary references:
 
 Every destructive process control needs an explicit confirmation or a clearly
 reversible interaction. Telemetry failures should degrade one field, not the sampler.
-

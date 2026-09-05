@@ -5,14 +5,14 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Version 0.1.0 is the first native vertical slice. It has a live process table,
-search and sorting, process inspection, confirmed process termination, CPU and memory
-history, background sampling, and a standalone release executable.
+Version 0.2.0 expands the first slice into a seven-page native system control deck.
+Read `docs/CURRENT_STATE.md` for the full handoff and `TASK_BOARD.md` before choosing
+new work. The next high-value systems slice is process trees, priority, affinity,
+suspend/resume, and service controls.
 
-The next substantial slice is native Windows GPU telemetry. Read
-`docs/TELEMETRY.md` before implementing it. GPU Engine counter instances must be
-enumerated through PDH and aggregated by PID. Do not synthesize counter paths or
-display estimated GPU values.
+GPU Engine instances are enumerated through PDH and aggregated by PID. Do not
+synthesize counter paths or display estimated GPU values. All slow inventory and
+live telemetry remain outside the render thread.
 
 ## Verification
 
@@ -22,4 +22,3 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 cargo build --release
 ```
-

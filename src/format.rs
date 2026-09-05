@@ -52,6 +52,14 @@ pub fn age_from_unix(started_at_unix: u64) -> String {
     duration(now.saturating_sub(started_at_unix))
 }
 
+pub fn millis(value: u64) -> String {
+    let total_seconds = value / 1_000;
+    let hours = total_seconds / 3_600;
+    let minutes = (total_seconds % 3_600) / 60;
+    let seconds = total_seconds % 60;
+    format!("{hours:02}:{minutes:02}:{seconds:02}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

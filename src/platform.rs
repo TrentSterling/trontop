@@ -45,6 +45,23 @@ pub fn reveal_in_explorer(_path: &Path) -> Result<(), String> {
     Err("Explorer is only available on Windows.".into())
 }
 
+#[cfg(windows)]
+pub fn launch_command(command: &str) -> Result<(), String> {
+    std::process::Command::new("cmd.exe")
+        .args(["/D", "/S", "/C", "start", "", command])
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not launch command: {error}"))
+}
+
+#[cfg(not(windows))]
+pub fn launch_command(command: &str) -> Result<(), String> {
+    std::process::Command::new(command)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not launch command: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
