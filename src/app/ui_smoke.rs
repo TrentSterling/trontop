@@ -1678,6 +1678,8 @@ fn render_offscreen_visual_pass() {
         "export",
         "export-private-light",
         "export-failed-compact",
+        "process-tree-deep",
+        "process-tree-deep-light",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1701,6 +1703,9 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant == "theme-studio";
+        if variant.starts_with("process-tree-deep") {
+            process_perf::install_chain(&mut app);
+        }
         if variant.starts_with("service-") {
             fixture_service_controls(&mut app, &ctx);
             if variant == "service-confirmation" {
@@ -1848,7 +1853,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 53 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 55 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

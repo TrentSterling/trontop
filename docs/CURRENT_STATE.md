@@ -2,7 +2,52 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.14 snapshot-indexed process views
+## Latest explicitly requested preview: alpha.14
+
+On Trent's request to open the latest build, the alpha.14 review EXE below was
+hash-verified and copied to `target/preview/alpha14-20260905-1200/trontop.exe`.
+It launched at **12:00:07 UTC** on 2026-09-05 as **PID 273992**; a subsequent
+read-only check observed Responding=true, native HWND 1181862 and title Trontop.
+Version **0.3.0-alpha.14**, **13,236,224 bytes**, SHA-256
+`8E847CEA142ABC05B88F8F5E8AEE16EEEAF16DFA987B39B5BD737AEA617CA63C`.
+Older instances and all other windows were left untouched. No global input or
+window manipulation was used. This is a launch observation, not a native smoke
+test or ongoing liveness guarantee. Earlier launch notes below are historical.
+
+## Latest source: alpha.15 iterative process hierarchy
+
+Branch `feat/provider-diagnostics`. Hierarchy building now uses iterative indexed
+walks instead of recursion and repeated ancestor scans. Known newer-parent IDs are
+detached; cyclic members become separate roots without losing valid children or
+double-counting their resources. Full subtree totals and search ancestor context
+are preserved. Deep indentation is capped for readability, with actual depth and
+reported parent PID on name hover. See `PROCESS_TREE.md` for semantics and evidence.
+
+Nine new ordinary regressions pass, including 50,000-level chains/cycles on a
+256 KiB thread stack, 128 arbitrary graphs, 2,880 valid reference comparisons, and
+compact light/dark scroll/tooltip/name-selection checks. Final gate: **134 passed,
+0 failed, 9 opt-in ignored** (25.85 s), formatting/strict Clippy/release PASS.
+Offscreen pass produced **55 PNGs** (34.14 s); the two deep-tree variants, normal
+Processes and partial-GPU light tree were visually inspected, not all 55 images.
+
+Three paired optimized headless timing runs measured 1,000-node collapsed-chain
+building at **16,771.9 us before, 132.8 us after**; wide expanded **364.9 to 141.2 us**.
+These are tree-construction medians, not native drag/FPS/whole-app measurements.
+The alpha.15 review EXE is **13,212,160 bytes**, built from modified 5b000f4 source
+at 12:17:49 UTC. SHA-256
+`8087381610511F7A219182CC5E1308A182CF2EC36B621F29989FC605827CE7C5`.
+Path: `target/review-build/release/trontop.exe`. Windows-only import scan passed;
+clean-machine testing remains open. This EXE was not launched. The explicit
+alpha.14 preview above was left untouched.
+
+Alpha.14 Windows CI
+[33964418983](https://github.com/TrentSterling/trontop/actions/runs/33964418983)
+completed successfully for 5b000f4328701f3c051740da6464d4fbe6e3e83a. Alpha.15 has
+not yet passed its remote gate. No release is published. Full Task Manager parity
+remains incomplete. Next process-view issue: sort resource columns by the displayed
+subtree values; current ordering still uses individual process counters.
+
+## Previous: alpha.14 snapshot-indexed process views
 
 Branch `feat/provider-diagnostics`. Processes/Details no longer clone every displayed
 process, command line and path on each repaint. Flat views hold indices into the
@@ -33,9 +78,8 @@ Review EXE: `target/review-build/release/trontop.exe`, **13,236,224 bytes**, PE 
 **0.3.0-alpha.14**, built from modified 3142016 source before checkpoint.
 SHA-256 `8E847CEA142ABC05B88F8F5E8AEE16EEEAF16DFA987B39B5BD737AEA617CA63C`.
 Final dependency inspection shows only Windows imports, no dynamic MSVC runtime;
-clean-machine portability remains unverified. No new preview was launched or old
-instance touched. The latest explicitly opened preview remains the alpha.12 final
-copy documented below, not this alpha.14 review binary.
+clean-machine portability remains unverified. No preview was launched during the
+performance implementation; the subsequent explicit alpha.14 launch is recorded above.
 
 Alpha.13 Windows CI
 [33963422802](https://github.com/TrentSterling/trontop/actions/runs/33963422802)

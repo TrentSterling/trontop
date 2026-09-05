@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.14 snapshot-indexed process views
+## Current: alpha.15 iterative process hierarchy
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -28,7 +28,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 125 tests pass, strict Clippy clean, 53 offscreen review PNGs
+  geometry coverage: 134 tests pass, strict Clippy clean, 55 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -84,7 +84,16 @@ This is the durable resume board. Keep it honest and update it when a slice land
   5,000-process tree 3,888.1 to 206.9 us, not native drag/whole-app performance proof
 - [x] Optimized alpha.14 EXE with Windows-only import scan and four process-page
   visual reviews; no new preview launch or existing-window manipulation
-- [ ] Verify alpha.14 in remote Windows CI
+- [x] Alpha.14 Windows CI 33964418983 passed for 5b000f4
+- [x] Alpha.14 preview opened on explicit request at 12:00:07 UTC as PID 273992;
+  confirmed responding, older previews and other windows untouched
+- [x] Iterative hierarchy/totals/search, known newer-parent rejection and cycle
+  normalization; 50,000-level chain/cycle and independent reference stress coverage
+- [x] Readable deep names with full depth on hover; light/dark local scrolling and
+  selection checks, two new rendered variants inspected, alpha.15 EXE not launched
+- [x] Three paired headless hierarchy probes: collapsed 1,000-node chain rebuild
+  16,771.9 to 132.8 us; exact evidence/limits in `docs/PROCESS_TREE.md`
+- [ ] Verify alpha.15 in remote Windows CI
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
@@ -144,8 +153,10 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Port a VERIFIED drag fix to other egui apps only after isolated before/after measurement
 - [x] Replace cloned/sorted process records with snapshot indices and allocation-free
   name/account comparisons; History sorting happens only on view rebuild
-- [ ] Cache expensive search metadata and stress deep/cyclic process hierarchies;
-  current timing probe uses all-root fixtures: `docs/PROCESS_VIEW_PERFORMANCE.md`
+- [x] Stress and repair deep/cyclic process hierarchies: `docs/PROCESS_TREE.md`
+- [ ] Sort tree resource columns by displayed subtree values, not individual counters
+- [ ] Expire expanded-PID view state on PID reuse; native action identity is separate
+- [ ] Cache expensive search metadata; `docs/PROCESS_VIEW_PERFORMANCE.md`
 - [ ] Responsive compact navigation below 1150 logical pixels
 - [ ] Configurable table columns and saved widths
 - [ ] Per-device chart color controls in Theme Studio

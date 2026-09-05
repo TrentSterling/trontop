@@ -472,7 +472,7 @@ pub fn table_cell(ui: &mut egui::Ui, text: RichText) -> bool {
     table_label(ui, text).clicked()
 }
 
-fn table_label(ui: &mut egui::Ui, text: RichText) -> egui::Response {
+pub(crate) fn table_label(ui: &mut egui::Ui, text: RichText) -> egui::Response {
     let label = text.text().to_owned();
     let galley = egui::WidgetText::from(text).into_galley(
         ui,

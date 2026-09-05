@@ -85,9 +85,9 @@ was intended; this is not a fresh app-wide design/accessibility audit.
 
 ## Still open
 
-Search currently folds fields on view rebuild, and hierarchy construction still uses
-maps, allocations and recursive traversal. Deep/cyclic/adversarial hierarchies need
-broader stress tests; this all-root timing fixture does not validate them. Inspector
+Search currently folds fields on view rebuild. Alpha.15 replaces recursive hierarchy
+construction and adds deep/cyclic/adversarial stress tests; see `PROCESS_TREE.md`.
+The alpha.14 all-root timing fixture above does not validate those shapes. Inspector
 cloning, actual sampling costs, visible-frame rendering, real drag/close latency,
 memory/handle soaks and CPU/GPU present behavior are separate measurements. No native
 drag fix is validated for Trontop or other egui projects by this work.

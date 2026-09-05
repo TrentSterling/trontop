@@ -5,8 +5,23 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.14 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.15 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
+
+Alpha.15 replaces recursive hierarchy building with indexed iterative traversal,
+rejects known newer-parent links, makes cycle members honest separate roots, and
+keeps full totals/search context. Indentation stays readable with actual depth on
+hover. Nine new tests cover 50,000-level chains/cycles on a 256 KiB stack, arbitrary
+graphs, reference equivalence and compact light/dark scroll/tooltip/selection.
+Gate: 134 passed, 0 failed, 9 opt-in ignored; formatting/strict Clippy/release PASS.
+55 offscreen PNGs produced, four process-tree variants actually inspected.
+Three paired headless probes: 1,000-node collapsed-chain rebuild 16,771.9 to 132.8 us;
+not native drag/FPS/whole-app proof. See `docs/PROCESS_TREE.md` for measurements,
+binary identities and remaining visible-sort/expansion-state issues.
+Alpha.14 CI 33964418983 passed for 5b000f4. Alpha.15 remote gate not yet passed.
+No alpha.15 preview was launched; the explicitly opened alpha.14 below is untouched.
+
+The alpha.14 implementation details below are historical.
 
 Alpha.14 replaces per-frame full-process copies with snapshot indices in Processes/
 Details and caches the History top twelve on view rebuild. Name/account comparisons
@@ -16,7 +31,11 @@ four process-related variants inspected. Three paired optimized headless runs me
 5,000-process tree frame medians of 3,888.1 us before and 206.9 us after; 500-process
 tree 307.6 to 211.2 us. This is not GPU/native drag/FPS validation. Read
 `docs/PROCESS_VIEW_PERFORMANCE.md` for the exact fixture and remaining costs.
-No alpha.14 preview was launched. Alpha.13 CI run 33963422802 for 3142016 passed
+On Trent's subsequent explicit request, alpha.14 was opened from
+`target/preview/alpha14-20260905-1200/trontop.exe` at 12:00:07 UTC on 2026-09-05,
+PID 273992. Responding=true/HWND 1181862 observed afterward. Older instances and
+other windows were untouched. See `docs/CURRENT_STATE.md` for the verified hash.
+Alpha.13 CI run 33963422802 for 3142016 passed
 formatting, tests, strict Clippy, release and artifact upload at 11:49:30 UTC.
 Alpha.14 has not yet passed its remote gate.
 
@@ -30,7 +49,7 @@ No live snapshots were exported, and no picker or new preview was opened during 
 slice. Final gate: 121 passed, 0 failed, 7 ignored; strict Clippy and release PASS.
 The offscreen pass produced 53 PNGs; three export layouts were visually inspected.
 
-Most recent explicit preview launch: final alpha.12 at
+Previous explicit preview launch: final alpha.12 at
 `target/preview/alpha12-final-20260905-111553/trontop.exe`, PID 262932, 11:15:53 UTC
 on 2026-09-05. Responding=true/HWND 3553034 observed after launch. Older previews
 were untouched. Alpha.13 review EXE exists separately and was not launched.

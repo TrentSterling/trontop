@@ -1231,7 +1231,12 @@ impl TrontopApp {
                         ui.scope(|ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
                             ui.spacing_mut().button_padding = Vec2::ZERO;
-                            ui.add_space(display.depth as f32 * 13.0);
+                            // Keep room for the controls, icon and process name at
+                            // any hierarchy depth or user-resized column width.
+                            let desired_indent = display.depth as f32 * 13.0;
+                            let indent =
+                                desired_indent.min((ui.available_width() - 160.0).clamp(0.0, 78.0));
+                            ui.add_space(indent);
                             if tree_mode && display.has_children {
                                 let label = if display.expanded {
                                     "Collapse process subtree"
@@ -1281,7 +1286,28 @@ impl TrontopApp {
                             } else {
                                 process.name.clone()
                             };
-                            if widgets::table_cell(ui, RichText::new(name).color(t.text).strong()) {
+                            let response = widgets::table_label(
+                                ui,
+                                RichText::new(name).color(t.text).strong(),
+                            )
+                            .on_hover_ui(|ui| {
+                                ui.label(&process.name);
+                                if tree_mode {
+                                    ui.label(format!(
+                                        "Hierarchy depth: {}{}",
+                                        display.depth,
+                                        if indent < desired_indent {
+                                            " (indent compressed)"
+                                        } else {
+                                            ""
+                                        }
+                                    ));
+                                    if let Some(parent) = process.parent_pid {
+                                        ui.label(format!("Reported parent PID: {parent}"));
+                                    }
+                                }
+                            });
+                            if response.clicked() {
                                 clicked_pid = Some(process.pid);
                             }
                         });

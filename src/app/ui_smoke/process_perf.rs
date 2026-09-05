@@ -23,6 +23,102 @@ fn workload(count: usize) -> TrontopApp {
     app
 }
 
+pub(super) fn install_chain(app: &mut TrontopApp) {
+    let mut snapshot = fixture();
+    snapshot.processes.truncate(32);
+    for (index, row) in snapshot.processes.iter_mut().enumerate() {
+        row.name = format!("Node {index:02}.exe");
+        row.parent_pid = index.checked_sub(1).map(|parent| 900_000 + parent as u32);
+    }
+    snapshot.process_count = snapshot.processes.len();
+    app.page = Page::Processes;
+    app.tree_mode = true;
+    app.selected_pid = None;
+    app.expanded_pids = snapshot.processes.iter().map(|r| r.pid).collect();
+    app.accept_sample(snapshot);
+}
+
+#[test]
+fn deep_tree_names_stay_visible_selectable_and_explain_compressed_indentation() {
+    for dark in [true, false] {
+        for size in [Vec2::new(1040.0, 640.0), Vec2::new(1280.0, 760.0)] {
+            let settings = ThemeSettings {
+                dark,
+                ..Default::default()
+            };
+            let ctx = egui::Context::default();
+            theme::install(&ctx, settings);
+            ctx.global_style_mut(|style| style.interaction.tooltip_delay = 0.0);
+            let mut app = app(settings, true);
+            install_chain(&mut app);
+            for _ in 0..3 {
+                frame(&ctx, &mut app, size, vec![]);
+            }
+            frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![
+                    egui::Event::PointerMoved(egui::pos2(420.0, 465.0)),
+                    egui::Event::MouseWheel {
+                        phase: egui::TouchPhase::Move,
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0.0, -440.0),
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            let mut output = egui::FullOutput::default();
+            for _ in 0..30 {
+                output = frame(&ctx, &mut app, size, vec![]);
+            }
+            let names = text_shapes(&output)
+                .into_iter()
+                .filter(|(text, clip)| {
+                    text.galley.job.text.starts_with("Node ")
+                        && clip.contains_rect(text.visual_bounding_rect())
+                })
+                .collect::<Vec<_>>();
+            assert!(names.len() >= 3, "no readable tree rows at {size:?}");
+            let (text, clip) = names[1];
+            let depth = text.galley.job.text[5..7].parse::<u32>().unwrap();
+            assert!(depth > 6, "scroll failed to reach deep rows: {depth}");
+            assert!(text.visual_bounding_rect().width() > 50.0);
+            assert!(clip.contains_rect(text.visual_bounding_rect()));
+            assert_eq!(text.galley.rows.len(), 1);
+            let position = text.visual_bounding_rect().center();
+            for _ in 0..5 {
+                output = frame(
+                    &ctx,
+                    &mut app,
+                    size,
+                    vec![egui::Event::PointerMoved(position)],
+                );
+            }
+            assert!(
+                text_shapes(&output)
+                    .iter()
+                    .any(|(text, _)| text.galley.job.text
+                        == format!("Hierarchy depth: {depth} (indent compressed)"))
+            );
+            for pressed in [true, false] {
+                frame(
+                    &ctx,
+                    &mut app,
+                    size,
+                    vec![egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                );
+            }
+            assert_eq!(app.selected_pid, Some(900_000 + depth));
+        }
+    }
+}
+
 #[test]
 fn indexed_views_follow_snapshot_reorder_replacement_filter_and_empty_state() {
     let mut app = workload(64);

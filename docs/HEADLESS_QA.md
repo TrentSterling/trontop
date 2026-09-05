@@ -12,9 +12,10 @@ cargo test app::ui_smoke -- --nocapture
 cargo test shared_surfaces -- --nocapture
 cargo test render_offscreen_visual_pass -- --ignored --nocapture
 cargo test --release process_view_timing_probe -- --ignored --nocapture --test-threads=1
+cargo test --release process_tree_timing_probe -- --ignored --nocapture --test-threads=1
 ```
 
-The last two commands are specifically selected, not a blanket `--ignored` run. The native
+The ignored-test commands are specifically selected, not a blanket `--ignored` run. The native
 tray ignored test creates a real icon and must not run on the working desktop. A
 separate, read-only `native_nvml_read_only_probe` opt-in test queries the installed
 NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
@@ -32,6 +33,10 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.15 adds eight hierarchy regressions and one deep-name production-UI test:
+  50,000-node chain/cycle on 256 KiB stack, 128 arbitrary graphs, 2,880 small valid
+  reference comparisons, creation-time guards and compact light/dark hover/selection.
+  Its opt-in timing probe measures only tree building. See `PROCESS_TREE.md`.
 - Alpha.14 adds four ordinary tests for source-index sorting, snapshot/History/search
   invalidation, selection identity and unchanged view storage across paints. Its
   opt-in headless timing probe compares 500/5,000 synthetic process workloads without
@@ -41,7 +46,8 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
   failed replacement, cancellation, one-job/drop behavior and explicit-only Save.
   Save/Close/status text must fit both clip rect and screen at 1040x640, with stable
   positions across outcomes in both themes. Native Save As is a separate gate.
-- The offscreen pass now produces 53 PNGs. The three export variants are fixture
+- The offscreen pass now produces 55 PNGs, including two deep-tree layouts.
+  The three export variants are fixture
   data and do not open a file picker or write an exported process snapshot.
 - 432 page/size/preset/mode/data cases: nine pages, 1040x640 / 1280x760 /
   1920x1080, four presets, light/dark, populated/empty fixtures.
