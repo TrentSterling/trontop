@@ -12,6 +12,7 @@ mod icons;
 mod inventory;
 mod model;
 mod platform;
+mod process_actions;
 mod process_icons;
 mod sampler;
 mod service_control;

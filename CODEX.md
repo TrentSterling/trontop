@@ -5,6 +5,20 @@ must not modify this repository.
 
 ## Current checkpoint
 
+Alpha.22 addresses another A22 responsiveness gap: End task, priority, affinity,
+Run task and Reveal in Explorer now dispatch through one non-blocking action
+worker instead of invoking Windows on the UI thread. It retains exact confirmed
+identity and label, prevents duplicates, reports pending/unknown states honestly,
+and never joins a stalled call on close. `docs/PROCESS_ACTION_SAFETY.md` describes
+the boundary. Default headless apps cannot execute native actions. UI tests use
+injected backends; a native safety test owns its hidden disposable child.
+Latest ordinary gate: 196 pass, 13 ignored; strict Clippy/formatting PASS, 73 PNGs
+generated with pending/error variants reviewed. See `docs/CURRENT_STATE.md` for
+final build identity. No alpha.22 preview has been opened. The active objective
+and unanswered isolated-desktop permission below are unchanged.
+
+The alpha.21 and older entries below are historical checkpoints.
+
 New active request after alpha.19 crashed: fix the app, make it fast/snappy and
 polish it. Alpha.21 adds a focused A15/A16 compact layout pass to the alpha.20
 A20/A22/A25 stability candidate: non-blocking snapshot transfer and local egui-wgpu
@@ -32,7 +46,7 @@ diminishing returns and requested one consolidated ask ledger. The resumed stabi
 objective takes priority. Keep work tied to its asks; do not add unrelated features
 or restart an open-ended visual concept loop.
 
-Working branch: `feat/provider-diagnostics`, alpha.21 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.22 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Alpha.19 implements four-peg gradients and a tabbed Theme Studio: editable positions,

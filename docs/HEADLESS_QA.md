@@ -33,6 +33,17 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.22 moves native process/shell actions off the UI thread. Six worker tests
+  plus four production-UI tests cover bounded dispatch/drop, exact frozen targets,
+  stalled navigation, duplicates, stale confirmations, Enter/recovery gating and
+  fixed-height pending/error messages. Default fixture apps cannot execute native
+  actions. One explicitly owned hidden child verifies same-handle lifetime safety;
+  shell/Explorer actions use injected backends only. See `PROCESS_ACTION_SAFETY.md`.
+  Ordinary gate: 196 pass, 13 ignored; strict Clippy PASS. Three action-state PNG
+  fixtures bring the offscreen suite to 73 PNGs (49.35 s), with pending compact,
+  slow light and error compact reviewed after final tint/padding adjustments.
+  No native desktop is involved.
+
 - Alpha.21 adds four compact-layout regressions: all default process headers and
   toolbar actions fit without an inspector; selected compact metrics retain full
   values above the table; local inspector toggles retain selection/filter; long

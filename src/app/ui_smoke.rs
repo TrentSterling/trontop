@@ -6,6 +6,7 @@ use crate::model::{
 };
 use eframe::App;
 
+mod actions;
 mod compact_layout;
 mod disks;
 mod export;
@@ -1657,6 +1658,9 @@ fn render_offscreen_visual_pass() {
         "inspector-compact",
         "inspector-hidden-compact",
         "processes-wide-light",
+        "action-pending-compact",
+        "action-slow-light",
+        "action-error-compact",
         "gpu-sensors",
         "gpu-sensors-light",
         "gpu-sensors-compact",
@@ -1715,6 +1719,21 @@ fn render_offscreen_visual_pass() {
             Page::Performance
         };
         app.selected_pid = (variant == "inspector").then_some(900_001);
+        let _action_release = if variant.starts_with("action-") {
+            app.page = Page::Processes;
+            if variant == "action-error-compact" {
+                app.message = Some(("Set priority: Fixture.exe (900001): Access denied. The process could not be opened with scheduling rights; no fallback or elevation was attempted.".into(), true));
+                None
+            } else {
+                Some(actions::install_pending(
+                    &mut app,
+                    &ctx,
+                    variant.contains("slow"),
+                ))
+            }
+        } else {
+            None
+        };
         if variant.starts_with("inspector-") {
             app.page = Page::Processes;
             app.selected_pid = Some(900_001);
@@ -1725,6 +1744,8 @@ fn render_offscreen_visual_pass() {
             app.selected_pid = None;
         }
         if variant.starts_with("confirm-") {
+            app.process_actions =
+                crate::process_actions::Controller::with_backend(ctx.clone(), |_| Ok(()));
             app.page = Page::Processes;
             app.selected_pid = Some(900_001);
             app.request_end_selected();
@@ -1898,7 +1919,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 70 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 73 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

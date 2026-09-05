@@ -6,6 +6,7 @@ use crate::model::{
     SortDirection, SystemSnapshot, build_process_tree, sort_process_indices,
 };
 use crate::platform;
+use crate::process_actions::{Action as ProcessAction, Request as ProcessRequest};
 use crate::sampler::Sampler;
 use crate::theme::{self, ThemeSettings, Tokens};
 use crate::tray::{TrayAction, TrayController};
@@ -127,6 +128,7 @@ pub struct TrontopApp {
     service_observations: crate::service_control::Observations,
     pending_end_task: Option<PendingEndTask>,
     pending_control_action: Option<PendingControlAction>,
+    process_actions: crate::process_actions::Controller,
     message: Option<(String, bool)>,
     cpu_history: VecDeque<f32>,
     memory_history: VecDeque<f32>,
@@ -174,6 +176,7 @@ impl TrontopApp {
         app.graphics_recovering = graphics_recovering;
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
+        app.process_actions = crate::process_actions::Controller::spawn(cc.egui_ctx.clone());
         app.exporter = crate::export::Exporter::native();
         if let Some(value) = cc
             .storage
@@ -216,6 +219,7 @@ impl TrontopApp {
             service_observations: crate::service_control::Observations::default(),
             pending_end_task: None,
             pending_control_action: None,
+            process_actions: crate::process_actions::Controller::default(),
             message: None,
             cpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
             memory_history: VecDeque::with_capacity(HISTORY_LENGTH),
@@ -669,7 +673,7 @@ impl TrontopApp {
                         }
                         if matches!(self.page, Page::Processes | Page::Details)
                             && ui
-                                .add_enabled_ui(self.selected_pid.is_some(), |ui| {
+                                .add_enabled_ui(self.selected_pid.is_some() && !self.process_actions.busy(), |ui| {
                                     widgets::icon_button(
                                         ui,
                                         Icon::Stop,
@@ -751,6 +755,9 @@ impl TrontopApp {
     }
 
     fn request_end_selected(&mut self) {
+        if self.process_actions.busy() {
+            return;
+        }
         let Some(process) = self.selected_process() else {
             return;
         };
@@ -869,7 +876,7 @@ impl TrontopApp {
                     };
                     widgets::detail_row(ui, "Affinity", &affinity, t);
                     ui.horizontal(|ui| {
-                        let controls_enabled = process.control.accessible && process.identity().is_some()
+                        let controls_enabled = !self.process_actions.busy() && process.control.accessible && process.identity().is_some()
                             && platform::can_control(process.pid).is_ok();
                         if ui
                             .add_enabled(controls_enabled, egui::Button::new("Set priority"))
@@ -910,11 +917,10 @@ impl TrontopApp {
                             .selectable(true)
                             .wrap(),
                         );
-                        if ui.small_button("Reveal in Explorer").clicked() {
-                            self.message = Some(match platform::reveal_in_explorer(path) {
-                                Ok(()) => ("Opened Explorer".into(), false),
-                                Err(error) => (error, true),
-                            });
+                        if ui.add_enabled(self.process_actions.ready(), egui::Button::new("Reveal in Explorer").small())
+                            .on_disabled_hover_text("Wait for the pending action, or check that the action worker is available.")
+                            .clicked() {
+                            self.submit_process_action(ui.ctx(), ProcessAction::Reveal(path.clone()), path.display().to_string());
                         }
                     }
                     if !process.command.is_empty() {
@@ -928,7 +934,8 @@ impl TrontopApp {
                     }
                     ui.add_space(12.0);
                     ui.scope(|ui| {
-                        if widgets::action_button(ui, RichText::new("End task").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t)
+                        if widgets::action_button_enabled(ui, RichText::new("End task").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t, !self.process_actions.busy())
+                            .on_disabled_hover_text("Wait for the pending process action to finish.")
                             .clicked()
                         {
                             self.request_end_selected();
@@ -2120,12 +2127,10 @@ impl TrontopApp {
                     if ui.button("Cancel").clicked() {
                         self.pending_end_task = None;
                     }
-                    if widgets::action_button_enabled(ui, RichText::new("End process").color(Color32::WHITE), Vec2::ZERO, t.danger, t, still_listed).clicked() {
-                        self.message = Some(match platform::terminate_process(target.identity) {
-                            Ok(()) => (format!("Ended {name} ({pid})"), false),
-                            Err(error) => (error, true),
-                        });
-                        self.pending_end_task = None;
+                    if widgets::action_button_enabled(ui, RichText::new("End process").color(Color32::WHITE), Vec2::ZERO, t.danger, t, still_listed && self.process_actions.ready())
+                        .on_disabled_hover_text("The process must still match and the action worker must be ready.").clicked()
+                        && self.submit_process_action(ctx, ProcessAction::End(target.identity), format!("{name} ({pid})")) {
+                            self.pending_end_task = None;
                     }
                 });
             });
@@ -2374,11 +2379,14 @@ impl TrontopApp {
                 ui.set_width(420.0);
                 widgets::hover_label(ui, RichText::new(title).size(18.0).strong().color(t.text));
                 widgets::hover_label(ui, RichText::new(description).color(t.text_muted));
-                widgets::hover_label(ui,
-                    RichText::new(format!("PID {pid} | native creation time rechecked on confirmation"))
-                        .size(10.0)
-                        .monospace()
-                        .color(t.secondary),
+                widgets::hover_label(
+                    ui,
+                    RichText::new(format!(
+                        "PID {pid} | native creation time rechecked on confirmation"
+                    ))
+                    .size(10.0)
+                    .monospace()
+                    .color(t.secondary),
                 );
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
@@ -2386,26 +2394,30 @@ impl TrontopApp {
                         self.pending_control_action = None;
                     }
                     let fill = if dangerous { t.danger } else { t.accent };
-                    if widgets::action_button(ui, RichText::new(button).color(Color32::WHITE), Vec2::ZERO, fill, t)
-                        .clicked()
+                    if widgets::action_button_enabled(
+                        ui,
+                        RichText::new(button).color(Color32::WHITE),
+                        Vec2::ZERO,
+                        fill,
+                        t,
+                        process.is_some() && self.process_actions.ready(),
+                    )
+                    .on_disabled_hover_text(
+                        "The process must still match and the action worker must be ready.",
+                    )
+                    .clicked()
                     {
-                        let result = if process.is_none() {
-                            Err("The selected PID no longer belongs to the same process. No change was made.".into())
-                        } else {
-                            match action {
-                                PendingControlAction::Priority { priority, .. } => {
-                                    platform::set_process_priority(identity, priority)
-                                }
-                                PendingControlAction::Affinity { affinity_mask, .. } => {
-                                    platform::set_process_affinity(identity, affinity_mask)
-                                }
+                        let action = match action {
+                            PendingControlAction::Priority { priority, .. } => {
+                                ProcessAction::Priority(identity, priority)
+                            }
+                            PendingControlAction::Affinity { affinity_mask, .. } => {
+                                ProcessAction::Affinity(identity, affinity_mask)
                             }
                         };
-                        self.message = Some(match result {
-                            Ok(()) => (format!("Updated scheduling controls for {name} ({pid})"), false),
-                            Err(error) => (error, true),
-                        });
-                        self.pending_control_action = None;
+                        if self.submit_process_action(ctx, action, format!("{name} ({pid})")) {
+                            self.pending_control_action = None;
+                        }
                     }
                 });
             });
@@ -2452,21 +2464,24 @@ impl TrontopApp {
                         self.show_run_task = false;
                     }
                     let run = ui
-                        .add_enabled_ui(!self.run_command.trim().is_empty(), |ui| {
-                            widgets::action_button(ui, "Run", Vec2::ZERO, t.accent_dim, t)
-                        })
-                        .inner;
-                    if run.clicked()
-                        || (response.lost_focus()
-                            && ui.input(|input| input.key_pressed(egui::Key::Enter)))
+                        .add_enabled_ui(
+                            !self.run_command.trim().is_empty() && self.process_actions.ready(),
+                            |ui| widgets::action_button(ui, "Run", Vec2::ZERO, t.accent_dim, t),
+                        )
+                        .inner
+                        .on_disabled_hover_text("Enter a command and wait for the pending action to finish. An unavailable worker cannot send commands.");
+                    if self.process_actions.ready()
+                        && (run.clicked()
+                            || (response.lost_focus()
+                                && ui.input(|input| input.key_pressed(egui::Key::Enter))))
                     {
-                        self.message =
-                            Some(match platform::launch_command(self.run_command.trim()) {
-                                Ok(()) => (format!("Launched {}", self.run_command.trim()), false),
-                                Err(error) => (error, true),
-                            });
-                        self.run_command.clear();
-                        self.show_run_task = false;
+                        let command = self.run_command.trim().to_owned();
+                        if self
+                            .submit_process_action(ctx, ProcessAction::Launch(command.clone()), command)
+                        {
+                            self.run_command.clear();
+                            self.show_run_task = false;
+                        }
                     }
                 });
             });
@@ -2478,24 +2493,79 @@ impl TrontopApp {
             .show(ctx, &mut self.theme, &mut self.show_theme_editor);
     }
 
+    fn submit_process_action(
+        &mut self,
+        ctx: &egui::Context,
+        action: ProcessAction,
+        target: String,
+    ) -> bool {
+        // Defense in depth: local callbacks/tests must not bypass the recovery UI.
+        if self
+            .graphics_recovering
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            self.message = Some((
+                "Graphics are reconnecting. No action was sent.".into(),
+                true,
+            ));
+            return false;
+        }
+        match self
+            .process_actions
+            .submit(ProcessRequest::new(action, target))
+        {
+            Ok(()) => {
+                self.message = None;
+                ctx.request_repaint(); // Paint pending state without waiting for the native result.
+                true
+            }
+            Err(error) => {
+                self.message = Some((error, true));
+                false
+            }
+        }
+    }
+
     fn message_bar(&mut self, root: &mut egui::Ui) {
-        let Some((message, is_error)) = self.message.clone() else {
+        let busy = self.process_actions.busy();
+        let pending = self.process_actions.active().map(|request| {
+            let elapsed = request.confirmed_at.elapsed();
+            if elapsed < crate::process_actions::SLOW_AFTER {
+                root.ctx().request_repaint_after(crate::process_actions::SLOW_AFTER - elapsed);
+                (format!("Working: {}", request.description()), false)
+            } else {
+                (format!("Still waiting for Windows: {}. Outcome pending; no duplicate request sent.", request.description()), false)
+            }
+        });
+        let Some((message, is_error)) = pending.or_else(|| self.message.clone()) else {
             return;
         };
         let t = self.colors();
         egui::Panel::bottom("message_bar")
             .exact_size(34.0)
-            .frame(egui::Frame::new().fill(if is_error {
-                theme::mix(t.panel, t.danger, 0.35)
-            } else {
-                theme::mix(t.panel, t.good, 0.25)
-            }))
+            .frame(
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(10, 0))
+                    .fill(if is_error {
+                        theme::mix(t.panel, t.danger, 0.35)
+                    } else if busy {
+                        theme::mix(t.panel, t.secondary, 0.12)
+                    } else {
+                        theme::mix(t.panel, t.good, 0.25)
+                    }),
+            )
             .show(root, |ui| {
                 ui.horizontal_centered(|ui| {
-                    widgets::hover_label(ui, RichText::new(message).color(t.text));
-                    if ui.small_button("Dismiss").clicked() {
-                        self.message = None;
-                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if !busy && ui.small_button("Dismiss").clicked() {
+                            self.message = None;
+                        }
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                            widgets::hover_label(ui, RichText::new(&message).color(t.text))
+                                .on_hover_text(message);
+                        });
+                    });
                 });
             });
     }
@@ -2524,6 +2594,9 @@ impl eframe::App for TrontopApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if let Some(outcome) = self.process_actions.poll() {
+            self.message = Some(outcome.message());
+        }
         if self
             .graphics_recovering
             .load(std::sync::atomic::Ordering::Acquire)

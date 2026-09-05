@@ -131,6 +131,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   Alpha.19 suffered a verified renderer crash. Alpha.20 adds non-blocking snapshot
   transfer and device recovery, with 3/3 offscreen pixel-identical fault recoveries.
   Native surface recovery/drag/soak are still open: `docs/RENDERER_RECOVERY.md`.
+  Alpha.22 removes native process/shell action calls from the UI thread, with
+  single-flight dispatch, honest pending/results, and stalled-navigation tests.
+  See `docs/PROCESS_ACTION_SAFETY.md`; this does not prove native drag/close timing.
 - [x] **A23: Safe automation that does not mess with other work.** Headless fixtures
   do not open native windows, inject global input, change focus or execute viewport
   commands. `AGENTS.md` forbids the previous unsafe desktop behavior. Any future
@@ -208,7 +211,8 @@ expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
 
 1. Current resumed slice is the alpha.19 crash and responsiveness regression
    (A20/A22/A25), plus focused A15/A16 alignment polish, not a feature expansion.
-   Deliver the tested alpha.21 candidate with its exact identity and native limits.
+   Alpha.22 additionally removes synchronous UI process/shell calls (A22).
+   Deliver the current tested candidate with its exact identity and native limits.
 2. Keep A13 unchecked until restart persistence and visual acceptance are confirmed.
 3. Resolve permission for isolated native measurements before touching any windows.
    Work the remaining bounded asks and release decisions, not new alpha features.

@@ -2,7 +2,57 @@
 
 Last updated: 2026-09-05
 
-## Latest candidate: alpha.21 compact Processes and inspector
+## Latest candidate: alpha.22 non-blocking process and shell actions
+
+The UI-thread audit found five native action calls still inside rendering callbacks:
+End task, priority, affinity, Run task and Reveal in Explorer. All now use a
+dedicated single-flight worker. Confirmed process identity and display target are
+frozen; existing same-handle native guards remain. No duplicate submission or
+automatic retry, and no join on a stalled call during shutdown. See
+`PROCESS_ACTION_SAFETY.md` for exact behavior and limitations.
+
+The UI requests an immediate pending-state repaint, stays navigable during a slow
+call, and shows an honest five-second waiting message. A late outcome identifies
+the original target even after selection changes. Message text has stable height,
+horizontal insets, hover detail and a neutral pending tint; success is only
+reported after the native worker returns. The redesign skill's targeted state and
+spacing audit informed that small status-bar pass, not a new branding redesign.
+
+Final local gate: **196 passed, 0 failed, 13 ignored** (28.76 s), formatting and
+strict Clippy PASS (2.67 s), optimized EXE build PASS (46.16 s). Ten new tests cover
+worker dispatch/stalls/validation plus actual UI confirmation/navigation/late-result
+behavior. Native mutation checks use only an owned hidden disposable test child;
+shell/Explorer UI paths use injected backends, not external programs. A stalled
+fake call measured **25.3 us for 1,000 polls**, **4.9 us worker drop**, with duplicate
+rejection. These are scoped worker timings, not end-to-end native close latency.
+
+Final offscreen pass: **73 PNGs** (49.35 s), pending compact, slow light and error
+compact reviewed after final tint/padding changes. At minimum size a visible status
+bar leaves the navigation rail scrollable; it is not a claim that every navigation
+item is simultaneously visible. Mid-pass optimized UI/tessellation probe: p95
+**0.11-1.12 ms** across nine pages with 500/5,000 fixture processes, before the final
+pending-status inset/repaint tweak. No native presentation/FPS conclusion follows.
+
+Candidate: **`target/release/trontop.exe`**, version **0.3.0-alpha.22**,
+**13,494,784 bytes**, built **2026-09-05 21:21:39 UTC** from modified a6dfbe1 source.
+SHA-256 **`6563FDABFFC66A2A12ED7FD3FD79A7637D0A895F6AB54E9986E7D18682658C1E`**.
+PE import inspection lists Windows DLLs only, not dynamic MSVC CRT or application
+assets. Clean-machine portability is still a separate gate. This replaces the
+alpha.21 target/release artifact; old identities below are historical.
+
+No app preview was opened, replaced or closed; no global input/window manipulation,
+driver installation, service command, shortcut hook or public release. Native
+surface recovery, real drag/close and mixed-load soak remain unverified. Permission
+for a separate non-visible desktop remains unanswered. Suspend/resume, CPU sensor
+access and remaining ask-ledger gates are not quietly treated as completed.
+
+Previous exact alpha.21 Windows CI
+[33991747758](https://github.com/TrentSterling/trontop/actions/runs/33991747758)
+for a6dfbe1 completed successfully (checked September 5). Alpha.22 remote gate has
+not run yet; record the push-triggered run in the coordination journal and monitor
+that existing job on continuation. No new release/tag is published.
+
+## Previous candidate: alpha.21 compact Processes and inspector
 
 Focused A15/A16 polish on top of alpha.20 recovery. An empty inspector no longer
 reserves table width. The toolbar Inspector toggle reclaims that width without

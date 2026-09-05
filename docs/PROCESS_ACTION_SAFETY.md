@@ -1,5 +1,53 @@
 # Process-action identity checks
 
+## Alpha.22: responsive action dispatch
+
+End task, priority, affinity, Run task and Reveal in Explorer now use one dedicated
+action worker. These native calls are no longer made by `TrontopApp::ui`. The
+existing platform identity/critical-process checks are unchanged and still span
+the same native handle used for each process mutation. No privileges are enabled.
+
+- Requests freeze the confirmed action, exact identity and display target. A
+  subsequent selection change cannot redirect the command or its result message.
+- There is at most one in-flight process/shell action, no queued duplicate and no
+  automatic retry. The UI uses non-waiting channel operations. A slow native call
+  blocks further process/shell commands, not navigation, sampling or window chrome.
+- The fixed-height status bar changes from Working to Still waiting after five
+  seconds, without clearing the request or pretending it failed. Long text is
+  truncated with full hover detail; Dismiss applies only to completed messages.
+  Submission requests an immediate repaint. Pending uses a neutral theme tint,
+  not success green; horizontal insets keep text off the window edges.
+- Requests not begun within 30 seconds are refused before entering the native
+  backend. Once a native call is in flight, that deadline does not cancel it.
+- Shutdown signals the worker and detaches without a join. A native call already
+  entered can still complete before application-process exit. No force-killed
+  thread, freed in-flight resources or rollback is implied.
+- A disconnected worker reports an unknown outcome once and is not restarted.
+  A normal error permits a later explicit request. Release panic=abort still
+  applies; the injected unwinding-worker test is not release panic recovery.
+- Default/headless app construction cannot execute native actions. Test backends
+  are explicitly injected; only the real app constructor enables native dispatch.
+  Graphics-recovery gating also rejects direct submission while reconnecting.
+
+Success now says **Request accepted**, not that the target has exited or the
+launched program initialized. Windows documents external-process termination as
+asynchronous: [TerminateProcess](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess).
+Run task retains its existing command-shell behavior; dispatcher success only
+acknowledges shell creation, not the command's eventual result. This slice does
+not install hooks, elevate, change shell quoting semantics, or add suspend/resume.
+
+Verification: six worker tests cover exact off-thread dispatch for all five action
+kinds, invalid/expired requests, stalls, duplicate suppression, errors, disconnected
+workers and one owned hidden native child. The native child rejects all three
+process mutations with a creation time off by 100 ns, retains priority/affinity,
+then exits only after the exact-identity End request. Four production-UI tests
+exercise confirmation, all-page navigation while stalled, selection changes,
+stale confirmations, busy/Enter/recovery guards and stable message geometry.
+No test runs a user command, opens Explorer or manipulates desktop windows.
+The latest build-wide gate and visual evidence are in `CURRENT_STATE.md`.
+
+## Original identity fix (alpha.4)
+
 Alpha.4 fixes an action-targeting gap found during the private-alpha release audit.
 Earlier End Task stored only a PID. Priority/affinity compared a rounded start time
 against the cached snapshot, then reopened the PID without native verification.
