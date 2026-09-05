@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 const HISTORY_LENGTH: usize = 120;
 
 mod diagnostics;
+mod inventory;
 mod overview;
 mod sensors;
 mod storage;
@@ -1802,36 +1803,13 @@ impl TrontopApp {
     }
 
     fn startup_page(&mut self, ui: &mut egui::Ui) {
-        let t = self.colors();
         self.inventory_header(
             ui,
             "Startup",
-            "Run keys and Startup folders, refreshed every 30 seconds",
+            "Read-only Run keys and Startup folders, with independent source freshness",
             "Search startup inventory",
         );
-        self.provider_notice(ui, crate::diagnostics::Provider::Startup);
-        ui.add_space(12.0);
-        let needle = self.secondary_query.trim().to_lowercase();
-        let rows = self
-            .snapshot
-            .startup
-            .iter()
-            .filter(|row| {
-                needle.is_empty()
-                    || row.name.to_lowercase().contains(&needle)
-                    || row.command.to_lowercase().contains(&needle)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        widgets::inventory_table(
-            ui,
-            "startup_grid",
-            ["NAME", "COMMAND", "SOURCE"],
-            rows.into_iter()
-                .map(|row| [row.name, row.command, row.source])
-                .collect(),
-            t,
-        );
+        self.startup_inventory(ui);
     }
 
     fn users_page(&mut self, ui: &mut egui::Ui) {
@@ -1938,47 +1916,13 @@ impl TrontopApp {
     }
 
     fn services_page(&mut self, ui: &mut egui::Ui) {
-        let t = self.colors();
         self.inventory_header(
             ui,
             "Services",
-            "Windows Service Control Manager inventory, refreshed every 30 seconds",
+            "Read-only Windows Service Control Manager inventory",
             "Search services",
         );
-        self.provider_notice(ui, crate::diagnostics::Provider::Services);
-        ui.add_space(12.0);
-        let needle = self.secondary_query.trim().to_lowercase();
-        let rows = self
-            .snapshot
-            .services
-            .iter()
-            .filter(|row| {
-                needle.is_empty()
-                    || row.name.to_lowercase().contains(&needle)
-                    || row.display_name.to_lowercase().contains(&needle)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        widgets::inventory_table(
-            ui,
-            "services_grid",
-            ["DISPLAY NAME", "SERVICE", "STATUS / PID"],
-            rows.into_iter()
-                .map(|row| {
-                    let pid = if row.pid == 0 {
-                        "-".into()
-                    } else {
-                        row.pid.to_string()
-                    };
-                    [
-                        row.display_name,
-                        row.name,
-                        format!("{} | {pid}", row.status),
-                    ]
-                })
-                .collect(),
-            t,
-        );
+        self.service_inventory(ui);
     }
 
     fn inventory_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str, hint: &str) {

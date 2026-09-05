@@ -1,30 +1,27 @@
 //! Read-only startup inventory; no shell process and no localized output parsing.
 use crate::model::StartupRow;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SourceState {
-    Readable,
-    Missing,
-    Failed,
-}
+use crate::startup::{ENTRY_LIMIT, Read, ReadState as SourceState, Source, TEXT_LIMIT};
 
 #[derive(Default)]
 pub struct StartupInventory {
-    pub rows: Vec<StartupRow>,
-    pub sources: Vec<(&'static str, SourceState)>,
+    pub sources: Vec<Read>,
 }
 
 impl StartupInventory {
-    fn add(&mut self, name: &'static str, rows: Vec<StartupRow>, state: SourceState) {
-        self.rows.extend(rows);
-        self.sources.push((name, state));
+    fn add(&mut self, source: Source, rows: Vec<StartupRow>, state: SourceState) {
+        self.sources.push(Read {
+            source,
+            rows,
+            state,
+        });
     }
 
+    #[cfg(test)]
     pub fn coverage(&self) -> (usize, usize) {
         (
             self.sources
                 .iter()
-                .filter(|(_, state)| *state != SourceState::Failed)
+                .filter(|read| read.state != SourceState::Failed)
                 .count(),
             self.sources.len(),
         )
@@ -40,25 +37,25 @@ pub fn enumerate_startup() -> StartupInventory {
             (
                 HKEY_CURRENT_USER,
                 r"Software\Microsoft\Windows\CurrentVersion\Run",
-                "Current user Run key",
+                Source::UserRun,
             ),
             (
                 HKEY_LOCAL_MACHINE,
                 r"Software\Microsoft\Windows\CurrentVersion\Run",
-                "Machine Run key",
+                Source::MachineRun,
             ),
             (
                 HKEY_LOCAL_MACHINE,
                 r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
-                "32-bit machine Run key",
+                Source::MachineRun32,
             ),
         ] {
             let (rows, state) = read_run_key(root, key, name);
             inventory.add(name, rows, state);
         }
         for (variable, name) in [
-            ("APPDATA", "Current user Startup folder"),
-            ("PROGRAMDATA", "Machine Startup folder"),
+            ("APPDATA", Source::UserFolder),
+            ("PROGRAMDATA", Source::MachineFolder),
         ] {
             let Some(root) = std::env::var_os(variable) else {
                 inventory.add(name, Vec::new(), SourceState::Failed);
@@ -71,15 +68,14 @@ pub fn enumerate_startup() -> StartupInventory {
         }
     }
     #[cfg(not(windows))]
-    inventory.add("Windows startup sources", Vec::new(), SourceState::Failed);
-    inventory
-        .rows
-        .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    for source in Source::ALL {
+        inventory.add(source, Vec::new(), SourceState::Failed);
+    }
     // Keep source attribution even when the same command appears in multiple places.
     inventory
 }
 
-fn read_folder(path: &std::path::Path, source: &str) -> (Vec<StartupRow>, SourceState) {
+fn read_folder(path: &std::path::Path, source: Source) -> (Vec<StartupRow>, SourceState) {
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
         Err(error) => {
@@ -94,24 +90,36 @@ fn read_folder(path: &std::path::Path, source: &str) -> (Vec<StartupRow>, Source
         }
     };
     let mut rows = Vec::new();
+    let mut text_bytes = 0;
     let mut state = SourceState::Readable;
     for (index, entry) in entries.enumerate() {
-        if index >= 4096 {
+        if index >= ENTRY_LIMIT {
             state = SourceState::Failed;
             break;
         }
         match entry {
             Ok(entry) => {
                 let path = entry.path();
-                rows.push(StartupRow {
+                let row = StartupRow {
+                    key: path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
                     name: path
                         .file_stem()
                         .unwrap_or_default()
                         .to_string_lossy()
                         .into_owned(),
                     command: path.display().to_string(),
-                    source: source.into(),
-                });
+                    source,
+                };
+                text_bytes += row.text_bytes();
+                if text_bytes > TEXT_LIMIT {
+                    state = SourceState::Failed;
+                    break;
+                }
+                rows.push(row);
             }
             Err(_) => state = SourceState::Failed,
         }
@@ -135,7 +143,7 @@ fn decode_string(bytes: &[u8]) -> Option<String> {
 fn read_run_key(
     root: windows::Win32::System::Registry::HKEY,
     path: &str,
-    source: &str,
+    source: Source,
 ) -> (Vec<StartupRow>, SourceState) {
     use windows::Win32::Foundation::{
         ERROR_FILE_NOT_FOUND, ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS, ERROR_PATH_NOT_FOUND,
@@ -172,8 +180,9 @@ fn read_run_key(
     let mut name = vec![0_u16; 32768];
     let mut data = vec![0_u8; 16384];
     let mut rows = Vec::new();
+    let mut text_bytes = 0;
     let mut state = SourceState::Readable;
-    for index in 0..4096 {
+    for index in 0..ENTRY_LIMIT as u32 {
         let mut read = None;
         for _ in 0..4 {
             let mut name_len = name.len() as u32;
@@ -221,11 +230,17 @@ fn read_run_key(
         };
         let name = String::from_utf16_lossy(&name[..name_len]);
         if !name.is_empty() && !command.is_empty() {
-            rows.push(StartupRow {
+            let row = StartupRow {
+                key: name.clone(),
                 name,
                 command,
-                source: source.into(),
-            });
+                source,
+            };
+            text_bytes += row.text_bytes();
+            if text_bytes > TEXT_LIMIT {
+                return (rows, SourceState::Failed);
+            }
+            rows.push(row);
         }
     }
     (rows, SourceState::Failed) // bounded enumeration reached its cap
@@ -250,11 +265,11 @@ mod tests {
     #[test]
     fn absent_sources_are_distinct_from_unreadable_sources() {
         let mut inventory = StartupInventory::default();
-        inventory.add("Empty", vec![], SourceState::Readable);
-        inventory.add("Absent", vec![], SourceState::Missing);
-        inventory.add("Denied", vec![], SourceState::Failed);
+        inventory.add(Source::UserRun, vec![], SourceState::Readable);
+        inventory.add(Source::MachineRun, vec![], SourceState::Missing);
+        inventory.add(Source::MachineRun32, vec![], SourceState::Failed);
         assert_eq!(inventory.coverage(), (2, 3));
-        assert!(inventory.rows.is_empty());
+        assert!(inventory.sources.iter().all(|read| read.rows.is_empty()));
     }
     #[cfg(windows)]
     #[test]
@@ -262,6 +277,10 @@ mod tests {
         let inventory = enumerate_startup();
         assert_eq!(inventory.sources.len(), 5);
         assert_eq!(inventory.coverage().1, 5);
-        assert!(inventory.rows.iter().all(|row| !row.source.is_empty()));
+        assert!(inventory.sources.iter().all(|read| {
+            read.rows
+                .iter()
+                .all(|row| row.source == read.source && !row.key.is_empty())
+        }));
     }
 }

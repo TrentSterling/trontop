@@ -5,7 +5,7 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.9 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.10 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Implemented: Overview and Hardware sensors navigation, About/provider diagnostics
@@ -29,30 +29,36 @@ fixed-size vector fallbacks and a hover-only inspector icon. See `docs/PROCESS_I
 for local-path restrictions, request/upload limits, stale artwork and native resource
 ownership. Test fixtures never start this worker or query their executable paths.
 
-Local tests: 74 passed, 0 failed, 6 opt-in tests ignored. Strict Clippy passes.
-Offscreen QA produced 36 PNGs without native windows/input. The read-only icon probe
+Alpha.10 retains Startup entries independently across five native sources. Failed
+reads cannot silently delete cached entries; source and row freshness remain visible.
+Services labels its retained list as cached after failure. Both inventory tables keep
+their fields in place and format only visible rows. See `docs/STARTUP_INVENTORY.md`.
+
+Local tests: 84 passed, 0 failed, 6 opt-in tests ignored. Strict Clippy passes.
+Offscreen QA produced 42 PNGs without native windows/input. The read-only icon probe
 extracted this test EXE in 2.4387 ms; 40 repeats left GDI/USER counts at (4, 2).
 The earlier PDH refresh test retained 690 handles with 690/690 valid rates afterward.
-The optimized alpha.9 review EXE is built and dependency-inspected, not launched.
+The optimized alpha.10 review EXE is built and dependency-inspected, not launched.
 Native end-to-end close
 latency and dragging performance are NOT measured. CPU provider research and the
 slow SSD/HDD probe findings are in `docs/SENSORS_PLAN.md`; no driver install authority.
 
-Running instance is still the separately deployed alpha.5 preview. On
+The separately deployed launch copy is still the alpha.5 preview. A read-only
+process check at 09:22 UTC on 2026-09-05 found no running Trontop process. On
 2026-09-05 Trent explicitly requested replacing/reopening his old running build.
 The old alpha.1 process exited before replacement; no process was terminated.
-The freshly optimized alpha.5 preview now runs as PID 255824 from
+The freshly optimized alpha.5 preview was started as PID 255824 from
 `target/release/trontop.exe`. Its native window was observed responsive with title
 Trontop. The previous EXE is backed up at
 `target/replaced-builds/alpha1-20260905-0124/trontop.exe`. No other windows were touched.
 This is a development preview, not a published alpha release. Do not automatically
 restart it again for subsequent edits. Read the newest `docs/CURRENT_STATE.md` section.
 
-Next: preserve/display individual startup-source results instead of replacing the
-whole cache on partial failure; expose cached service state on the Services page.
-Then continue CPU/motherboard coverage, slim components and the release gates in
-`RELEASE_PLAN.md`. Alpha.8 Windows CI run 33955277229 passed; that run does not verify
-the new alpha.9 source. No alpha release is published. No new permission to restart
+Next: CPU/motherboard coverage, suspend/resume, service actions, export and the
+release gates in `RELEASE_PLAN.md`. Slow startup/service inventory calls still run
+on the sampler; independent workers remain a future reliability improvement.
+Alpha.9 Windows CI run 33956631086 passed; that run does not verify the new alpha.10
+source. No alpha release is published. No new permission to restart
 the deployed copy, manipulate windows or install a shortcut hook.
 
 ## Previous verified checkpoint

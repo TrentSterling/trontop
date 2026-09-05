@@ -164,14 +164,30 @@ fn fixture() -> SystemSnapshot {
             memory_bytes: 41_000_000_000,
             disk_bytes_per_sec: 153_400_000.0,
         }],
-        startup: (0..40)
-            .map(|i| StartupRow {
-                name: format!("Fixture startup {i}"),
-                command: "C:\\Fixture\\Long Directory Name\\fixture.exe --test-only".into(),
-                source: "HKCU Run (fixture)".into(),
-            })
-            .collect::<Vec<_>>()
-            .into(),
+        startup: {
+            let mut startup = crate::startup::Snapshot::default();
+            startup.apply(
+                crate::startup::Source::ALL
+                    .into_iter()
+                    .map(|source| crate::startup::Read {
+                        source,
+                        state: crate::startup::ReadState::Readable,
+                        rows: (0..8)
+                            .map(|i| StartupRow {
+                                key: format!("Fixture startup {i}"),
+                                name: format!("Fixture startup {i}"),
+                                command:
+                                    "C:\\Fixture\\Long Directory Name\\fixture.exe --test-only"
+                                        .into(),
+                                source,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+                fixture_at,
+            );
+            std::sync::Arc::new(startup)
+        },
         services: (0..40)
             .map(|i| ServiceRow {
                 name: format!("FixtureService{i}"),
@@ -267,6 +283,103 @@ fn install_fixture_icons(app: &mut TrontopApp, ctx: &egui::Context) {
             pixels,
         );
     }
+}
+
+fn inventory_state_fixture(app: &mut TrontopApp, page: Page, state: u8) {
+    use crate::diagnostics::{Health, Issue, Provider, State};
+    use crate::startup::{Read, ReadState, Snapshot, Source};
+    use std::time::{Duration, Instant};
+    let at = Instant::now() + Duration::from_secs(3600);
+    let mut health = Health::default();
+    let mut startup = (*app.snapshot.startup).clone();
+    let live = || {
+        startup
+            .sources
+            .iter()
+            .map(|s| Read {
+                source: s.source,
+                state: ReadState::Readable,
+                rows: s.entries.iter().map(|e| e.row.clone()).collect(),
+            })
+            .collect::<Vec<_>>()
+    };
+    match state {
+        0 | 3 => {
+            startup.apply(live(), at);
+            health.record(at, Duration::ZERO, State::Live, None, None);
+        }
+        1 => {
+            let mut reads = live();
+            reads[0].state = ReadState::Failed;
+            reads[0].rows.truncate(1);
+            reads[1].state = ReadState::Failed;
+            reads[1].rows.clear();
+            reads[2].state = ReadState::Missing;
+            reads[2].rows.clear();
+            reads[3].rows.clear();
+            startup.apply(reads, at);
+            health.record(
+                at,
+                Duration::ZERO,
+                State::Partial,
+                Some((3, 5)),
+                Some(Issue::StartupSources),
+            );
+        }
+        2 | 6 => {
+            health.record(
+                at - Duration::from_secs(30),
+                Duration::ZERO,
+                State::Live,
+                None,
+                None,
+            );
+            startup.apply(vec![], at);
+            health.record(
+                at,
+                Duration::ZERO,
+                State::Unavailable,
+                None,
+                Some(Issue::ServiceQuery),
+            );
+            if state == 6 {
+                for source in &mut startup.sources {
+                    source.last_attempt = Some(Instant::now() - Duration::from_secs(120));
+                }
+            }
+        }
+        4 | 5 => {
+            startup = Snapshot::default();
+            app.snapshot.services = std::sync::Arc::new(Vec::new());
+            if state == 4 {
+                startup.apply(vec![], at);
+                health.record(at, Duration::ZERO, State::Unavailable, None, None);
+            }
+        }
+        7 => {
+            startup.apply(
+                Source::ALL
+                    .into_iter()
+                    .map(|source| Read {
+                        source,
+                        state: ReadState::Readable,
+                        rows: Vec::new(),
+                    })
+                    .collect(),
+                at,
+            );
+            app.snapshot.services = std::sync::Arc::new(Vec::new());
+            health.record(at, Duration::ZERO, State::Live, None, None);
+        }
+        _ => unreachable!(),
+    }
+    app.snapshot.startup = std::sync::Arc::new(startup);
+    *app.snapshot.diagnostics.get_mut(if page == Page::Startup {
+        Provider::Startup
+    } else {
+        Provider::Services
+    }) = health;
+    app.page = page;
 }
 
 fn frame(
@@ -439,7 +552,7 @@ fn about_report_is_only_emitted_on_explicit_copy_and_excludes_private_fixture_fi
         &app.snapshot.processes[0].name,
         &app.snapshot.processes[0].user,
         &app.snapshot.processes[0].command,
-        &app.snapshot.startup[0].command,
+        &app.snapshot.startup.sources[0].entries[0].row.command,
         app.snapshot.gpu_sensors.adapters[0].uuid.as_ref().unwrap(),
     ] {
         assert!(
@@ -1135,6 +1248,77 @@ fn inspector_gpu_status_cannot_shift_neighboring_fields() {
 }
 
 #[test]
+fn inventory_states_keep_sources_and_table_headers_in_place() {
+    for page in [Page::Startup, Page::Services] {
+        for dark in [true, false] {
+            let settings = ThemeSettings {
+                dark,
+                ..Default::default()
+            };
+            let ctx = egui::Context::default();
+            theme::install(&ctx, settings);
+            let mut app = app(settings, true);
+            let mut expected = None;
+            for state in [0, 1, 2, 3, 4, 5, 6, 7] {
+                app.snapshot = fixture();
+                inventory_state_fixture(&mut app, page, state);
+                let mut output = egui::FullOutput::default();
+                for _ in 0..3 {
+                    output = frame(&ctx, &mut app, Vec2::new(1040.0, 640.0), vec![]);
+                }
+                let texts = text_shapes(&output);
+                let title = if page == Page::Startup {
+                    "NAME"
+                } else {
+                    "DISPLAY NAME"
+                };
+                let (text, clip) = texts
+                    .iter()
+                    .find(|(text, _)| text.galley.job.text == title)
+                    .expect("inventory table header disappeared");
+                let bounds = text.visual_bounding_rect();
+                assert!(clip.contains_rect(bounds));
+                if let Some(expected) = expected {
+                    assert_eq!(
+                        bounds, expected,
+                        "table moved in state {state}, dark={dark}"
+                    );
+                }
+                expected = Some(bounds);
+                if page == Page::Startup {
+                    for source in crate::startup::Source::ALL {
+                        let (text, clip) = texts
+                            .iter()
+                            .find(|(text, _)| text.galley.job.text == source.name())
+                            .expect("source field disappeared");
+                        assert!(clip.contains_rect(text.visual_bounding_rect()));
+                        assert_eq!(text.galley.rows.len(), 1);
+                    }
+                }
+                if state == 2 {
+                    assert!(
+                        texts
+                            .iter()
+                            .any(|(text, _)| text.galley.job.text.starts_with("Cached"))
+                    );
+                    assert!(
+                        texts
+                            .iter()
+                            .any(|(text, _)| text.galley.job.text.starts_with(
+                                if page == Page::Startup {
+                                    "Fixture startup"
+                                } else {
+                                    "Fixture long service"
+                                }
+                            ))
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn partial_gpu_coverage_leaves_history_gaps_and_keeps_engine_names() {
     let mut app = app(ThemeSettings::default(), true);
     assert_eq!(app.gpu_history.back().copied(), Some(23.8));
@@ -1243,6 +1427,12 @@ fn render_offscreen_visual_pass() {
         "process-icons",
         "process-icons-light",
         "process-icons-inspector",
+        "startup-partial",
+        "startup-cached-light",
+        "startup-unavailable-compact",
+        "startup-starting-compact",
+        "services-cached",
+        "services-unavailable-light",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1266,6 +1456,23 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant == "theme-studio";
+        if variant.starts_with("startup-") || variant.starts_with("services-") {
+            let state = if variant.contains("partial") {
+                1
+            } else if variant.contains("cached") {
+                2
+            } else if variant.contains("starting") {
+                5
+            } else {
+                4
+            };
+            let page = if variant.starts_with("startup-") {
+                Page::Startup
+            } else {
+                Page::Services
+            };
+            inventory_state_fixture(&mut app, page, state);
+        }
         if variant.starts_with("process-icons") {
             gpu_activity_fixture(&mut app);
             install_fixture_icons(&mut app, &ctx);
@@ -1338,7 +1545,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 36 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 42 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

@@ -84,7 +84,7 @@ fn sample_loop(
     let mut sequence = 0_u64;
     let mut previous_sample = Instant::now();
     let mut diagnostics = Diagnostics::default();
-    let mut startup = Arc::new(Vec::new());
+    let mut startup = Arc::new(crate::startup::Snapshot::default());
     let mut services = Arc::new(Vec::new());
     collect_startup(&mut startup, diagnostics.get_mut(Provider::Startup));
     collect_inventory(
@@ -392,13 +392,20 @@ fn sample_loop(
     }
 }
 
-fn collect_startup(cache: &mut Arc<Vec<crate::model::StartupRow>>, health: &mut Health) {
+fn collect_startup(cache: &mut Arc<crate::startup::Snapshot>, health: &mut Health) {
     let at = Instant::now();
     let inventory = windows_metrics::enumerate_startup();
-    let (resolved, total) = inventory.coverage();
+    let cached = Arc::make_mut(cache);
+    cached.apply(inventory.sources, at);
+    let (resolved, total) = cached.coverage();
     let state = if resolved == total {
         State::Live
-    } else if resolved > 0 || !inventory.rows.is_empty() {
+    } else if resolved > 0
+        || cached
+            .sources
+            .iter()
+            .any(|s| s.entries.iter().any(|entry| entry.observed_in_attempt))
+    {
         State::Partial
     } else {
         State::Unavailable
@@ -410,7 +417,6 @@ fn collect_startup(cache: &mut Arc<Vec<crate::model::StartupRow>>, health: &mut 
         Some((resolved, total)),
         (resolved < total).then_some(Issue::StartupSources),
     );
-    *cache = Arc::new(inventory.rows);
 }
 
 fn collect_inventory<T>(

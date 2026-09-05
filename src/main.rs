@@ -11,6 +11,7 @@ mod platform;
 mod process_icons;
 mod sampler;
 mod shutdown;
+mod startup;
 mod storage_sensors;
 mod theme;
 mod tray;

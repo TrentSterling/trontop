@@ -46,7 +46,7 @@ shell execution. Do not broaden it to arbitrary processes or the native tray tes
 - Confirmation fixtures simulate PID reuse and require the original target/name,
   stale warning and expired selection. Local pointer input only cancels the dialog;
   native mutation tests exclusively use their own disposable hidden children.
-- Fourteen shared surface variants in both modes must change background under the
+- Fifteen shared surface variants in both modes must change background under the
   pointer, restore it after exit, and preserve geometry. Includes selected/unselected
   navigation/devices, cards, metrics, detail rows, badges, meters, action buttons,
   control rows and charts.
@@ -79,15 +79,26 @@ shell execution. Do not broaden it to arbitrary processes or the native tray tes
   requests, malformed/missing results, refresh failure retention, cache/queue/upload
   limits, eviction, disconnected workers and a blocked-loader drop. Pixel tests
   preserve transparent, antialiased and opaque-black coverage.
+- Thirty-two inventory page/theme/state cases require fixed source fields and table
+  headers through starting, live, partial, cached, unavailable, aged, recovered and
+  empty snapshots. Synthetic failures never invoke native inventory providers.
+- Startup cache tests cover independent failure/recovery, complete-read removals,
+  same-display-name identities, same-timestamp attempts, and entry/text retention
+  limits. Global alphabetical indices rebuild on inventory refresh.
+- A 20,000-entry inventory fixture requires fewer than 100 row-format callbacks
+  for one viewport. This checks virtualization, not whole-app frame rate.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes thirty-six PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes forty-two PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 The five GPU-activity additions cover compact Processes, light process tree, Users,
 light selected inspector and partially available Performance counters.
 Three executable-icon additions cover mixed loaded/fallback rows in light/dark and
 the selected inspector. Their colored sample artwork is synthetic fixture data.
+Six inventory additions cover partial/cached/unavailable/starting Startup and
+cached/unavailable Services, including compact and light layouts. Generated images
+are not automatically visually reviewed; checkpoint notes identify inspected cases.
 
 ## Limits
 

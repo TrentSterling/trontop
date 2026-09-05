@@ -2,7 +2,54 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.9 background executable icons
+## Latest source: alpha.10 stable startup and service inventories
+
+Branch `feat/provider-diagnostics`. Startup now retains results independently for
+three Run keys and two Startup folders. Failed enumeration preserves the last known
+entries for that source; a complete read can authoritatively remove entries. New
+rows from an incomplete read are marked Observed, older rows Cached. Source cards
+distinguish starting, live, empty, absent, partial, cached and unavailable results.
+Services keeps its last complete list and explicitly labels stale reported states.
+No startup enable/disable or service action support is implied.
+
+The redesign skill's state/alignment audit guided fixed-height status surfaces and
+stable source fields/table headers, retaining Tront zebra, hover and rounded styling.
+Startup retention is bounded per source. Alphabetical indices rebuild on inventory
+refresh; both tables format only visible rows. Full behavior and limitations:
+`STARTUP_INVENTORY.md`. Slow native inventory calls still share the sampler; this is
+not a claim that every provider stall or refresh issue is solved.
+
+Final local gate: formatting PASS; **84 passed, 0 failed, 6 opt-in tests ignored**
+(27.99 s); strict Clippy PASS; optimized release PASS (53.98 s). The explicit
+offscreen test produced **42 PNGs** in 28.13 s on RTX 5070 Ti/Vulkan. Selected visual
+reviews covered partial Startup, compact starting/unavailable Startup, light cached
+Startup, cached Services and light unavailable Services. Not all 42 were inspected.
+The new geometry test covers 32 inventory page/theme/state combinations, and a
+20,000-entry test verifies that one viewport formats fewer than 100 rows.
+No native GUI, desktop input, focus or window manipulation was used.
+
+Separate review EXE: `target/review-build/release/trontop.exe`, **13,041,664 bytes**,
+PE version **0.3.0-alpha.10**, SHA-256:
+`F2148ADF82876419CBDD8D9DAFF8FE05729562DDDB0748816954678F00ECDF1A`.
+Built from modified 018a17a source before checkpoint. Dependency inspection shows
+Windows-only imports, no dynamic MSVC runtime or required vendor DLL/assets folder.
+It has not been launched or copied over the deployed alpha.5 EXE. A read-only process
+check at 09:22 UTC on 2026-09-05 found no running Trontop process; prior PID 255824
+is historical, not current runtime verification.
+
+Alpha.9 private Windows CI
+[33956631086](https://github.com/TrentSterling/trontop/actions/runs/33956631086)
+passed formatting/tests/strict Clippy/release/artifact for
+018a17aa7646def8b2601510f049dd2ce67b243d at 09:14:03 UTC on 2026-09-05.
+Alpha.10's remote gate is pending. No tag or alpha release is published.
+
+Still open: CPU/motherboard sensors, broader vendor coverage, suspend/resume,
+service actions, startup enable/disable, export, real close/drag measurements,
+soak/clean-machine/release gates. Ctrl+Shift+Esc remains a proposal only. Do not
+install drivers/hooks, replace the deployed EXE or manipulate desktop windows
+without the appropriate fresh permission. This is not full Task Manager parity.
+
+## Previous: alpha.9 background executable icons
 
 Branch `feat/provider-diagnostics`. Processes/Details rows and the inspector now
 request real embedded executable artwork through one bounded background worker.

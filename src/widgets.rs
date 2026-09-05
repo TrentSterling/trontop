@@ -815,32 +815,89 @@ pub fn section_label(ui: &mut egui::Ui, label: &str, t: Tokens) {
     ui.add_space(7.0);
 }
 
-pub fn inventory_table(
+/// Fixed-height metadata surface: changing freshness text must not move the table.
+pub fn inventory_status(
+    ui: &mut egui::Ui,
+    title: &str,
+    status: &str,
+    detail: &str,
+    color: Color32,
+    t: Tokens,
+    banded: bool,
+) {
+    hover_frame(ui, surface(ui, t, banded).inner_margin(8), |ui| {
+        let width = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 30.0), Sense::hover());
+        let top = egui::Rect::from_min_size(rect.min, Vec2::new(width, 15.0));
+        let status_width = 96.0f32.min(width * 0.4);
+        let title_rect = egui::Rect::from_min_max(
+            top.min,
+            egui::pos2(top.right() - status_width - 8.0, top.bottom()),
+        );
+        let status_rect =
+            egui::Rect::from_min_max(egui::pos2(top.right() - status_width, top.top()), top.max);
+        paint_text(
+            ui,
+            title_rect,
+            title,
+            FontId::proportional(11.0),
+            t.text,
+            Align::Min,
+        );
+        paint_text(
+            ui,
+            status_rect,
+            status,
+            FontId::monospace(10.0),
+            color,
+            Align::Max,
+        );
+        paint_text(
+            ui,
+            egui::Rect::from_min_max(egui::pos2(rect.left(), top.bottom()), rect.max),
+            detail,
+            FontId::proportional(10.0),
+            t.text_muted,
+            Align::Min,
+        );
+    })
+    .response
+    .on_hover_text(format!("{title}: {status}\n{detail}"));
+}
+
+pub fn inventory_table<const N: usize>(
     ui: &mut egui::Ui,
     id: &str,
-    headers: [&str; 3],
-    rows: Vec<[String; 3]>,
+    headers: [&str; N],
+    row_count: usize,
+    mut values: impl FnMut(usize) -> [String; N],
     t: Tokens,
 ) {
     ui.push_id(id, |ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let width = ui.available_width();
         let height = (ui.available_height() - 36.0).max(32.0);
-        egui_extras::TableBuilder::new(ui)
+        let mut table = egui_extras::TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
-            .cell_layout(Layout::left_to_right(Align::Center))
-            .column(
-                egui_extras::Column::initial(width * 0.38)
-                    .at_least(180.0)
-                    .clip(true),
-            )
-            .column(
-                egui_extras::Column::initial(width * 0.38)
-                    .at_least(180.0)
-                    .clip(true),
-            )
-            .column(egui_extras::Column::remainder().at_least(120.0).clip(true))
+            .cell_layout(Layout::left_to_right(Align::Center));
+        for index in 0..N {
+            let (fraction, minimum) = if N == 4 {
+                [(0.24, 140.0), (0.34, 170.0), (0.27, 175.0), (0.15, 90.0)][index]
+            } else {
+                (0.38, if index + 1 == N { 120.0 } else { 180.0 })
+            };
+            table = table.column(if index + 1 == N {
+                egui_extras::Column::remainder()
+                    .at_least(minimum)
+                    .clip(true)
+            } else {
+                egui_extras::Column::initial(width * fraction)
+                    .at_least(minimum)
+                    .clip(true)
+            });
+        }
+        table
             .min_scrolled_height(0.0)
             .max_scroll_height(height)
             .header(34.0, |mut header| {
@@ -854,8 +911,8 @@ pub fn inventory_table(
                 }
             })
             .body(|body| {
-                body.rows(32.0, rows.len(), |mut row| {
-                    for value in &rows[row.index()] {
+                body.rows(32.0, row_count, |mut row| {
+                    for value in &values(row.index()) {
                         table_column(&mut row, t, |ui| {
                             table_label(ui, RichText::new(value).size(12.0).color(t.text))
                                 .on_hover_text(value);
@@ -876,6 +933,49 @@ pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inventory_formats_visible_rows_instead_of_the_entire_cache() {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings::default();
+        theme::install(&ctx, settings);
+        let mut formatted = Vec::new();
+        let output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(1040.0, 640.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                inventory_table(
+                    ui,
+                    "virtual_inventory",
+                    ["NAME", "COMMAND", "SOURCE", "FRESHNESS"],
+                    20_000,
+                    |index| {
+                        formatted.push(index);
+                        [
+                            format!("Fixture {index}"),
+                            "file".into(),
+                            "source".into(),
+                            "Cached".into(),
+                        ]
+                    },
+                    theme::tokens(settings),
+                )
+            },
+        );
+        assert!(!formatted.is_empty());
+        assert!(
+            formatted.len() < 100,
+            "formatted {} rows for one viewport",
+            formatted.len()
+        );
+        assert!(formatted.into_iter().all(|index| index < 100));
+        assert!(output.platform_output.commands.is_empty());
+    }
 
     #[test]
     fn disabled_icon_actions_never_click_or_shift() {
@@ -983,7 +1083,7 @@ mod tests {
     #[test]
     fn shared_surfaces_change_background_on_hover_and_restore_without_layout_shift() {
         for dark in [true, false] {
-            for widget in 0..14 {
+            for widget in 0..15 {
                 let ctx = egui::Context::default();
                 let settings = ThemeSettings {
                     dark,
@@ -1107,6 +1207,15 @@ mod tests {
                                                 t,
                                             );
                                         }
+                                        14 => inventory_status(
+                                            ui,
+                                            "Startup source",
+                                            "Cached",
+                                            "Last complete 30s ago",
+                                            t.text,
+                                            t,
+                                            true,
+                                        ),
                                         _ => unreachable!(),
                                     },
                                 )

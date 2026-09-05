@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.9 executable icons, diagnostics, GPU/drive sensors
+## Current: alpha.10 stable inventory caches, icons, GPU/drive sensors
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -19,13 +19,16 @@ This is the durable resume board. Keep it honest and update it when a slice land
   and disabled-action/hover/geometry tests; no emoji/font-icon dependency
 - [x] Save four supplied mockup boards and transparent Signal identity candidate
   under `docs/inspiration`; candidate is not the shipped icon
-- [ ] Preserve/display startup-source details and independently stale service rows
+- [x] Preserve Startup entries independently per source; show source/row freshness
+  and cached Services state without shifting table headers: `docs/STARTUP_INVENTORY.md`
+- [x] Bound retained startup entries/text; cache alphabetical indices on refresh
+  and format only visible inventory rows, tested with 20,000 entries
 - [x] Preserve warmed PDH handles during inventory refresh and aggregate by real
   physical-engine identity, not summed engine types or per-process parallel engines
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 74 tests pass, strict Clippy clean, 36 offscreen review PNGs
+  geometry coverage: 84 tests pass, strict Clippy clean, 42 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -41,7 +44,11 @@ This is the durable resume board. Keep it honest and update it when a slice land
   gate and queued-upload limits tested; `docs/PROCESS_ICONS.md`
 - [x] Separate optimized alpha.9 EXE, Windows-only import scan and light/dark visual
   review; not launched and no deployed-copy replacement
-- [ ] Verify alpha.9 in remote Windows CI; no alpha release is published
+- [x] Alpha.9 Windows CI 33956631086 passed formatting/tests/Clippy/release/artifact
+- [x] Separate optimized alpha.10 EXE, Windows-only import scan and selected
+  startup/service state PNG review; not launched or deployed over alpha.5
+- [ ] Verify alpha.10 in remote Windows CI; no alpha release is published
+- [ ] Isolate potentially slow startup/service inventory calls from the sampler
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
