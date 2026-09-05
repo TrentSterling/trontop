@@ -137,6 +137,7 @@ pub struct TrontopApp {
     network_history: HashMap<String, VecDeque<f32>>,
     theme: ThemeSettings,
     show_theme_editor: bool,
+    theme_studio: crate::theme_studio::Studio,
     show_diagnostics: bool,
     show_export: bool,
     export_options: crate::export::Options,
@@ -154,7 +155,11 @@ impl TrontopApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let saved_theme = cc
             .storage
-            .and_then(|storage| storage.get_string(theme::STORAGE_KEY))
+            .and_then(|storage| {
+                storage
+                    .get_string(theme::STORAGE_KEY)
+                    .or_else(|| storage.get_string(theme::LEGACY_STORAGE_KEY))
+            })
             .and_then(|value| ThemeSettings::decode(&value))
             .unwrap_or_default();
         theme::install(&cc.egui_ctx, saved_theme);
@@ -164,6 +169,12 @@ impl TrontopApp {
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
         app.exporter = crate::export::Exporter::native();
+        if let Some(value) = cc
+            .storage
+            .and_then(|s| s.get_string(crate::theme_studio::LIBRARY_KEY))
+        {
+            app.theme_studio.load_library(&value);
+        }
         app
     }
 
@@ -214,6 +225,7 @@ impl TrontopApp {
             network_history: HashMap::new(),
             theme: saved_theme,
             show_theme_editor: false,
+            theme_studio: crate::theme_studio::Studio::default(),
             show_diagnostics: false,
             show_export: false,
             export_options: crate::export::Options::default(),
@@ -2429,75 +2441,8 @@ impl TrontopApp {
     }
 
     fn theme_editor(&mut self, ctx: &egui::Context) {
-        if !self.show_theme_editor {
-            return;
-        }
-        let before = self.theme;
-        let t = self.colors();
-        let mut open = true;
-        egui::Window::new("Trontop Theme Studio")
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .default_width(500.0)
-            .default_height((ctx.content_rect().height() - 120.0).clamp(320.0, 640.0))
-            .max_height((ctx.content_rect().height() - 100.0).max(240.0))
-            .vscroll(true)
-            .resizable(false)
-            .show(ctx, |ui| {
-                widgets::hover_label(ui, RichText::new("LIVE VISUAL SYSTEM").size(10.0).strong().color(t.accent));
-                widgets::hover_label(ui, RichText::new("Build a control deck that belongs to your machine.").size(18.0).strong().color(t.text));
-                ui.add_space(10.0);
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("TrontStack").clicked() { self.theme = ThemeSettings::tront_stack(); }
-                    if ui.button("Demigod").clicked() { self.theme = ThemeSettings::demigod(); }
-                    if ui.button("Monke Portal").clicked() { self.theme = ThemeSettings::monke_portal(); }
-                    if ui.button("Copper Legacy").clicked() { self.theme = ThemeSettings::copper_legacy(); }
-                });
-                ui.add_space(9.0);
-                widgets::control_row(ui, "Mode", false, t, |ui| {
-                        ui.selectable_value(&mut self.theme.dark, true, "Dark");
-                        ui.selectable_value(&mut self.theme.dark, false, "Light");
-                });
-                widgets::control_row(ui, "Primary", true, t, |ui| {
-                    ui.color_edit_button_srgb(&mut self.theme.accent);
-                });
-                widgets::control_row(ui, "Secondary", false, t, |ui| {
-                    ui.color_edit_button_srgb(&mut self.theme.secondary);
-                });
-                widgets::control_row(ui, "Gradient", true, t, |ui| {
-                    ui.checkbox(&mut self.theme.gradient_enabled, "Enabled");
-                });
-                widgets::control_row(ui, "Angle", false, t, |ui| {
-                    ui.add(egui::Slider::new(&mut self.theme.gradient_angle, 0.0..=360.0).suffix(" deg"));
-                });
-                widgets::control_row(ui, "Intensity", true, t, |ui| {
-                    ui.add(egui::Slider::new(&mut self.theme.gradient_strength, 0.0..=0.75));
-                });
-                widgets::control_row(ui, "Panel frost", false, t, |ui| {
-                    ui.add(egui::Slider::new(&mut self.theme.frost, 0.45..=1.0));
-                });
-                widgets::control_row(ui, "Roundness", true, t, |ui| {
-                    ui.add(egui::Slider::new(&mut self.theme.roundness, 0.0..=18.0).suffix(" px"));
-                });
-                ui.add_space(10.0);
-                widgets::hover_frame(ui, widgets::surface(ui, t, false), |ui| {
-                    ui.horizontal(|ui| {
-                        widgets::tront_mark(ui, theme::tokens(self.theme).accent, theme::tokens(self.theme).secondary, 31.0);
-                        ui.vertical(|ui| {
-                            widgets::hover_label(ui, RichText::new("TRONTOP // THEME PREVIEW").strong());
-                            widgets::hover_label(ui, RichText::new("High-performance telemetry by Tront").size(10.0).color(theme::tokens(self.theme).text_muted));
-                        });
-                    });
-                });
-                ui.add_space(7.0);
-                widgets::hover_label(ui, RichText::new("Inspired by the same gradient and harmony language used across Photochop and the TrontStack native tools.").size(10.0).color(t.text_muted));
-            });
-        self.show_theme_editor &= open;
-        self.theme = self.theme.normalized();
-        if self.theme != before {
-            theme::install(ctx, self.theme);
-            ctx.request_repaint();
-        }
+        self.theme_studio
+            .show(ctx, &mut self.theme, &mut self.show_theme_editor);
     }
 
     fn message_bar(&mut self, root: &mut egui::Ui) {
@@ -2590,6 +2535,10 @@ impl eframe::App for TrontopApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string(theme::STORAGE_KEY, self.theme.encode());
+        storage.set_string(
+            crate::theme_studio::LIBRARY_KEY,
+            self.theme_studio.encode_library(),
+        );
     }
 }
 

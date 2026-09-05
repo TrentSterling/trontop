@@ -5,7 +5,8 @@ Saved from Trent's supplied generated concepts on 2026-09-05, unchanged.
 - `processes-teal-concept.png`: teal/charcoal process view, crisp navigation icons,
   dense tree rows, inline resource history, clearly grouped inspector controls.
 - `theme-directions-concept.png`: Porcelain, Carbon, Phosphor and Vector directions.
-  These are reference names/styles, not implemented presets yet.
+  Alpha.19 includes palette/surface presets with these names, not exact replicas
+  of every generated shape/font treatment.
 - `icon-lab-concept.png`: six identity directions and navigation/hardware/action
   icon vocabulary. Signal (A) is the first standalone candidate, not a final choice.
 - `component-studies-concept.png`: compact controls, slim table rows, tidy numeric

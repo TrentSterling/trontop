@@ -1,18 +1,28 @@
 use eframe::egui;
 use egui::{Color32, FontFamily, FontId, Stroke, TextStyle, Theme, Visuals};
 
-pub const STORAGE_KEY: &str = "trontop.theme.v2";
+pub const STORAGE_KEY: &str = "trontop.theme.v3";
+pub const LEGACY_STORAGE_KEY: &str = "trontop.theme.v2";
+
+mod gradient;
+mod storage;
+pub use gradient::{Stop, paint_gradient};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ThemeSettings {
     pub dark: bool,
     pub accent: [u8; 3],
     pub secondary: [u8; 3],
+    pub stops: [Stop; 4],
     pub gradient_enabled: bool,
     pub gradient_angle: f32,
     pub gradient_strength: f32,
     pub frost: f32,
     pub roundness: f32,
+    pub zebra_strength: f32,
+    pub column_strength: f32,
+    pub hover_strength: f32,
+    pub high_contrast: bool,
 }
 
 impl Default for ThemeSettings {
@@ -27,11 +37,21 @@ impl ThemeSettings {
             dark: true,
             accent: [168, 85, 247],
             secondary: [46, 230, 215],
+            stops: Stop::palette([
+                [168, 85, 247],
+                [96, 119, 250],
+                [46, 230, 215],
+                [43, 127, 185],
+            ]),
             gradient_enabled: true,
             gradient_angle: 132.0,
             gradient_strength: 0.34,
             frost: 0.80,
             roundness: 8.0,
+            zebra_strength: 0.075,
+            column_strength: 0.05,
+            hover_strength: 0.18,
+            high_contrast: false,
         }
     }
 
@@ -39,6 +59,7 @@ impl ThemeSettings {
         Self {
             accent: [245, 91, 48],
             secondary: [255, 181, 66],
+            stops: Stop::palette([[245, 91, 48], [174, 63, 86], [220, 131, 55], [255, 181, 66]]),
             gradient_angle: 158.0,
             ..Self::tront_stack()
         }
@@ -48,6 +69,12 @@ impl ThemeSettings {
         Self {
             accent: [46, 230, 215],
             secondary: [111, 78, 255],
+            stops: Stop::palette([
+                [46, 230, 215],
+                [32, 133, 190],
+                [93, 77, 188],
+                [111, 78, 255],
+            ]),
             gradient_angle: 28.0,
             ..Self::tront_stack()
         }
@@ -57,54 +84,102 @@ impl ThemeSettings {
         Self {
             accent: [224, 104, 52],
             secondary: [200, 146, 78],
+            stops: Stop::palette([
+                [224, 104, 52],
+                [129, 75, 54],
+                [174, 109, 54],
+                [200, 146, 78],
+            ]),
             gradient_angle: 116.0,
             ..Self::tront_stack()
         }
     }
 
-    pub fn encode(self) -> String {
-        format!(
-            "{};{},{},{};{},{},{};{};{:.2};{:.3};{:.3};{:.2}",
-            u8::from(self.dark),
-            self.accent[0],
-            self.accent[1],
-            self.accent[2],
-            self.secondary[0],
-            self.secondary[1],
-            self.secondary[2],
-            u8::from(self.gradient_enabled),
-            self.gradient_angle,
-            self.gradient_strength,
-            self.frost,
-            self.roundness,
-        )
-    }
-
-    pub fn decode(value: &str) -> Option<Self> {
-        let fields = value.split(';').collect::<Vec<_>>();
-        if fields.len() != 8 {
-            return None;
-        }
-        Some(
-            Self {
-                dark: fields[0] == "1",
-                accent: parse_rgb(fields[1])?,
-                secondary: parse_rgb(fields[2])?,
-                gradient_enabled: fields[3] == "1",
-                gradient_angle: fields[4].parse().ok()?,
-                gradient_strength: fields[5].parse().ok()?,
-                frost: fields[6].parse().ok()?,
-                roundness: fields[7].parse().ok()?,
-            }
-            .normalized(),
-        )
+    pub fn presets() -> [(&'static str, Self); 8] {
+        [
+            ("TrontStack", Self::tront_stack()),
+            ("Demigod", Self::demigod()),
+            ("Monke Portal", Self::monke_portal()),
+            ("Copper Legacy", Self::copper_legacy()),
+            (
+                "Porcelain",
+                Self {
+                    dark: false,
+                    accent: [25, 101, 226],
+                    secondary: [90, 67, 185],
+                    stops: Stop::palette([
+                        [124, 169, 226],
+                        [162, 189, 222],
+                        [190, 175, 218],
+                        [145, 204, 211],
+                    ]),
+                    gradient_strength: 0.15,
+                    frost: 0.94,
+                    ..Self::default()
+                },
+            ),
+            (
+                "Carbon",
+                Self {
+                    accent: [238, 175, 89],
+                    secondary: [196, 147, 90],
+                    stops: Stop::palette([
+                        [128, 96, 58],
+                        [84, 79, 70],
+                        [111, 89, 66],
+                        [156, 113, 68],
+                    ]),
+                    gradient_strength: 0.20,
+                    frost: 0.92,
+                    ..Self::default()
+                },
+            ),
+            (
+                "Phosphor",
+                Self {
+                    accent: [69, 221, 152],
+                    secondary: [120, 239, 181],
+                    stops: Stop::palette([[20, 93, 67], [23, 70, 60], [44, 114, 70], [24, 86, 57]]),
+                    roundness: 3.0,
+                    high_contrast: true,
+                    ..Self::default()
+                },
+            ),
+            (
+                "Vector",
+                Self {
+                    accent: [47, 217, 235],
+                    secondary: [240, 100, 146],
+                    stops: Stop::palette([
+                        [25, 131, 166],
+                        [70, 55, 148],
+                        [125, 50, 130],
+                        [206, 75, 111],
+                    ]),
+                    roundness: 5.0,
+                    ..Self::default()
+                },
+            ),
+        ]
     }
 
     pub fn normalized(mut self) -> Self {
-        self.gradient_angle = self.gradient_angle.rem_euclid(360.0);
-        self.gradient_strength = self.gradient_strength.clamp(0.0, 0.75);
-        self.frost = self.frost.clamp(0.45, 1.0);
-        self.roundness = self.roundness.clamp(0.0, 18.0);
+        let bounded = |v: f32, fallback, min, max| {
+            if v.is_finite() {
+                v.clamp(min, max)
+            } else {
+                fallback
+            }
+        };
+        self.gradient_angle =
+            bounded(self.gradient_angle, 132.0, -36000.0, 36000.0).rem_euclid(360.0);
+        self.gradient_strength = bounded(self.gradient_strength, 0.34, 0.0, 0.75);
+        self.frost = bounded(self.frost, 0.80, 0.45, 1.0);
+        self.roundness = bounded(self.roundness, 8.0, 0.0, 18.0);
+        self.zebra_strength = bounded(self.zebra_strength, 0.075, 0.0, 0.18);
+        self.column_strength = bounded(self.column_strength, 0.05, 0.0, 0.16);
+        self.hover_strength = bounded(self.hover_strength, 0.18, 0.06, 0.30);
+        gradient::normalize(&mut self.stops);
         self
     }
 }
@@ -124,12 +199,13 @@ pub struct Tokens {
     pub good: Color32,
     pub danger: Color32,
     pub graph_bg: Color32,
+    pub column_strength: f32,
 }
 
 pub fn tokens(settings: ThemeSettings) -> Tokens {
     let accent = rgb(settings.accent);
     let secondary = rgb(settings.secondary);
-    if settings.dark {
+    let mut result = if settings.dark {
         Tokens {
             bg: Color32::from_rgb(9, 9, 13),
             panel: Color32::from_rgb(16, 16, 23),
@@ -144,6 +220,7 @@ pub fn tokens(settings: ThemeSettings) -> Tokens {
             good: Color32::from_rgb(75, 215, 151),
             danger: Color32::from_rgb(232, 75, 85),
             graph_bg: Color32::from_rgb(8, 8, 13),
+            column_strength: settings.column_strength,
         }
     } else {
         Tokens {
@@ -160,8 +237,19 @@ pub fn tokens(settings: ThemeSettings) -> Tokens {
             good: Color32::from_rgb(24, 145, 90),
             danger: Color32::from_rgb(199, 47, 59),
             graph_bg: Color32::from_rgb(229, 226, 236),
+            column_strength: settings.column_strength,
         }
+    };
+    if settings.high_contrast {
+        result.text = if settings.dark {
+            Color32::WHITE
+        } else {
+            Color32::from_rgb(12, 12, 18)
+        };
+        result.text_muted = result.text;
+        result.border = mix(result.border, result.text, 0.25);
     }
+    result
 }
 
 pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
@@ -183,7 +271,7 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     style.visuals.window_fill = t.panel;
     style.visuals.extreme_bg_color = t.graph_bg;
     let signal_blend = mix(t.accent, t.secondary, 0.48);
-    style.visuals.faint_bg_color = mix(t.panel_raised, signal_blend, 0.075);
+    style.visuals.faint_bg_color = mix(t.panel_raised, signal_blend, settings.zebra_strength);
     style.visuals.selection.bg_fill = mix(t.accent_dim, signal_blend, 0.24);
     style.visuals.selection.stroke = Stroke::new(1.0, t.text);
     style.visuals.widgets.noninteractive.fg_stroke.color = t.text;
@@ -193,7 +281,8 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     style.visuals.widgets.inactive.fg_stroke.color = t.text_muted;
     style.visuals.widgets.inactive.weak_bg_fill = t.panel_raised;
     style.visuals.widgets.hovered.bg_fill = t.row_hover;
-    style.visuals.widgets.hovered.weak_bg_fill = mix(t.row_hover, signal_blend, 0.18);
+    style.visuals.widgets.hovered.weak_bg_fill =
+        mix(t.row_hover, signal_blend, settings.hover_strength);
     style.visuals.widgets.hovered.fg_stroke.color = t.text;
     style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, t.secondary);
     style.visuals.widgets.active.bg_fill = t.accent_dim;
@@ -248,38 +337,37 @@ pub fn paint_background(ctx: &egui::Context, settings: ThemeSettings) {
             .rect_filled(rect, 0.0, t.bg);
         return;
     }
-    let angle = settings.gradient_angle.to_radians();
-    let direction = egui::vec2(angle.cos(), angle.sin());
-    let center = rect.center();
-    let half =
-        (rect.width() * 0.5 * direction.x.abs() + rect.height() * 0.5 * direction.y.abs()).max(1.0);
-    const GRID: usize = 10;
-    let mut mesh = egui::Mesh::default();
-    for y in 0..=GRID {
-        for x in 0..=GRID {
-            let pos = egui::pos2(
-                egui::lerp(rect.left()..=rect.right(), x as f32 / GRID as f32),
-                egui::lerp(rect.top()..=rect.bottom(), y as f32 / GRID as f32),
-            );
-            let phase = (((pos - center).dot(direction) / half) * 0.5 + 0.5).clamp(0.0, 1.0);
-            let color = mix(
-                t.bg,
-                mix(t.accent, t.secondary, phase),
-                settings.gradient_strength,
-            );
-            mesh.colored_vertex(pos, color);
-        }
+    paint_gradient(
+        &ctx.layer_painter(egui::LayerId::background()),
+        rect,
+        settings.stops,
+        settings.gradient_angle,
+        |color| backdrop(settings, color),
+    );
+}
+
+/// Keep backdrop luminance bounded independently of the user's four raw colors.
+/// Text on transparent panels must remain readable even at maximum intensity.
+pub fn backdrop(settings: ThemeSettings, color: Color32) -> Color32 {
+    let t = tokens(settings);
+    let raw = mix(t.bg, color, settings.gradient_strength);
+    if settings.dark {
+        let max = raw.r().max(raw.g()).max(raw.b()).max(1) as f32;
+        let scale = (64.0 / max).min(1.0);
+        Color32::from_rgb(
+            (raw.r() as f32 * scale) as u8,
+            (raw.g() as f32 * scale) as u8,
+            (raw.b() as f32 * scale) as u8,
+        )
+    } else {
+        let min = raw.r().min(raw.g()).min(raw.b()) as f32;
+        let lift = if min < 205.0 {
+            (205.0 - min) / (255.0 - min)
+        } else {
+            0.0
+        };
+        mix(raw, Color32::WHITE, lift)
     }
-    let width = (GRID + 1) as u32;
-    for y in 0..GRID as u32 {
-        for x in 0..GRID as u32 {
-            let i = y * width + x;
-            mesh.add_triangle(i, i + 1, i + width);
-            mesh.add_triangle(i + 1, i + width + 1, i + width);
-        }
-    }
-    ctx.layer_painter(egui::LayerId::background())
-        .add(egui::Shape::mesh(mesh));
 }
 
 pub fn panel_color(settings: ThemeSettings) -> Color32 {
@@ -314,15 +402,6 @@ fn rgb(value: [u8; 3]) -> Color32 {
     Color32::from_rgb(value[0], value[1], value[2])
 }
 
-fn parse_rgb(value: &str) -> Option<[u8; 3]> {
-    let values = value
-        .split(',')
-        .map(str::parse)
-        .collect::<Result<Vec<u8>, _>>()
-        .ok()?;
-    Some([*values.first()?, *values.get(1)?, *values.get(2)?])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,5 +415,40 @@ mod tests {
     #[test]
     fn malformed_settings_are_rejected() {
         assert!(ThemeSettings::decode("broken").is_none());
+    }
+
+    #[test]
+    fn arbitrary_gradient_colors_keep_backdrop_text_readable() {
+        fn luminance(c: Color32) -> f32 {
+            let linear = |v: u8| {
+                let v = v as f32 / 255.0;
+                if v <= 0.04045 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * linear(c.r()) + 0.7152 * linear(c.g()) + 0.0722 * linear(c.b())
+        }
+        for dark in [false, true] {
+            let s = ThemeSettings {
+                dark,
+                gradient_strength: 0.75,
+                frost: 0.45,
+                ..Default::default()
+            };
+            let t = tokens(s);
+            for red in [0, 64, 128, 192, 255] {
+                for green in [0, 64, 128, 192, 255] {
+                    for blue in [0, 64, 128, 192, 255] {
+                        let bg = backdrop(s, Color32::from_rgb(red, green, blue));
+                        for fg in [t.text, t.text_muted] {
+                            let (a, b) = (luminance(fg), luminance(bg));
+                            assert!((a.max(b) + 0.05) / (a.min(b) + 0.05) >= 4.5);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

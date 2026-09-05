@@ -434,15 +434,16 @@ pub fn table_column(
     row.col(|ui| {
         let rect = ui.max_rect();
         let response = ui.interact(rect, ui.next_auto_id().with("cell_hover"), Sense::hover());
-        if banded {
+        if banded && t.column_strength > 0.0 {
             let mut mesh = egui::Mesh::default();
             let tint = |color: Color32, alpha| {
                 Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
             };
-            mesh.colored_vertex(rect.left_top(), tint(t.accent, 16));
-            mesh.colored_vertex(rect.right_top(), tint(t.secondary, 10));
-            mesh.colored_vertex(rect.right_bottom(), tint(t.secondary, 10));
-            mesh.colored_vertex(rect.left_bottom(), tint(t.accent, 16));
+            let alpha = (t.column_strength * 255.0) as u8;
+            mesh.colored_vertex(rect.left_top(), tint(t.accent, alpha));
+            mesh.colored_vertex(rect.right_top(), tint(t.secondary, alpha));
+            mesh.colored_vertex(rect.right_bottom(), tint(t.secondary, alpha));
+            mesh.colored_vertex(rect.left_bottom(), tint(t.accent, alpha));
             mesh.add_triangle(0, 1, 2);
             mesh.add_triangle(0, 2, 3);
             ui.painter().add(egui::Shape::mesh(mesh));

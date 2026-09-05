@@ -33,6 +33,12 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.19 adds four-stop math/mesh, strict theme migration/import, bounded named
+  library, backdrop contrast and local ramp drag/keyboard checks. All four Studio
+  tabs keep their footer visible in dark/light at compact/normal sizes. The
+  offscreen suite produces 67 PNGs; see `THEME_STUDIO.md` for reviewed scope and
+  remaining native persistence/full-app contrast checks.
+
 - Alpha.18 adds physical-disk provider/unit/native-buffer, latest-mailbox/stall,
   export freshness/privacy, identity selection and metric-geometry regressions.
   Dark/light and compact missing-data fixtures add three PNGs. The specifically

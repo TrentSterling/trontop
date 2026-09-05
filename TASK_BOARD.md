@@ -1,8 +1,21 @@
 # Trontop task board
 
-This is the durable resume board. Keep it honest and update it when a slice lands.
+**Product completion now lives in [ASK_LEDGER.md](ASK_LEDGER.md).** This file is the
+historical engineering log, not an expanding release checklist. Its old unchecked
+extras do not become release requirements unless linked to an agreed ask ID.
+Keep the current source/build evidence in `docs/CURRENT_STATE.md`.
 
-## Current: alpha.18 physical-disk activity
+## Current: alpha.19 theme checkpoint and ask ledger
+
+- [x] Four-peg gradient renderer and tabbed Studio, strict v2 migration/v3 import,
+  named presets, surface controls, local drag/keyboard and fixed footer tests
+- [x] Local gate: 175 passed, 0 failed, 10 ignored; strict Clippy/release PASS;
+  67 offscreen PNGs with six theme layouts reviewed: `docs/THEME_STUDIO.md`
+- [x] Consolidated `ASK_LEDGER.md` with evidence, outstanding reviews/decisions and
+  a stopping condition; it replaces this file as the product completion checklist
+- [ ] A13 native restart persistence and Trent's final theme review
+
+## Previous: alpha.18 physical-disk activity
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results

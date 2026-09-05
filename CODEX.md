@@ -5,8 +5,24 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.18 source. Read the newest
+Read `ASK_LEDGER.md` first for the finite completion checklist. Trent called out
+diminishing returns and requested one consolidated ask ledger. Finish the already
+written four-peg theme slice, verify/build and hand it back. Do not add more features
+or start another open-ended polish loop. Choose the next unchecked ask with Trent.
+
+Working branch: `feat/provider-diagnostics`, alpha.19 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
+
+Alpha.19 implements four-peg gradients and a tabbed Theme Studio: editable positions,
+hex colors, independent accents, eight presets, surface controls, named saves,
+import/export, reset/revert and v2 migration. Final local gate: 175 passed, 0 failed,
+10 ignored; strict Clippy/formatting/release PASS. Sixty-seven offscreen PNGs; six
+theme layouts inspected. See `docs/THEME_STUDIO.md`. No preview was opened/replaced.
+`ASK_LEDGER.md` now owns the finite definition of done; A13 remains unchecked for
+native restart persistence and Trent's review. No complete-app/parity/drag claim.
+Alpha.18 was checkpointed locally as 0a176d3; remote alpha.19 gate pending.
+
+The following alpha.18 and older implementation notes are historical.
 
 Alpha.18 adds independent physical-disk PDH activity, latency, queue and read/write
 rates, retained missing states, gap-aware charts and JSON diagnostics. Local gate:

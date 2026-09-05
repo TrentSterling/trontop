@@ -1,5 +1,10 @@
 # Trontop release plan
 
+The finite product acceptance checklist is now [ASK_LEDGER.md](ASK_LEDGER.md).
+Resolve its release decisions with Trent before publishing. The stages below are
+the earlier roadmap and procedural reference; they must not silently add new
+requirements or defer an explicit ask from the ledger.
+
 Trontop is moving from a private native prototype to a public Tront desktop product.
 The first public build should be useful, safe, portable, and honest about every
 telemetry provider. It does not need to reproduce every Task Manager page before it

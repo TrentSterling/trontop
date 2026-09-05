@@ -19,6 +19,7 @@ mod shutdown;
 mod startup;
 mod storage_sensors;
 mod theme;
+mod theme_studio;
 mod tray;
 mod widgets;
 mod windows_metrics;

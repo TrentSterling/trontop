@@ -1644,6 +1644,13 @@ fn render_offscreen_visual_pass() {
         "physical-disks-light",
         "physical-disks-partial-compact",
         "theme-studio",
+        "theme-studio-light",
+        "theme-studio-compact",
+        "theme-appearance",
+        "theme-appearance-light",
+        "theme-presets",
+        "theme-presets-light",
+        "theme-library",
         "inspector",
         "gpu-sensors",
         "gpu-sensors-light",
@@ -1711,7 +1718,16 @@ fn render_offscreen_visual_pass() {
                 app.snapshot.processes[1].control.created_at_100ns = None;
             }
         }
-        app.show_theme_editor = variant == "theme-studio";
+        app.show_theme_editor = variant.starts_with("theme-");
+        app.theme_studio.tab = if variant.starts_with("theme-appearance") {
+            1
+        } else if variant.starts_with("theme-presets") {
+            2
+        } else if variant.starts_with("theme-library") {
+            3
+        } else {
+            0
+        };
         if variant.starts_with("physical-disks") {
             disks::install(&mut app, variant.contains("partial"));
         }
@@ -1868,7 +1884,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 60 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 67 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

@@ -25,7 +25,39 @@ Older instances and other windows were untouched. Do not automatically replace,
 restart or manipulate this preview. This observation is not an ongoing liveness
 guarantee or a native performance test.
 
-## Latest source: alpha.18 physical disks
+## Latest source: alpha.19 four-peg themes and finite ask ledger
+
+Trent called out diminishing returns and requested one checklist of every ask with
+a clear stopping condition. **`../ASK_LEDGER.md` is now authoritative for product
+completion.** The older task board is historical engineering detail. No new feature
+work until the next bounded unchecked ask is chosen with Trent. Do not convert an
+unverified or difficult ask into a checked item to declare the app done.
+
+Four independently positioned/colorable gradient pegs now render as exact linear
+bands at any angle. Theme Studio adds Palette/Appearance/Presets/My themes tabs,
+hex edits, native egui local drag/keyboard controls, named saves and import/export,
+revert/reset, eight presets and legacy v2 migration. Its footer is pinned outside
+the scrolling editor body. Background brightness is constrained for ordinary text;
+the whole-app arbitrary-accent audit is still open. `THEME_STUDIO.md` has limits.
+
+Final local gate: **175 passed, 0 failed, 10 ignored** (22.57 s), formatting/strict
+Clippy PASS, optimized release PASS (31.31 s). Offscreen pass: **67 PNGs**, with
+Palette dark/light/compact, Appearance, Presets and My themes reviewed. No native
+window, global input, focus changes or tray tests. Real eframe restart persistence
+has not been tested by closing any existing preview; A13 remains PARTIAL/REVIEW.
+
+Review EXE: `target/review-build/release/trontop.exe`, **13,407,232 bytes**, version
+**0.3.0-alpha.19**, built **2026-09-05 18:20:28 UTC** from modified 0a176d3.
+SHA-256 `18FE0B97338C3DCEE74F83568FCFC9C2D1D0B0A3C5AEE4F00888895E79D62F13`.
+Dependency scan lists only Windows DLLs, no dynamic MSVC runtime or application
+asset dependency. Clean-machine portability remains unverified. No alpha.19 preview
+was launched, no old instance closed, no driver/hotkey/release installed/published.
+
+Alpha.18 local checkpoint: 0a176d3. The last verified remote checkpoint is alpha.17
+run 33969106100 (02ea7f8). Alpha.19 remote CI is pending; record the exact new run
+in the coordination journal after push. Do not launch duplicate verification runs.
+
+## Previous source: alpha.18 physical disks
 
 Independent bounded Windows PDH collection now provides physical-disk active time,
 response time, queue depth and read/write rates. Volume entries remain separate.
