@@ -103,8 +103,8 @@ impl TrontopApp {
             .and_then(|value| ThemeSettings::decode(&value))
             .unwrap_or_default();
         theme::install(&cc.egui_ctx, saved_theme);
-        let sampler = Sampler::spawn(cc.egui_ctx.clone());
         let tray = TrayController::new(cc.egui_ctx.clone());
+        let sampler = Sampler::spawn(cc.egui_ctx.clone(), tray.as_ref().map(TrayController::sink));
         Self {
             sampler,
             snapshot: SystemSnapshot::default(),
@@ -174,22 +174,6 @@ impl TrontopApp {
                     .or_default(),
                 value,
                 HISTORY_LENGTH,
-            );
-        }
-        if let Some(tray) = &mut self.tray {
-            let memory = if snapshot.memory_total_bytes == 0 {
-                0.0
-            } else {
-                snapshot.memory_used_bytes as f32 / snapshot.memory_total_bytes as f32 * 100.0
-            };
-            tray.update(
-                snapshot.cpu_percent,
-                memory,
-                snapshot
-                    .gpu
-                    .available
-                    .then_some(snapshot.gpu.utilization_percent),
-                snapshot.process_count,
             );
         }
         self.snapshot = snapshot;
@@ -435,7 +419,7 @@ impl TrontopApp {
             .frame(
                 egui::Frame::new()
                     .fill(theme::panel_color(self.theme))
-                    .inner_margin(egui::Margin::symmetric(14, 7))
+                    .inner_margin(egui::Margin::symmetric(18, 7))
                     .stroke(Stroke::new(1.0, t.border)),
             )
             .show(root, |ui| {
@@ -526,6 +510,7 @@ impl TrontopApp {
             .show(root, |ui| {
                 ui.label(RichText::new("INSPECTOR").size(10.0).strong().color(t.text_muted));
                 ui.add_space(10.0);
+                egui::ScrollArea::vertical().id_salt("inspector_scroll").auto_shrink([false, false]).show(ui, |ui| {
                 let selected = self.selected_process().cloned();
                 if let Some(process) = selected {
                     ui.label(RichText::new(&process.name).size(19.0).strong().color(t.text));
@@ -627,7 +612,8 @@ impl TrontopApp {
                                 .wrap(),
                         );
                     }
-                    ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
+                    ui.add_space(12.0);
+                    ui.scope(|ui| {
                         if ui
                             .add_sized(
                                 [ui.available_width(), 34.0],
@@ -671,9 +657,10 @@ impl TrontopApp {
                         RichText::new("TIP  |  Expand a parent row to trace its live process family.")
                             .size(10.0)
                             .monospace()
-                            .color(t.secondary),
+                            .color(t.text_muted),
                     );
                 }
+                });
             });
     }
 
@@ -705,9 +692,9 @@ impl TrontopApp {
             if self.tree_mode {
                 ui.separator();
                 ui.label(
-                    RichText::new("Parent rows show complete subtree totals")
+                    RichText::new("Parent rows include descendants")
                         .size(10.0)
-                        .color(t.secondary),
+                        .color(t.text_muted),
                 );
             }
         });
@@ -735,21 +722,24 @@ impl TrontopApp {
     fn page_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str, searchable: bool) {
         let t = self.colors();
         ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.heading(RichText::new(title).color(t.text));
-                ui.label(RichText::new(subtitle).size(11.0).color(t.text_muted));
-            });
+            ui.heading(RichText::new(title).color(t.text));
             if searchable {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let edit = egui::TextEdit::singleline(&mut self.query)
-                        .hint_text("Search name, user, PID, path, or command")
-                        .desired_width(300.0);
-                    if ui.add(edit).changed() {
+                        .hint_text("Search processes...")
+                        .margin(egui::Margin::symmetric(10, 7))
+                        .desired_width(ui.available_width().clamp(140.0, 300.0));
+                    if ui
+                        .add(edit)
+                        .on_hover_text("Search name, user, PID, executable path, or command line")
+                        .changed()
+                    {
                         self.rebuild_visible_processes();
                     }
                 });
             }
         });
+        ui.label(RichText::new(subtitle).size(11.0).color(t.text_muted));
     }
 
     fn telemetry_strip(&self, ui: &mut egui::Ui) {
@@ -816,6 +806,19 @@ impl TrontopApp {
     }
 
     fn process_table(&mut self, ui: &mut egui::Ui, detailed: bool) {
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            egui::ScrollArea::horizontal()
+                .id_salt(("process_table_horizontal", detailed))
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    ui.set_min_width(if detailed { 900.0 } else { 660.0 });
+                    self.process_table_inner(ui, detailed);
+                });
+        });
+    }
+
+    fn process_table_inner(&mut self, ui: &mut egui::Ui, detailed: bool) {
         let t = self.colors();
         let tree_mode = self.tree_mode && !detailed;
         let visible = if tree_mode {
@@ -845,34 +848,37 @@ impl TrontopApp {
         let mut clicked_pid = None;
         let mut toggled_pid = None;
         let mut requested_sort = None;
-        let available_height = ui.available_height().max(80.0) - 20.0;
+        // max_scroll_height is the BODY height, excluding the fixed header.
+        // Reserve the footer and a possible horizontal scrollbar as well.
+        let available_height = (ui.available_height() - 60.0).max(32.0);
         let mut table = TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
             .vscroll(true)
             .sense(Sense::click())
+            .cell_layout(Layout::left_to_right(Align::Center))
             .min_scrolled_height(0.0)
             .max_scroll_height(available_height)
             .column(
-                Column::initial(if detailed { 185.0 } else { 210.0 })
+                Column::initial(if detailed { 210.0 } else { 240.0 })
                     .at_least(120.0)
                     .clip(true),
             )
-            .column(Column::initial(62.0).at_least(50.0));
+            .column(Column::initial(72.0).at_least(64.0));
         if detailed {
             table = table
                 .column(Column::initial(86.0).at_least(64.0).clip(true))
                 .column(Column::initial(64.0).at_least(52.0));
         }
         table = table
-            .column(Column::initial(66.0).at_least(54.0))
-            .column(Column::initial(66.0).at_least(54.0))
-            .column(Column::initial(92.0).at_least(70.0))
-            .column(Column::initial(83.0).at_least(64.0))
-            .column(Column::remainder().at_least(70.0));
+            .column(Column::initial(76.0).at_least(68.0))
+            .column(Column::initial(76.0).at_least(68.0))
+            .column(Column::initial(98.0).at_least(82.0))
+            .column(Column::initial(88.0).at_least(78.0))
+            .column(Column::remainder().at_least(86.0));
 
         table
-            .header(29.0, |mut header| {
+            .header(34.0, |mut header| {
                 widgets::table_header(
                     &mut header,
                     "NAME",
@@ -962,12 +968,14 @@ impl TrontopApp {
                 );
             })
             .body(|body| {
-                body.rows(28.0, visible.len(), |mut row| {
+                body.rows(32.0, visible.len(), |mut row| {
                     let display = &visible[row.index()];
                     let process = &display.process;
                     row.set_selected(selected_pid == Some(process.pid));
-                    row.col(|ui| {
-                        ui.horizontal(|ui| {
+                    widgets::table_column(&mut row, t, |ui| {
+                        ui.scope(|ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            ui.spacing_mut().button_padding = Vec2::ZERO;
                             ui.add_space(display.depth as f32 * 13.0);
                             if tree_mode && display.has_children {
                                 let marker = if display.expanded { "-" } else { "+" };
@@ -975,7 +983,7 @@ impl TrontopApp {
                                     .add_sized(
                                         [20.0, 20.0],
                                         egui::Button::new(
-                                            RichText::new(marker).monospace().color(t.accent),
+                                            RichText::new(marker).monospace().color(t.text),
                                         )
                                         .fill(t.accent_dim)
                                         .stroke(Stroke::new(1.0, t.border)),
@@ -1002,7 +1010,7 @@ impl TrontopApp {
                             }
                         });
                     });
-                    row.col(|ui| {
+                    widgets::table_column(&mut row, t, |ui| {
                         if widgets::table_cell(
                             ui,
                             RichText::new(process.pid.to_string())
@@ -1013,7 +1021,7 @@ impl TrontopApp {
                         }
                     });
                     if detailed {
-                        row.col(|ui| {
+                        widgets::table_column(&mut row, t, |ui| {
                             if widgets::table_cell(
                                 ui,
                                 RichText::new(&process.user).size(11.0).color(t.text_muted),
@@ -1021,7 +1029,7 @@ impl TrontopApp {
                                 clicked_pid = Some(process.pid);
                             }
                         });
-                        row.col(|ui| {
+                        widgets::table_column(&mut row, t, |ui| {
                             if widgets::table_cell(
                                 ui,
                                 RichText::new(&process.status)
@@ -1032,7 +1040,7 @@ impl TrontopApp {
                             }
                         });
                     }
-                    row.col(|ui| {
+                    widgets::table_column(&mut row, t, |ui| {
                         if widgets::heat_cell(
                             ui,
                             display.totals.cpu_percent,
@@ -1043,7 +1051,7 @@ impl TrontopApp {
                             clicked_pid = Some(process.pid);
                         }
                     });
-                    row.col(|ui| {
+                    widgets::table_column(&mut row, t, |ui| {
                         if widgets::heat_cell(
                             ui,
                             display.totals.gpu_percent,
@@ -1054,7 +1062,7 @@ impl TrontopApp {
                             clicked_pid = Some(process.pid);
                         }
                     });
-                    row.col(|ui| {
+                    widgets::table_column(&mut row, t, |ui| {
                         let pressure = if self.snapshot.memory_total_bytes == 0 {
                             0.0
                         } else {
@@ -1072,7 +1080,7 @@ impl TrontopApp {
                             clicked_pid = Some(process.pid);
                         }
                     });
-                    row.col(|ui| {
+                    widgets::table_column(&mut row, t, |ui| {
                         if widgets::table_cell(
                             ui,
                             RichText::new(format::rate(display.totals.read_bytes_per_sec))
@@ -1082,7 +1090,7 @@ impl TrontopApp {
                             clicked_pid = Some(process.pid);
                         }
                     });
-                    row.col(|ui| {
+                    widgets::table_column(&mut row, t, |ui| {
                         let value = if detailed {
                             format::millis(process.accumulated_cpu_millis)
                         } else {
@@ -1095,6 +1103,9 @@ impl TrontopApp {
                             clicked_pid = Some(process.pid);
                         }
                     });
+                    if row.response().clicked() && toggled_pid != Some(process.pid) {
+                        clicked_pid = Some(process.pid);
+                    }
                 });
             });
         if let Some(pid) = clicked_pid {
@@ -1583,70 +1594,75 @@ impl TrontopApp {
             false,
         );
         ui.add_space(12.0);
-        let users = self.snapshot.users.clone();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for user in users {
-                    egui::Frame::new()
-                        .fill(theme::raised_color(self.theme))
-                        .stroke(Stroke::new(1.0, t.border))
-                        .corner_radius(self.theme.roundness)
-                        .inner_margin(egui::Margin::same(14))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let (rect, _) =
-                                    ui.allocate_exact_size(Vec2::splat(38.0), Sense::hover());
-                                ui.painter()
-                                    .circle_filled(rect.center(), 18.0, t.accent_dim);
-                                ui.painter().text(
-                                    rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    user.name.chars().next().unwrap_or('?').to_ascii_uppercase(),
-                                    FontId::proportional(18.0),
-                                    t.text,
-                                );
-                                ui.vertical(|ui| {
-                                    ui.label(
-                                        RichText::new(&user.name).size(17.0).strong().color(t.text),
-                                    );
-                                    ui.label(
-                                        RichText::new(format!("{} processes", user.process_count))
-                                            .size(10.0)
-                                            .color(t.text_muted),
-                                    );
-                                });
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    widgets::inline_metric(
-                                        ui,
-                                        "DISK",
-                                        &format::rate(user.disk_bytes_per_sec),
-                                        t,
-                                    );
-                                    widgets::inline_metric(
-                                        ui,
-                                        "MEMORY",
-                                        &format::bytes(user.memory_bytes),
-                                        t,
-                                    );
-                                    widgets::inline_metric(
-                                        ui,
-                                        "GPU",
-                                        &format::percent(user.gpu_percent),
-                                        t,
-                                    );
-                                    widgets::inline_metric(
-                                        ui,
-                                        "CPU",
-                                        &format::percent(user.cpu_percent),
-                                        t,
-                                    );
-                                });
-                            });
+        let users = &self.snapshot.users;
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            let width = ui.available_width();
+            let height = (ui.available_height() - 36.0).max(40.0);
+            TableBuilder::new(ui)
+                .striped(true)
+                .resizable(true)
+                .cell_layout(Layout::left_to_right(Align::Center))
+                .column(Column::initial(width * 0.30).at_least(180.0).clip(true))
+                .column(Column::initial(92.0).at_least(80.0))
+                .column(Column::initial(92.0).at_least(76.0))
+                .column(Column::initial(92.0).at_least(76.0))
+                .column(Column::initial(116.0).at_least(94.0))
+                .column(Column::remainder().at_least(100.0))
+                .min_scrolled_height(0.0)
+                .max_scroll_height(height)
+                .header(34.0, |mut row| {
+                    for label in ["ACCOUNT", "PROCESSES", "CPU", "GPU", "MEMORY", "DISK I/O"] {
+                        widgets::table_column(&mut row, t, |ui| {
+                            widgets::table_cell(
+                                ui,
+                                RichText::new(label).size(10.0).strong().color(t.text_muted),
+                            );
                         });
-                    ui.add_space(8.0);
-                }
-            });
+                    }
+                })
+                .body(|body| {
+                    body.rows(46.0, users.len(), |mut row| {
+                        let user = &users[row.index()];
+                        widgets::table_column(&mut row, t, |ui| {
+                            ui.spacing_mut().item_spacing.x = 10.0;
+                            let (rect, _) =
+                                ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
+                            ui.painter().rect_filled(rect, 7.0, t.accent_dim);
+                            ui.painter().text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                user.name.chars().next().unwrap_or('?').to_ascii_uppercase(),
+                                FontId::proportional(15.0),
+                                t.text,
+                            );
+                            widgets::table_cell(
+                                ui,
+                                RichText::new(&user.name).strong().color(t.text),
+                            );
+                        });
+                        for (value, label, color) in [
+                            (0.0, user.process_count.to_string(), t.accent),
+                            (
+                                user.cpu_percent,
+                                format::percent(user.cpu_percent),
+                                t.accent,
+                            ),
+                            (
+                                user.gpu_percent,
+                                format::percent(user.gpu_percent),
+                                t.secondary,
+                            ),
+                            (0.0, format::bytes(user.memory_bytes), t.accent),
+                            (0.0, format::rate(user.disk_bytes_per_sec), t.secondary),
+                        ] {
+                            widgets::table_column(&mut row, t, |ui| {
+                                widgets::heat_cell(ui, value, label, color, t);
+                            });
+                        }
+                    })
+                });
+        });
     }
 
     fn details_page(&mut self, ui: &mut egui::Ui) {
@@ -1658,6 +1674,13 @@ impl TrontopApp {
         );
         ui.add_space(12.0);
         self.process_table(ui, true);
+        ui.label(
+            RichText::new(
+                "Drag dividers to resize columns. Scroll horizontally for more counters.",
+            )
+            .size(10.0)
+            .color(self.colors().text_muted),
+        );
     }
 
     fn services_page(&mut self, ui: &mut egui::Ui) {
@@ -1706,18 +1729,17 @@ impl TrontopApp {
     fn inventory_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str, hint: &str) {
         let t = self.colors();
         ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.heading(RichText::new(title).color(t.text));
-                ui.label(RichText::new(subtitle).size(11.0).color(t.text_muted));
-            });
+            ui.heading(RichText::new(title).color(t.text));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut self.secondary_query)
                         .hint_text(hint)
-                        .desired_width(280.0),
+                        .margin(egui::Margin::symmetric(10, 7))
+                        .desired_width(ui.available_width().clamp(140.0, 300.0)),
                 );
             });
         });
+        ui.label(RichText::new(subtitle).size(11.0).color(t.text_muted));
     }
 
     fn confirm_end_task(&mut self, ctx: &egui::Context) {

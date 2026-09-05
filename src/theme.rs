@@ -185,7 +185,7 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     let signal_blend = mix(t.accent, t.secondary, 0.48);
     style.visuals.faint_bg_color = mix(t.panel_raised, signal_blend, 0.075);
     style.visuals.selection.bg_fill = mix(t.accent_dim, signal_blend, 0.24);
-    style.visuals.selection.stroke = Stroke::new(1.0, t.accent);
+    style.visuals.selection.stroke = Stroke::new(1.0, t.text);
     style.visuals.widgets.noninteractive.fg_stroke.color = t.text;
     style.visuals.widgets.inactive.bg_fill = t.panel_raised;
     style.visuals.widgets.inactive.fg_stroke.color = t.text_muted;
@@ -212,6 +212,7 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     style.interaction.selectable_labels = false;
     style.spacing.item_spacing = egui::vec2(8.0, 8.0);
     style.spacing.button_padding = egui::vec2(11.0, 6.0);
+    style.spacing.scroll.floating = false;
     style.text_styles = [
         (
             TextStyle::Heading,

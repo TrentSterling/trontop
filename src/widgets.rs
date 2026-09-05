@@ -135,7 +135,7 @@ pub fn table_header(
     requested: &mut Option<SortColumn>,
     t: Tokens,
 ) {
-    header.col(|ui| {
+    table_column(header, t, |ui| {
         let arrow = if active == column {
             match direction {
                 SortDirection::Ascending => "  ^",
@@ -145,13 +145,19 @@ pub fn table_header(
             ""
         };
         if ui
-            .add(
+            .add_sized(
+                ui.available_size(),
                 egui::Label::new(
                     RichText::new(format!("{label}{arrow}"))
                         .size(10.0)
                         .strong()
-                        .color(t.text_muted),
+                        .color(if active == column {
+                            t.text
+                        } else {
+                            t.text_muted
+                        }),
                 )
+                .halign(Align::LEFT)
                 .sense(Sense::click()),
             )
             .clicked()
@@ -161,13 +167,51 @@ pub fn table_header(
     });
 }
 
+/// A restrained vertical gradient over the row stripe, with consistent cell insets.
+/// Translucency keeps the native row selection and hover background visible.
+pub fn table_column(
+    row: &mut egui_extras::TableRow<'_, '_>,
+    t: Tokens,
+    contents: impl FnOnce(&mut egui::Ui),
+) {
+    let banded = row.col_index() % 2 == 1;
+    row.col(|ui| {
+        let rect = ui.max_rect();
+        if banded {
+            let mut mesh = egui::Mesh::default();
+            let tint = |color: Color32, alpha| {
+                Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+            };
+            mesh.colored_vertex(rect.left_top(), tint(t.accent, 16));
+            mesh.colored_vertex(rect.right_top(), tint(t.secondary, 10));
+            mesh.colored_vertex(rect.right_bottom(), tint(t.secondary, 10));
+            mesh.colored_vertex(rect.left_bottom(), tint(t.accent, 16));
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(0, 2, 3);
+            ui.painter().add(egui::Shape::mesh(mesh));
+        }
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(rect.shrink2(Vec2::new(8.0, 3.0)))
+                .layout(Layout::left_to_right(Align::Center)),
+            contents,
+        );
+    });
+}
+
 pub fn table_cell(ui: &mut egui::Ui, text: RichText) -> bool {
-    ui.add(egui::Label::new(text).sense(Sense::click()).truncate())
-        .clicked()
+    ui.add_sized(
+        ui.available_size(),
+        egui::Label::new(text)
+            .halign(Align::LEFT)
+            .sense(Sense::click())
+            .truncate(),
+    )
+    .clicked()
 }
 
 pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t: Tokens) -> bool {
-    let response = ui.allocate_response(Vec2::new(ui.available_width(), 25.0), Sense::click());
+    let response = ui.allocate_response(ui.available_size(), Sense::click());
     if value > 0.05 {
         let alpha = (18.0 + value.clamp(0.0, 100.0) * 0.72) as u8;
         ui.painter().rect_filled(
@@ -177,8 +221,8 @@ pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t
         );
     }
     ui.painter().text(
-        response.rect.left_center() + Vec2::new(3.0, 0.0),
-        egui::Align2::LEFT_CENTER,
+        response.rect.right_center() - Vec2::new(3.0, 0.0),
+        egui::Align2::RIGHT_CENTER,
         label,
         FontId::monospace(11.0),
         t.text,
@@ -359,7 +403,10 @@ pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: f32, color: Color32, 
             [72.0, 24.0],
             egui::Label::new(RichText::new(label).size(10.0).color(t.text_muted)).truncate(),
         );
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(300.0, 24.0), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width().clamp(80.0, 300.0), 24.0),
+            Sense::hover(),
+        );
         ui.painter().rect_filled(rect, 12.0, t.graph_bg);
         let fill_width = (rect.width() * (value / 100.0).clamp(0.0, 1.0)).max(if value > 0.0 {
             3.0
@@ -380,13 +427,6 @@ pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: f32, color: Color32, 
             FontId::monospace(10.0),
             t.text,
         );
-    });
-}
-
-pub fn inline_metric(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
-    ui.vertical(|ui| {
-        ui.label(RichText::new(label).size(8.0).strong().color(t.text_muted));
-        ui.label(RichText::new(value).size(11.0).monospace().color(t.text));
     });
 }
 
@@ -411,36 +451,53 @@ pub fn inventory_table(
     rows: Vec<[String; 3]>,
     t: Tokens,
 ) {
-    egui::ScrollArea::vertical()
-        .id_salt(id)
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            egui::Grid::new(id)
-                .num_columns(3)
-                .striped(true)
-                .min_col_width(160.0)
-                .spacing([18.0, 9.0])
-                .show(ui, |ui| {
-                    for header in headers {
-                        ui.label(
-                            RichText::new(header)
-                                .size(10.0)
-                                .strong()
-                                .color(t.text_muted),
+    ui.push_id(id, |ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        let width = ui.available_width();
+        let height = (ui.available_height() - 36.0).max(32.0);
+        egui_extras::TableBuilder::new(ui)
+            .striped(true)
+            .resizable(true)
+            .cell_layout(Layout::left_to_right(Align::Center))
+            .column(
+                egui_extras::Column::initial(width * 0.38)
+                    .at_least(180.0)
+                    .clip(true),
+            )
+            .column(
+                egui_extras::Column::initial(width * 0.38)
+                    .at_least(180.0)
+                    .clip(true),
+            )
+            .column(egui_extras::Column::remainder().at_least(120.0).clip(true))
+            .min_scrolled_height(0.0)
+            .max_scroll_height(height)
+            .header(34.0, |mut header| {
+                for label in headers {
+                    table_column(&mut header, t, |ui| {
+                        table_cell(
+                            ui,
+                            RichText::new(label).size(10.0).strong().color(t.text_muted),
                         );
-                    }
-                    ui.end_row();
-                    for row in rows {
-                        for value in row {
-                            ui.add(
-                                egui::Label::new(RichText::new(value).size(11.0).color(t.text))
+                    });
+                }
+            })
+            .body(|body| {
+                body.rows(32.0, rows.len(), |mut row| {
+                    for value in &rows[row.index()] {
+                        table_column(&mut row, t, |ui| {
+                            ui.add_sized(
+                                ui.available_size(),
+                                egui::Label::new(RichText::new(value).size(12.0).color(t.text))
+                                    .halign(Align::LEFT)
                                     .truncate(),
-                            );
-                        }
-                        ui.end_row();
+                            )
+                            .on_hover_text(value);
+                        });
                     }
-                });
-        });
+                })
+            });
+    });
 }
 
 pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {

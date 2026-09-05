@@ -2,6 +2,30 @@
 
 Last updated: 2026-09-04
 
+## Parked at Trent's request
+
+Read `DRAG_INVESTIGATION.md` for unresolved window-movement lag and the explicit
+ban on global desktop input automation. No dragging fix was validated or ported.
+
+The newest local checkpoint adds a dedicated native tray thread fed directly by the
+sampler, a full-area CPU level with scrolling history, alternating gradient column
+bands, padded/vertically aligned table cells, corrected footer space, a rebuilt Users
+resource table, wider inventory tables, and scrollable inspector content. Ordinary
+selected labels now use the high-contrast text token. Some labels still appear centered;
+the visual pass is not finished.
+
+Final code-side verification: formatting PASS; unit tests 16 passed, 0 failed,
+1 interactive tray test ignored; strict Clippy PASS; release build PASS. Earlier in
+this session the ignored native tray test was explicitly run and passed without any
+application UI frames. Four real tray captures also differed while the window was
+hidden. A repeated hidden/hover sample measured about 0.228% whole-machine CPU,
+213.1 MiB working set, 1,163 handles and 46 threads on this machine. These are limited
+smoke observations, not a sustained soak or evidence that dragging is fixed.
+
+The private GitHub baseline CI succeeded at run 33940457527. The newer local checkpoint
+still needs its own CI run. No alpha tag or release is published. No full headless UI
+harness or new branding/icon system is implemented yet. See `TASK_BOARD.md`.
+
 ## Product identity
 
 Trontop is Trent Sterling's native Windows system control deck. It exists because
@@ -71,7 +95,7 @@ The final release runtime sample was responsive at 0.3125% whole-machine CPU ove
 window opened centered at 1280 by 760 and the native tray host was present. Treat
 these numbers as a comparison baseline, not a machine-independent budget.
 
-The final 0.3.0-alpha.1 process-tree build was responsive at 0.1947% whole-machine
+The earlier 0.3.0-alpha.1 process-tree baseline was responsive at 0.1947% whole-machine
 CPU over 10 seconds, 211.7 MiB working set, 1,181 handles, and 47 threads while
 sampling roughly 445 processes. Its portable executable is 12,623,872 bytes with
 SHA-256 `04A2C7C478AD506F33E7A5ACA524D12E2DF5DCFF32B63EB1652818CA053402CD`.

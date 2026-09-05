@@ -2,6 +2,7 @@ use crate::model::{
     CpuInfo, DiskRow, NetworkRow, ProcessControlInfo, ProcessRow, SystemSnapshot, UserSummary,
 };
 use crate::platform;
+use crate::tray::{TraySample, TraySink};
 use crate::windows_metrics::{self, GpuSampler};
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
@@ -24,7 +25,7 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    pub fn spawn(ctx: egui::Context) -> Self {
+    pub fn spawn(ctx: egui::Context, tray: Option<TraySink>) -> Self {
         let latest = Arc::new(RwLock::new(SystemSnapshot::default()));
         let generation = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
@@ -34,7 +35,7 @@ impl Sampler {
         let worker_stop = Arc::clone(&stop);
         let worker = thread::Builder::new()
             .name("trontop-sampler".into())
-            .spawn(move || sample_loop(worker_latest, worker_generation, worker_stop, ctx))
+            .spawn(move || sample_loop(worker_latest, worker_generation, worker_stop, ctx, tray))
             .expect("failed to start process sampler");
 
         Self {
@@ -67,6 +68,7 @@ fn sample_loop(
     generation: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
     ctx: egui::Context,
+    tray: Option<TraySink>,
 ) {
     let mut system = System::new_all();
     let mut disks = Disks::new_with_refreshed_list();
@@ -232,6 +234,21 @@ fn sample_loop(
             services: Arc::clone(&services),
         };
 
+        if let Some(tray) = &tray {
+            tray.publish(TraySample {
+                cpu_percent: snapshot.cpu_percent,
+                memory_percent: if snapshot.memory_total_bytes == 0 {
+                    0.0
+                } else {
+                    snapshot.memory_used_bytes as f32 / snapshot.memory_total_bytes as f32 * 100.0
+                },
+                gpu_percent: snapshot
+                    .gpu
+                    .available
+                    .then_some(snapshot.gpu.utilization_percent),
+                process_count: snapshot.process_count,
+            });
+        }
         if let Ok(mut slot) = latest.write() {
             *slot = snapshot;
             generation.store(sequence, Ordering::Release);

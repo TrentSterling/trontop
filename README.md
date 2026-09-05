@@ -13,8 +13,9 @@ Version 0.3 alpha provides:
 - CPU, memory, disk, network, and GPU performance drill-downs
 - History, Startup, Users, Details, and Services pages backed by native data
 - a frameless Tront shell and persistent live gradient Theme Studio
-- theme-derived alternating table rows and high-contrast dual-signal selection states
-- a live CPU tray meter with CPU, memory, GPU, and process-count tooltip
+- alternating row and gradient column bands, padded cells, and high-contrast selection
+- a live full-width CPU tray meter with scrolling history and a resource tooltip,
+  updated on its own native thread even when the main window is hidden
 - an embedded multi-resolution Trontop icon and Windows version metadata
 - an event-driven egui UI that does not poll the operating system on the render thread
 

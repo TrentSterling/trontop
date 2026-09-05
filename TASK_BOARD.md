@@ -33,6 +33,16 @@ This is the durable resume board. Keep it honest and update it when a slice land
 
 ## Visual polish queue
 
+- [ ] Apply the full app-wide zebra, rounded surfaces, badges/buttons, and spacing brief in `docs/UI_POLISH_BRIEF.md`, including Performance and every dialog/list
+- [x] Dedicated native tray thread, broad CPU level fill, and advancing history trace
+- [x] Alternating column bands, consistent table cell insets, reserved table-footer space
+- [x] Replace broken character-wrapping Users cards with an aligned resource table
+- [x] Scrollable inspector and visible non-floating scrollbars
+- [ ] Recheck left alignment: some labels still appear centered despite Label::halign
+- [ ] Finish code-drawn vector navigation/window controls and stronger Tront branding (no emoji icons)
+- [ ] Finish small-window Performance content scrolling and remaining spacing audit
+- [ ] Diagnose sustained window-drag lag; findings in `docs/DRAG_INVESTIGATION.md`
+- [ ] Port a VERIFIED drag fix to other egui apps only after isolated before/after measurement
 - [ ] Replace the cloned/sorted process view with stable snapshot indices and cached sort keys
 - [ ] Responsive compact navigation below 1150 logical pixels
 - [ ] Configurable table columns and saved widths
@@ -47,12 +57,13 @@ This is the durable resume board. Keep it honest and update it when a slice land
 ## Release work
 
 - [x] Define private-alpha, release-candidate, public-preview, and rollback gates in `RELEASE_PLAN.md`
-- [ ] Create and push the private `TrentSterling/trontop` GitHub repository (waiting on GitHub CLI reauthentication)
+- [x] Create and push the private `TrentSterling/trontop` GitHub repository; first Windows CI passed
+- [ ] Push the parked local UI/tray checkpoint, run CI for that exact commit, and publish the private alpha
 - [x] Embed version metadata and a generated multi-resolution Trontop application icon in the PE
 - [x] Add a Windows GitHub Actions gate that uploads the portable review executable
 - [ ] Add an About panel with build hash and provider health
 - [ ] Add snapshot export to JSON/CSV
-- [ ] Add a deterministic telemetry replay harness for UI screenshots and regressions
+- [ ] Add a deterministic HEADLESS telemetry replay harness for all seven pages, compact layouts, themes, search, selection, and text bounds. No desktop input injection.
 - [ ] Sign the portable executable when the Tront signing pipeline is available
 
 ## Non-negotiables

@@ -2,11 +2,23 @@
 
 ## Current sampler
 
-The 0.2 sampler owns one long-lived `sysinfo::System`, disk list, network list, user
+The sampler owns one long-lived `sysinfo::System`, disk list, network list, user
 list, and GPU PDH query on a dedicated thread. It refreshes live counters every
 second, publishes one immutable snapshot, and requests one UI repaint. Startup and
 service inventory refresh every 30 seconds. The render thread performs no
 operating-system queries.
+
+The sampler also publishes a compact CPU/memory/GPU/process-count sample directly to
+the dedicated `trontop-tray` thread. A coalescing slot and native thread message wake
+that thread. The tray icon, menu and native message loop are owned and destroyed there;
+updates no longer depend on the main UI accepting a sample. Hovering the icon does not
+request UI repaints. The 26-observation CPU history advances even if successive values
+round to the same percentage. The file/taskbar icon remains the static Tront T mark.
+
+The explicit interactive test `native_tray_updates_without_any_ui_frames` is ignored
+by default; it creates a real tray icon. Do not run desktop-interactive checks on
+Trent's working desktop without fresh agreement. The larger headless UI smoke harness
+is still pending; see `TASK_BOARD.md` and `AGENTS.md`.
 
 `sysinfo` reports process CPU as a percentage of one logical processor, so Trontop
 divides it by the logical processor count. This matches the whole-machine percentage
