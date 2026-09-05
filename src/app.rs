@@ -253,11 +253,7 @@ impl TrontopApp {
         );
         widgets::push_history(
             &mut self.gpu_history,
-            if snapshot.gpu.available {
-                snapshot.gpu.utilization_percent
-            } else {
-                f32::NAN
-            },
+            snapshot.gpu.reading().exact().unwrap_or(f32::NAN),
             HISTORY_LENGTH,
         );
         for (name, _) in &snapshot.gpu.engine_utilization {
@@ -504,10 +500,7 @@ impl TrontopApp {
                         widgets::mini_meter(
                             ui,
                             "GPU",
-                            self.snapshot
-                                .gpu
-                                .available
-                                .then_some(self.snapshot.gpu.utilization_percent),
+                            self.snapshot.gpu.reading().exact(),
                             theme::mix(t.accent, t.secondary, 0.5),
                             t,
                         );
@@ -729,12 +722,14 @@ impl TrontopApp {
                     widgets::hover_label(ui,
                         RichText::new(format!("PID {} | {}", process.pid, process.user))
                             .monospace()
-                            .color(t.accent),
+                            .color(t.text),
                     );
                     ui.add_space(10.0);
                     widgets::detail_row(ui, "Status", &process.status, t);
                     widgets::detail_row(ui, "CPU", &format::percent(process.cpu_percent), t);
-                    widgets::detail_row(ui, "GPU", &format::percent(process.gpu_percent), t);
+                    widgets::detail_row(ui, "GPU", &process.gpu_percent.label(), t);
+                    widgets::hover_label(ui, RichText::new(process.gpu_percent.status()).size(10.0).color(t.text_muted))
+                        .on_hover_text(process.gpu_percent.explanation());
                     widgets::detail_row(ui, "Working set", &format::bytes(process.memory_bytes), t);
                     widgets::detail_row(ui, "Virtual", &format::bytes(process.virtual_memory_bytes), t);
                     widgets::detail_row(ui, "Disk read", &format::rate(process.read_bytes_per_sec), t);
@@ -953,11 +948,7 @@ impl TrontopApp {
 
     fn telemetry_strip(&self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let gpu_value = if self.snapshot.gpu.available {
-            format::percent(self.snapshot.gpu.utilization_percent)
-        } else {
-            "-- %".into()
-        };
+        let gpu_value = self.snapshot.gpu.reading().label();
         ui.columns(4, |columns| {
             widgets::stat_card(
                 &mut columns[0],
@@ -990,7 +981,7 @@ impl TrontopApp {
                 "GPU",
                 &gpu_value,
                 if self.snapshot.gpu.available {
-                    "Windows GPU Engine PDH"
+                    "Busiest Windows GPU engine"
                 } else {
                     self.snapshot
                         .gpu
@@ -1269,11 +1260,10 @@ impl TrontopApp {
                         }
                     });
                     widgets::table_column(&mut row, t, |ui| {
-                        if widgets::heat_cell(
+                        if widgets::gpu_cell(
                             ui,
                             display.totals.gpu_percent,
-                            format::percent(display.totals.gpu_percent),
-                            t.secondary,
+                            display.totals.process_count > 1,
                             t,
                         ) {
                             clicked_pid = Some(process.pid);
@@ -1386,11 +1376,7 @@ impl TrontopApp {
 
     fn performance_rail(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let gpu_value = if self.snapshot.gpu.available {
-            format::percent(self.snapshot.gpu.utilization_percent)
-        } else {
-            "UNAVAILABLE".into()
-        };
+        let gpu_value = self.snapshot.gpu.reading().label();
         if widgets::device_button(
             ui,
             self.performance_device == PerformanceDevice::Cpu,
@@ -1711,12 +1697,8 @@ impl TrontopApp {
         widgets::performance_heading(
             ui,
             "GPU ENGINE ARRAY",
-            "Windows GPU Engine counters",
-            &if self.snapshot.gpu.available {
-                format::percent(self.snapshot.gpu.utilization_percent)
-            } else {
-                "-- %".into()
-            },
+            "Busiest engine; >= means partial coverage",
+            &self.snapshot.gpu.reading().label(),
             color,
             t,
         );
@@ -1729,8 +1711,8 @@ impl TrontopApp {
                 .engine_utilization
                 .iter()
                 .find(|(name, _)| name == engine)
-                .map(|(_, value)| *value)
-                .filter(|_| self.snapshot.gpu.available);
+                .and_then(|(_, value)| value.exact())
+                .filter(|_| self.snapshot.gpu.error.is_none());
             widgets::engine_meter(ui, engine, usage, color, t);
         }
         self.provider_notice(ui, crate::diagnostics::Provider::GpuActivity);
@@ -1893,16 +1875,20 @@ impl TrontopApp {
                                 format::percent(user.cpu_percent),
                                 t.accent,
                             ),
-                            (
-                                user.gpu_percent,
-                                format::percent(user.gpu_percent),
-                                t.secondary,
-                            ),
-                            (0.0, format::bytes(user.memory_bytes), t.accent),
-                            (0.0, format::rate(user.disk_bytes_per_sec), t.secondary),
                         ] {
                             widgets::table_column(&mut row, t, |ui| {
                                 widgets::heat_cell(ui, value, label, color, t);
+                            });
+                        }
+                        widgets::table_column(&mut row, t, |ui| {
+                            widgets::gpu_cell(ui, user.gpu_percent, true, t);
+                        });
+                        for (label, color) in [
+                            (format::bytes(user.memory_bytes), t.accent),
+                            (format::rate(user.disk_bytes_per_sec), t.secondary),
+                        ] {
+                            widgets::table_column(&mut row, t, |ui| {
+                                widgets::heat_cell(ui, 0.0, label, color, t);
                             });
                         }
                     })

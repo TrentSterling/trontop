@@ -3,6 +3,7 @@
 mod app;
 mod diagnostics;
 mod format;
+mod gpu_activity;
 mod gpu_sensors;
 mod icons;
 mod model;

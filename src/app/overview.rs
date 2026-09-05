@@ -17,11 +17,11 @@ impl TrontopApp {
             let has_sample = self.seen_generation > 0;
             let cpu = if has_sample { format::percent(self.snapshot.cpu_percent) } else { "--".into() };
             let ram = if self.snapshot.memory_total_bytes > 0 { format::percent(memory_percent(&self.snapshot)) } else { "--".into() };
-            let gpu = if self.snapshot.gpu.available { format::percent(self.snapshot.gpu.utilization_percent) } else { "--".into() };
+            let gpu = self.snapshot.gpu.reading().label();
             ui.columns(4, |cols| {
                 widgets::stat_card(&mut cols[0], "CPU", &cpu, "Whole-machine load", t.accent, self.theme, t);
                 widgets::stat_card(&mut cols[1], "MEMORY", &ram, "Physical memory used", t.secondary, self.theme, t);
-                widgets::stat_card(&mut cols[2], "GPU ACTIVITY", &gpu, "Windows GPU Engine counters", t.secondary, self.theme, t);
+                widgets::stat_card(&mut cols[2], "GPU ACTIVITY", &gpu, "Busiest Windows GPU engine", t.secondary, self.theme, t);
                 widgets::stat_card(&mut cols[3], "UPTIME", &if has_sample { format::duration(self.snapshot.uptime_seconds) } else { "--".into() }, &format!("{} processes", self.snapshot.process_count), t.good, self.theme, t);
             });
             ui.add_space(12.0);

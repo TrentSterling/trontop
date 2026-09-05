@@ -5,7 +5,7 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.7 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.8 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Implemented: Overview and Hardware sensors navigation, About/provider diagnostics
@@ -18,8 +18,17 @@ temperatures using isolated, bounded workers with timeout/backoff/cache states.
 The TEAM SSD returned three real readings in the opt-in native test. CPU/motherboard
 providers remain unconnected. No full Task Manager parity.
 
-Local tests: 55 passed, 0 failed, 4 opt-in tests ignored. Strict Clippy passes.
-Offscreen QA produced 28 PNGs without native windows/input. Native end-to-end close
+Alpha.8 preserves warmed PDH handles across inventory refreshes, aggregates GPU
+activity by physical engine identity, and distinguishes measured/partial/warming/
+unreported/unavailable process values. Missing data no longer becomes fake zero in
+process, tree or user cells. Partial totals use `>=`; compact meters/tray omit partial
+values, and history records gaps. Inspector status stays one line with hover detail.
+
+Local tests: 64 passed, 0 failed, 5 opt-in tests ignored. Strict Clippy passes.
+Offscreen QA produced 33 PNGs without native windows/input. The read-only PDH refresh
+test retained 690 handles, with 690/690 valid rates afterward (2.938 ms inventory).
+The optimized alpha.8 review EXE is built and dependency-inspected, not launched.
+Native end-to-end close
 latency and dragging performance are NOT measured. CPU provider research and the
 slow SSD/HDD probe findings are in `docs/SENSORS_PLAN.md`; no driver install authority.
 
@@ -33,10 +42,11 @@ Trontop. The previous EXE is backed up at
 This is a development preview, not a published alpha release. Do not automatically
 restart it again for subsequent edits. Read the newest `docs/CURRENT_STATE.md` section.
 
-Next: preserve/display individual startup-source results, finish per-process GPU
-missing-value semantics, investigate remaining CPU/motherboard sensor coverage, then continue
+Next: preserve/display individual startup-source results, investigate remaining
+CPU/motherboard sensor coverage, then continue
 slim components and real executable icons with a bounded background cache. Complete
-the release gates in `RELEASE_PLAN.md`; alpha.4 CI is not verification of alpha.7.
+the release gates in `RELEASE_PLAN.md`. Alpha.7 Windows CI run 33953608787 passed;
+that run is not verification of the new alpha.8 source. No alpha release is published.
 
 ## Previous verified checkpoint
 

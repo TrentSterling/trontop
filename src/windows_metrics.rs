@@ -1,3 +1,4 @@
+use crate::gpu_activity::{self, EngineInstance, Usage};
 use crate::model::{GpuSnapshot, ServiceRow};
 use std::collections::HashMap;
 
@@ -15,7 +16,7 @@ mod native {
         PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_VALID_DATA, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE,
         PDH_HCOUNTER, PDH_HQUERY, PDH_MORE_DATA, PERF_DETAIL_WIZARD, PdhAddEnglishCounterW,
         PdhCloseQuery, PdhCollectQueryData, PdhEnumObjectItemsW, PdhGetFormattedCounterValue,
-        PdhOpenQueryW,
+        PdhOpenQueryW, PdhRemoveCounter,
     };
     use windows::Win32::System::Services::{
         CloseServiceHandle, ENUM_SERVICE_STATUS_PROCESSW, EnumServicesStatusExW, OpenSCManagerW,
@@ -26,15 +27,15 @@ mod native {
     use windows::core::{PCWSTR, PWSTR};
 
     struct Counter {
-        pid: u32,
-        engine: String,
+        instance: String,
+        identity: EngineInstance,
         handle: PDH_HCOUNTER,
+        samples: u8,
     }
 
     pub struct GpuSampler {
         query: Option<PDH_HQUERY>,
         counters: Vec<Counter>,
-        samples: u32,
         last_error: Option<String>,
     }
 
@@ -43,36 +44,81 @@ mod native {
             let mut sampler = Self {
                 query: None,
                 counters: Vec::new(),
-                samples: 0,
                 last_error: None,
             };
-            sampler.rebuild();
+            sampler.refresh_instances();
             sampler
         }
 
-        pub fn rebuild(&mut self) {
-            self.close_query();
-            match enumerate_gpu_instances().and_then(open_gpu_query) {
-                Ok((query, counters)) if !counters.is_empty() => {
-                    self.query = Some(query);
-                    self.counters = counters;
-                    self.samples = 0;
-                    self.last_error = None;
-                    unsafe {
-                        let _ = PdhCollectQueryData(query);
-                    }
+        pub fn refresh_instances(&mut self) {
+            // Keep existing handles and their previous samples. An inventory refresh
+            // must not force every live rate through another warm-up interval.
+            let instances = match enumerate_gpu_instances() {
+                Ok(instances) => instances
+                    .into_iter()
+                    .collect::<std::collections::HashSet<_>>(),
+                Err(error) => {
+                    self.last_error = Some(error);
+                    return;
                 }
-                Ok((query, _)) => {
-                    unsafe {
-                        let _ = PdhCloseQuery(query);
-                    }
-                    self.last_error = Some("No active Windows GPU Engine counters".into());
+            };
+            if self.query.is_none() {
+                let mut query = PDH_HQUERY::default();
+                let status = unsafe { PdhOpenQueryW(PCWSTR::null(), 0, &mut query) };
+                if status != 0 {
+                    self.last_error = Some(format!("Could not open GPU PDH query: 0x{status:08X}"));
+                    return;
                 }
-                Err(error) => self.last_error = Some(error),
+                self.query = Some(query);
+            }
+            let query = self.query.unwrap();
+            self.last_error = None;
+            self.counters.retain(|counter| {
+                if instances.contains(&counter.instance) {
+                    return true;
+                }
+                let status = unsafe { PdhRemoveCounter(counter.handle) };
+                if status != 0 {
+                    self.last_error = Some(format!("Could not remove GPU counter: 0x{status:08X}"));
+                    return true; // Query still owns it; retry at the next inventory.
+                }
+                false
+            });
+            let retained: std::collections::HashSet<_> = self
+                .counters
+                .iter()
+                .map(|counter| counter.instance.clone())
+                .collect();
+            for instance in instances {
+                if retained.contains(&instance) {
+                    continue;
+                }
+                let Some(identity) = EngineInstance::parse(&instance) else {
+                    self.last_error = Some("Unrecognized GPU engine identity".into());
+                    continue;
+                };
+                let path = format!(r"\GPU Engine({instance})\Utilization Percentage");
+                let wide: Vec<_> = path.encode_utf16().chain(Some(0)).collect();
+                let mut handle = PDH_HCOUNTER::default();
+                let status =
+                    unsafe { PdhAddEnglishCounterW(query, PCWSTR(wide.as_ptr()), 0, &mut handle) };
+                if status == 0 {
+                    self.counters.push(Counter {
+                        instance,
+                        identity,
+                        handle,
+                        samples: 0,
+                    });
+                } else {
+                    self.last_error = Some(format!("Could not add GPU counter: 0x{status:08X}"));
+                }
+            }
+            if self.counters.is_empty() {
+                self.last_error = Some("No active Windows GPU Engine counters".into());
             }
         }
 
-        pub fn sample(&mut self) -> (GpuSnapshot, HashMap<u32, f32>) {
+        pub fn sample(&mut self) -> (GpuSnapshot, HashMap<u32, Usage>) {
             let Some(query) = self.query else {
                 return (
                     GpuSnapshot {
@@ -83,8 +129,22 @@ mod native {
                 );
             };
 
+            if self.counters.is_empty() {
+                return (
+                    GpuSnapshot {
+                        error: self.last_error.clone(),
+                        ..Default::default()
+                    },
+                    HashMap::new(),
+                );
+            }
             let status = unsafe { PdhCollectQueryData(query) };
             if status != 0 {
+                // A failed collection breaks the interval. Re-prime counters before
+                // publishing a rate after recovery, never interpolate across it.
+                for counter in &mut self.counters {
+                    counter.samples = 0;
+                }
                 return (
                     GpuSnapshot {
                         error: Some(format!("PDH GPU collection failed: 0x{status:08X}")),
@@ -93,51 +153,52 @@ mod native {
                     HashMap::new(),
                 );
             }
-            self.samples += 1;
-            if self.samples < 2 {
-                return (GpuSnapshot::default(), HashMap::new());
-            }
-
-            let mut by_pid = HashMap::<u32, f32>::new();
-            let mut by_engine = HashMap::<String, f32>::new();
+            let mut readings = Vec::with_capacity(self.counters.len());
             let mut valid_counters = 0;
-            for counter in &self.counters {
+            for counter in &mut self.counters {
+                counter.samples = counter.samples.saturating_add(1);
+                if counter.samples < 2 {
+                    readings.push((&counter.identity, Usage::Warming));
+                    continue;
+                }
                 let mut value = PDH_FMT_COUNTERVALUE::default();
                 let status = unsafe {
                     PdhGetFormattedCounterValue(counter.handle, PDH_FMT_DOUBLE, None, &mut value)
                 };
-                let Some(number) = counter_reading(
+                let number = counter_reading(
                     status == 0,
                     value.CStatus == PDH_CSTATUS_VALID_DATA
                         || value.CStatus == PDH_CSTATUS_NEW_DATA,
                     unsafe { value.Anonymous.doubleValue },
-                ) else {
-                    continue;
-                };
-                valid_counters += 1;
-                *by_pid.entry(counter.pid).or_default() += number;
-                *by_engine.entry(counter.engine.clone()).or_default() += number;
+                );
+                if number.is_some() {
+                    valid_counters += 1;
+                }
+                readings.push((
+                    &counter.identity,
+                    number.map_or(Usage::Unavailable, Usage::Measured),
+                ));
             }
-            for value in by_pid.values_mut() {
-                *value = value.clamp(0.0, 100.0);
+            let (total, mut by_pid, engines) = gpu_activity::aggregate(readings);
+            // Incomplete enumeration may have omitted an engine for any process.
+            if self.last_error.is_some() {
+                for reading in by_pid.values_mut() {
+                    if let Some(value) = reading.value() {
+                        *reading = Usage::Partial(value);
+                    }
+                }
             }
-            let mut engines = by_engine.into_iter().collect::<Vec<_>>();
-            engines.sort_by(|a, b| b.1.total_cmp(&a.1));
-            for (_, value) in &mut engines {
-                *value = value.clamp(0.0, 100.0);
-            }
-            let total = engines
-                .iter()
-                .map(|(_, value)| *value)
-                .fold(0.0_f32, f32::max);
             (
                 GpuSnapshot {
                     available: valid_counters > 0,
                     valid_counters,
                     total_counters: self.counters.len(),
-                    utilization_percent: total,
+                    utilization_percent: total.value().unwrap_or_default(),
                     engine_utilization: engines,
-                    error: (valid_counters == 0).then(|| "No valid GPU counter readings".into()),
+                    error: self.last_error.clone().or_else(|| {
+                        (total == Usage::Unavailable)
+                            .then(|| "No valid GPU counter readings".into())
+                    }),
                 },
                 by_pid,
             )
@@ -201,47 +262,6 @@ mod native {
             return Err(format!("Could not enumerate GPU engines: 0x{status:08X}"));
         }
         Ok(parse_multi_sz(&instances))
-    }
-
-    fn open_gpu_query(instances: Vec<String>) -> Result<(PDH_HQUERY, Vec<Counter>), String> {
-        let mut query = PDH_HQUERY::default();
-        let status = unsafe { PdhOpenQueryW(PCWSTR::null(), 0, &mut query) };
-        if status != 0 {
-            return Err(format!("Could not open GPU PDH query: 0x{status:08X}"));
-        }
-
-        let mut counters = Vec::new();
-        for instance in instances {
-            let Some((pid, engine)) = parse_gpu_instance(&instance) else {
-                continue;
-            };
-            let path = format!(r"\GPU Engine({instance})\Utilization Percentage");
-            let wide = path.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-            let mut handle = PDH_HCOUNTER::default();
-            let status =
-                unsafe { PdhAddEnglishCounterW(query, PCWSTR(wide.as_ptr()), 0, &mut handle) };
-            if status == 0 {
-                counters.push(Counter {
-                    pid,
-                    engine,
-                    handle,
-                });
-            }
-        }
-        Ok((query, counters))
-    }
-
-    fn parse_gpu_instance(instance: &str) -> Option<(u32, String)> {
-        let pid_start = instance.find("pid_")? + 4;
-        let pid_end = instance[pid_start..].find('_')? + pid_start;
-        let pid = instance[pid_start..pid_end].parse().ok()?;
-        let engine = instance
-            .split("engtype_")
-            .nth(1)
-            .unwrap_or("GPU")
-            .trim()
-            .to_string();
-        Some((pid, engine))
     }
 
     fn parse_multi_sz(buffer: &[u16]) -> Vec<String> {
@@ -322,6 +342,57 @@ mod native {
         }
         .into()
     }
+
+    #[cfg(test)]
+    mod gpu_tests {
+        use super::*;
+        use std::time::{Duration, Instant};
+
+        #[test]
+        #[ignore = "Read-only native GPU PDH query; no app window, tray or input"]
+        fn native_gpu_refresh_preserves_warm_counters() {
+            let mut sampler = GpuSampler::new();
+            assert!(sampler.query.is_some(), "{:?}", sampler.last_error);
+            assert!(!sampler.counters.is_empty(), "{:?}", sampler.last_error);
+            let first = sampler.sample();
+            assert!(!first.0.available);
+            std::thread::sleep(Duration::from_millis(250));
+            let second = sampler.sample();
+            assert!(second.0.available, "{:?}", second.0.error);
+            let before: HashMap<_, _> = sampler
+                .counters
+                .iter()
+                .map(|c| (c.instance.clone(), (c.handle.0, c.samples)))
+                .collect();
+            let started = Instant::now();
+            sampler.refresh_instances();
+            let refresh_ms = started.elapsed().as_secs_f64() * 1000.0;
+            let mut retained = 0;
+            for counter in &sampler.counters {
+                if let Some(&(handle, samples)) = before.get(&counter.instance) {
+                    assert_eq!(counter.handle.0, handle);
+                    assert_eq!(counter.samples, samples);
+                    retained += 1;
+                }
+            }
+            assert!(retained > 0);
+            std::thread::sleep(Duration::from_millis(250));
+            let (after, processes) = sampler.sample();
+            assert!(after.available, "{:?}", after.error);
+            assert!(
+                processes
+                    .values()
+                    .filter_map(|v| v.value())
+                    .all(|v| v.is_finite() && (0.0..=100.0).contains(&v))
+            );
+            eprintln!(
+                "Native GPU refresh: {retained} handles retained, {refresh_ms:.3} ms inventory, {}/{} valid counters, {} PID readings; no UI/input",
+                after.valid_counters,
+                after.total_counters,
+                processes.len()
+            );
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -336,9 +407,9 @@ impl GpuSampler {
         Self
     }
 
-    pub fn rebuild(&mut self) {}
+    pub fn refresh_instances(&mut self) {}
 
-    pub fn sample(&mut self) -> (GpuSnapshot, HashMap<u32, f32>) {
+    pub fn sample(&mut self) -> (GpuSnapshot, HashMap<u32, Usage>) {
         (
             GpuSnapshot {
                 error: Some("GPU Engine counters require Windows".into()),

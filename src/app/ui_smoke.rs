@@ -21,7 +21,7 @@ fn fixture() -> SystemSnapshot {
             user: "FIXTURE\\LongAccountName".into(),
             status: "Running".into(),
             cpu_percent: index as f32 * 0.13,
-            gpu_percent: index as f32 * 0.05,
+            gpu_percent: crate::gpu_activity::Usage::Measured(index as f32 * 0.05),
             memory_bytes: 256_000_000 + index as u64 * 17_000_000,
             accumulated_cpu_millis: index as u64 * 87_600,
             started_at_unix: 1_700_000_000,
@@ -95,9 +95,12 @@ fn fixture() -> SystemSnapshot {
             total_counters: 32,
             utilization_percent: 23.8,
             engine_utilization: vec![
-                ("3D".into(), 23.8),
-                ("Copy".into(), 1.2),
-                ("Video Decode".into(), 5.7),
+                ("3D".into(), crate::gpu_activity::Usage::Measured(23.8)),
+                ("Copy".into(), crate::gpu_activity::Usage::Measured(1.2)),
+                (
+                    "Video Decode".into(),
+                    crate::gpu_activity::Usage::Measured(5.7),
+                ),
             ],
             error: None,
         },
@@ -153,7 +156,7 @@ fn fixture() -> SystemSnapshot {
             name: "FIXTURE\\LongAccountName".into(),
             process_count: 64,
             cpu_percent: 37.2,
-            gpu_percent: 23.8,
+            gpu_percent: crate::gpu_activity::Usage::Measured(23.8),
             memory_bytes: 41_000_000_000,
             disk_bytes_per_sec: 153_400_000.0,
         }],
@@ -195,6 +198,39 @@ fn app(settings: ThemeSettings, populated: bool) -> TrontopApp {
     }
     assert!(app.sampler.is_none() && app.tray.is_none());
     app
+}
+
+/// Deliberately mixed fixture coverage, including a partly measured parent group.
+fn gpu_activity_fixture(app: &mut TrontopApp) {
+    use crate::gpu_activity::Usage;
+    let mut snapshot = fixture();
+    let readings = [
+        Usage::Measured(0.0),
+        Usage::Measured(12.34),
+        Usage::Partial(4.56),
+        Usage::Unavailable,
+        Usage::Warming,
+        Usage::Unreported,
+    ];
+    snapshot.processes.truncate(readings.len());
+    snapshot.process_count = readings.len();
+    snapshot.users.clear();
+    for (index, (process, reading)) in snapshot.processes.iter_mut().zip(readings).enumerate() {
+        process.name = format!("Fixture.Gpu.{}.exe", index + 1);
+        process.gpu_percent = reading;
+        snapshot.users.push(UserSummary {
+            name: format!("Fixture account {}", index + 1),
+            process_count: 1,
+            gpu_percent: reading,
+            ..Default::default()
+        });
+    }
+    snapshot.gpu.valid_counters = 24;
+    snapshot.gpu.total_counters = 32;
+    snapshot.gpu.engine_utilization[0].1 = Usage::Partial(23.8);
+    app.sort_column = SortColumn::Pid;
+    app.sort_direction = SortDirection::Ascending;
+    app.accept_sample(snapshot);
 }
 
 fn frame(
@@ -848,6 +884,184 @@ fn drive_sensor_fields_stay_aligned_for_live_cached_unavailable_and_disconnected
 }
 
 #[test]
+fn gpu_cells_keep_right_alignment_and_distinguish_unknown_zero_and_partial() {
+    use crate::gpu_activity::Usage;
+    for dark in [true, false] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let mut right_edge: Option<f32> = None;
+        for usage in [
+            Usage::Measured(0.0),
+            Usage::Measured(99.9),
+            Usage::Partial(12.34),
+            Usage::Unavailable,
+            Usage::Warming,
+            Usage::Unreported,
+        ] {
+            let ctx = egui::Context::default();
+            theme::install(&ctx, settings);
+            let mut output = egui::FullOutput::default();
+            for _ in 0..3 {
+                output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            Vec2::new(100.0, 36.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        widgets::gpu_cell(ui, usage, true, theme::tokens(settings));
+                    },
+                );
+            }
+            assert!(output.platform_output.commands.is_empty());
+            let texts = text_shapes(&output);
+            let (text, clip) = texts
+                .iter()
+                .find(|(text, _)| text.galley.job.text == usage.label())
+                .unwrap();
+            let bounds = text.visual_bounding_rect();
+            assert!(clip.contains_rect(bounds));
+            assert_eq!(text.galley.rows.len(), 1);
+            if let Some(expected) = right_edge {
+                assert!((bounds.right() - expected).abs() < 1.1);
+            }
+            right_edge = Some(bounds.right());
+            if usage.value().is_none() {
+                assert!(
+                    !texts
+                        .iter()
+                        .any(|(text, _)| text.galley.job.text == "0.00%")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
+    for dark in [true, false] {
+        for page in [Page::Processes, Page::Details, Page::Users] {
+            let settings = ThemeSettings {
+                dark,
+                ..Default::default()
+            };
+            let ctx = egui::Context::default();
+            theme::install(&ctx, settings);
+            let mut app = app(settings, true);
+            gpu_activity_fixture(&mut app);
+            app.page = page;
+            app.tree_mode = false;
+            let size = Vec2::new(1280.0, 760.0);
+            let mut output = egui::FullOutput::default();
+            for _ in 0..3 {
+                output = frame(&ctx, &mut app, size, vec![]);
+            }
+            for expected in ["0.00%", "12.3%", ">=4.56%", "-- %"] {
+                assert!(
+                    text_shapes(&output).iter().any(|(text, clip)| {
+                        text.galley.job.text == expected
+                            && text.galley.rows.len() == 1
+                            && clip.contains_rect(text.visual_bounding_rect())
+                    }),
+                    "missing or clipped {expected} on page {}, dark={dark}",
+                    page as u8
+                );
+            }
+            if page == Page::Processes {
+                app.tree_mode = true;
+                let output = frame(&ctx, &mut app, size, vec![]);
+                assert!(
+                    text_shapes(&output)
+                        .iter()
+                        .any(|(text, _)| { text.galley.job.text == ">=16.9%" })
+                );
+                app.selected_pid = Some(900_005);
+                let output = frame(&ctx, &mut app, size, vec![]);
+                assert!(
+                    text_shapes(&output)
+                        .iter()
+                        .any(|(text, _)| { text.galley.job.text == "No counter reported" })
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn inspector_gpu_status_cannot_shift_neighboring_fields() {
+    use crate::gpu_activity::Usage;
+    for dark in [true, false] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        gpu_activity_fixture(&mut app);
+        app.page = Page::Processes;
+        app.selected_pid = Some(900_005);
+        let size = Vec2::new(1040.0, 640.0);
+        let mut anchor: Option<egui::Rect> = None;
+        for usage in [
+            Usage::Measured(0.0),
+            Usage::Partial(12.34),
+            Usage::Warming,
+            Usage::Unreported,
+            Usage::Unavailable,
+        ] {
+            app.snapshot.processes[5].gpu_percent = usage;
+            let mut output = egui::FullOutput::default();
+            for _ in 0..3 {
+                output = frame(&ctx, &mut app, size, vec![]);
+            }
+            let texts = text_shapes(&output);
+            let (status, clip) = texts
+                .iter()
+                .find(|(t, _)| t.galley.job.text == usage.status())
+                .unwrap();
+            assert_eq!(status.galley.rows.len(), 1);
+            assert!(clip.contains_rect(status.visual_bounding_rect()));
+            let (working_set, clip) = texts
+                .iter()
+                .find(|(t, _)| t.galley.job.text == "Working set")
+                .unwrap();
+            let rect = working_set.visual_bounding_rect();
+            assert!(clip.contains_rect(rect));
+            if let Some(previous) = anchor {
+                assert_eq!(rect, previous);
+            }
+            anchor = Some(rect);
+        }
+    }
+}
+
+#[test]
+fn partial_gpu_coverage_leaves_history_gaps_and_keeps_engine_names() {
+    let mut app = app(ThemeSettings::default(), true);
+    assert_eq!(app.gpu_history.back().copied(), Some(23.8));
+    gpu_activity_fixture(&mut app);
+    assert!(app.gpu_history.back().unwrap().is_nan());
+    let engine_names = app.gpu_engine_names.clone();
+    let mut snapshot = app.snapshot.clone();
+    snapshot.gpu = GpuSnapshot {
+        error: Some("Fixture provider failed".into()),
+        ..Default::default()
+    };
+    app.accept_sample(snapshot.clone());
+    assert!(app.gpu_history.back().unwrap().is_nan());
+    assert_eq!(app.gpu_engine_names, engine_names);
+    snapshot.gpu = fixture().gpu;
+    snapshot.gpu.utilization_percent = 0.0;
+    app.accept_sample(snapshot);
+    assert_eq!(app.gpu_history.back().copied(), Some(0.0));
+}
+
+#[test]
 fn sensor_histories_follow_identity_not_enumeration_order_and_drop_stale_values() {
     let mut app = TrontopApp::with_services(ThemeSettings::default(), None, None);
     let mut snapshot = fixture();
@@ -927,6 +1141,11 @@ fn render_offscreen_visual_pass() {
         "storage-sensors-light",
         "storage-sensors-cached",
         "storage-sensors-unavailable",
+        "gpu-activity-processes-compact",
+        "gpu-activity-tree-light",
+        "gpu-activity-users",
+        "gpu-activity-inspector-light",
+        "gpu-activity-partial",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -950,6 +1169,19 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant == "theme-studio";
+        if variant.starts_with("gpu-activity") {
+            gpu_activity_fixture(&mut app);
+            app.page = Page::Processes;
+            app.tree_mode = variant == "gpu-activity-tree-light";
+            if variant == "gpu-activity-users" {
+                app.page = Page::Users;
+            } else if variant == "gpu-activity-inspector-light" {
+                app.selected_pid = Some(900_005);
+            } else if variant == "gpu-activity-partial" {
+                app.page = Page::Performance;
+                app.performance_device = PerformanceDevice::Gpu;
+            }
+        }
         app.show_diagnostics = variant.starts_with("about");
         if variant.starts_with("overview") {
             app.page = Page::Overview;
@@ -1003,7 +1235,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 28 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 33 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

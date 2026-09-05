@@ -16,7 +16,7 @@ use sysinfo::{Disks, Networks, ProcessesToUpdate, System, Users};
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const INVENTORY_INTERVAL: u64 = 30;
-const GPU_REBUILD_INTERVAL: u64 = 30;
+const GPU_INVENTORY_INTERVAL: u64 = 30;
 const CONTROL_REFRESH_INTERVAL: u64 = 5;
 
 pub struct Sampler {
@@ -172,12 +172,12 @@ fn sample_loop(
         }
 
         let gpu_started = Instant::now();
-        if sequence > 0 && sequence.is_multiple_of(GPU_REBUILD_INTERVAL) {
-            gpu_sampler.rebuild();
+        if sequence > 0 && sequence.is_multiple_of(GPU_INVENTORY_INTERVAL) {
+            gpu_sampler.refresh_instances();
         }
         let (gpu, gpu_by_pid) = gpu_sampler.sample();
         let gpu_state = if gpu.available {
-            if gpu.valid_counters == gpu.total_counters {
+            if gpu.valid_counters == gpu.total_counters && gpu.error.is_none() {
                 State::Live
             } else {
                 State::Partial
@@ -222,10 +222,7 @@ fn sample_loop(
                     status: format!("{:?}", process.status()),
                     user,
                     cpu_percent: (process.cpu_usage() / logical_cpu_count).clamp(0.0, 100.0),
-                    gpu_percent: gpu_by_pid
-                        .get(&process.pid().as_u32())
-                        .copied()
-                        .unwrap_or_default(),
+                    gpu_percent: gpu.for_process(&gpu_by_pid, process.pid().as_u32()),
                     memory_bytes: process.memory(),
                     virtual_memory_bytes: process.virtual_memory(),
                     read_bytes_per_sec: disk.read_bytes as f64 / sample_seconds,
@@ -378,10 +375,7 @@ fn sample_loop(
                 } else {
                     snapshot.memory_used_bytes as f32 / snapshot.memory_total_bytes as f32 * 100.0
                 },
-                gpu_percent: snapshot
-                    .gpu
-                    .available
-                    .then_some(snapshot.gpu.utilization_percent),
+                gpu_percent: snapshot.gpu.reading().exact(),
                 process_count: snapshot.process_count,
             });
         }
@@ -449,9 +443,13 @@ fn aggregate_users(processes: &[ProcessRow]) -> Vec<UserSummary> {
                 name: process.user.clone(),
                 ..Default::default()
             });
+        row.gpu_percent = if row.process_count == 0 {
+            process.gpu_percent
+        } else {
+            row.gpu_percent.sum(process.gpu_percent)
+        };
         row.process_count += 1;
         row.cpu_percent += process.cpu_percent;
-        row.gpu_percent += process.gpu_percent;
         row.memory_bytes += process.memory_bytes;
         row.disk_bytes_per_sec += process.read_bytes_per_sec + process.write_bytes_per_sec;
     }
@@ -476,6 +474,28 @@ fn wait_for_stop(stop: &AtomicBool, duration: Duration) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn user_gpu_totals_do_not_turn_missing_process_data_into_zero() {
+        use crate::gpu_activity::Usage;
+        let processes: Vec<_> = [
+            ("a", Usage::Measured(7.0)),
+            ("a", Usage::Unavailable),
+            ("b", Usage::Measured(0.0)),
+            ("c", Usage::Unreported),
+        ]
+        .into_iter()
+        .map(|(user, gpu_percent)| ProcessRow {
+            user: user.into(),
+            gpu_percent,
+            ..Default::default()
+        })
+        .collect();
+        let users = aggregate_users(&processes);
+        let usage = |name: &str| users.iter().find(|u| u.name == name).unwrap().gpu_percent;
+        assert_eq!(usage("a"), Usage::Partial(7.0));
+        assert_eq!(usage("b"), Usage::Measured(0.0));
+        assert_eq!(usage("c"), Usage::Unreported);
+    }
     #[test]
     fn inventory_failure_retains_cache_and_last_success_until_recovery() {
         let mut cache = Arc::new(Vec::new());

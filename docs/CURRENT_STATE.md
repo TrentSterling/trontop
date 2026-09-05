@@ -2,7 +2,59 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.7 isolated drive temperatures
+## Latest source: alpha.8 GPU lifecycle and truthful activity states
+
+Branch `feat/provider-diagnostics`. GPU inventory reconciliation now preserves
+existing PDH handles and their rate samples. Only newly added counters warm up.
+Failed enumeration leaves existing handles owned and explicitly marks incomplete
+coverage. A failed collection re-primes rates instead of bridging the failed interval.
+
+- Engine identity includes adapter LUID, physical adapter and engine index. Per-PID
+  utilization uses the busiest engine. Physical-engine load sums its PID readings;
+  the machine summary is the maximum engine load. It no longer sums parallel engines
+  or unrelated adapters into a misleading engine-type total.
+- Missing GPU data is distinct from zero through process/Details lists, process-tree
+  and account totals, inspector, summary cards, meters and sorting. Partial totals
+  use `>=` with explanations. Unknown readings sort last in both directions.
+- Group GPU totals remain sums of process peaks, explicitly described on hover,
+  not whole-GPU utilization. Partial/unavailable machine samples make history gaps;
+  compact meters and the tray GPU tooltip conservatively omit partial values.
+- The redesign skill's state/alignment audit led to fixed-height short inspector
+  status text with the full reason on hover, main-token PID/account contrast, and
+  five new GPU-state visual fixtures. Existing rounded zebra/hover surfaces remain.
+
+Verification: formatting PASS; 64 tests passed, 0 failed, 5 opt-in tests ignored
+(22.48 s); strict Clippy PASS. Explicit offscreen pass PASS, 33 fixture PNGs in
+20.05 s on RTX 5070 Ti/Vulkan. Reviewed compact Processes, light tree/inspector,
+Users, partial GPU Performance and Overview. The extra inspector regression requires
+identical neighboring-field geometry through five live/missing states in both modes.
+Headless UI checks do not execute viewport or clipboard commands.
+
+The separately selected native PDH probe retained 690 handles, refreshed inventory
+in 2.938 ms, and produced 690/690 valid rates and 39 PID readings after refresh.
+Earlier probe: 690 retained, 5.351 ms. These are short read-only lifecycle checks,
+not benchmarks of total app overhead, dragging or exact Task Manager parity.
+
+Separate optimized review EXE: `target/review-build/release/trontop.exe`,
+12,910,080 bytes, PE version 0.3.0-alpha.8, SHA-256:
+`E25B63533890B395EC3AFE9E7E6FABAB9FF8BA65A3B5E8F9119334133584B53D`.
+Build PASS (39.62 s), from modified e6db3e7 source before checkpoint. `dumpbin`
+shows Windows-only imports, no bundled vendor library/dynamic MSVC runtime or runtime
+asset folder. The EXE was not launched. No deployed alpha.5 replacement/restart,
+desktop input, focus change, native window manipulation or shortcut installation.
+
+Alpha.7's private Windows CI run
+[33953608787](https://github.com/TrentSterling/trontop/actions/runs/33953608787)
+passed all steps, including artifact upload, for e6db3e734bcb5a8eed967f85b62b66330fbb9719
+at 08:10:14 UTC on 2026-09-05. That run does not verify alpha.8; its remote gate is
+still pending. No release/tag is published.
+
+Next: finish per-source startup status, CPU/motherboard coverage, executable icons
+and release gates. GPU process creation may await the 30-tick inventory cycle plus
+rate priming. Per-adapter GPU pages/VRAM mapping remain open. The Ctrl+Shift+Esc
+proposal remains research only, with no hook or system-setting changes.
+
+## Previous: alpha.7 isolated drive temperatures
 
 Branch `feat/provider-diagnostics`. Added a native read-only storage provider and
 slim zebra/hover sensor rows with fixed numeric alignment, guided by the supplied

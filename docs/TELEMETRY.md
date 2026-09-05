@@ -17,8 +17,8 @@ round to the same percentage. The file/taskbar icon remains the static Tront T m
 
 The explicit interactive test `native_tray_updates_without_any_ui_frames` is ignored
 by default; it creates a real tray icon. Do not run desktop-interactive checks on
-Trent's working desktop without fresh agreement. The larger headless UI smoke harness
-is still pending; see `TASK_BOARD.md` and `AGENTS.md`.
+Trent's working desktop without fresh agreement. The headless UI smoke harness is
+implemented separately; see `HEADLESS_QA.md` and `AGENTS.md`.
 
 `sysinfo` reports process CPU as a percentage of one logical processor, so Trontop
 divides it by the logical processor count. This matches the whole-machine percentage
@@ -29,11 +29,49 @@ not an assumed perfect one-second interval.
 
 Current providers use these Windows sources:
 
-1. The `GPU Engine` PDH object is enumerated for exact instances. PIDs and engine
-   types are parsed from returned instance names and aggregated. Query counters are
-   rebuilt periodically as engines appear and disappear.
+1. The `GPU Engine` PDH object is enumerated for exact instances. The identity includes
+   PID, adapter LUID, physical adapter index, engine index and engine type. Every
+   30 sampler ticks, inventory reconciliation adds/removes individual counters on
+   the existing query. Retained handles keep previous samples; only new counters
+   require priming. Inventory failures preserve handles and mark incomplete coverage.
 2. Service inventory comes from `EnumServicesStatusExW` and includes state and PID.
 3. Startup inventory reads the documented HKCU/HKLM Run keys and both Startup folders.
+
+## GPU aggregation and missing data (alpha.8)
+
+`gpu_activity::Usage` distinguishes Measured, Partial, Warming, Unreported and
+Unavailable. API success alone is insufficient: formatted PDH values require a valid
+counter status and finite, nonnegative data. Real zero is preserved. A failed query
+collection breaks the interval and re-primes rates on recovery.
+
+- A process reports its busiest measured engine across adapters, not the sum of
+  engines that can operate in parallel.
+- A physical engine sums its PID readings. The machine summary is the busiest
+  physical engine, not the sum of all engines named 3D, or of different adapters.
+  The current engine-type rows similarly show the busiest engine of that type.
+- A process without a returned counter is Unreported, not proven idle. Process
+  creation can wait until the next inventory cycle plus a rate-priming sample.
+- Partially readable totals are labeled `>=` and explained as lower bounds. Process
+  tree/account groups still sum process peaks and can exceed 100%; their tooltips
+  explicitly distinguish this total from whole-GPU utilization.
+- Missing values use `-- %`, including in the selected inspector. Numeric GPU values
+  sort ahead of missing entries in both directions. State text does not shift
+  neighboring inspector fields during refresh.
+- Only fully measured machine samples extend the GPU chart. Missing/partial samples
+  make gaps. Compact meters and the tray GPU tooltip conservatively report missing
+  when the overall value is partial; they do not display an incomplete number as exact.
+
+These aggregation choices follow Microsoft's documented Task Manager semantics for
+busiest-engine summaries. They do not prove sample-for-sample parity: polling windows,
+inventory age, unsupported counters and Task Manager's internal collection differ.
+Per-adapter identification, engine mapping to NVML GPUs and per-process VRAM remain open.
+
+The opt-in native refresh check retained 690 handles, measured 2.938 ms inventory
+time and produced 690/690 valid counter readings after refresh on 2026-09-05. This
+is a short read-only lifecycle check, not a whole-app performance or accuracy benchmark.
+
+- [Microsoft: GPU metrics in Task Manager](https://devblogs.microsoft.com/directx/gpus-in-the-task-manager/)
+- [Microsoft: adding/removing counters on a PDH query](https://learn.microsoft.com/en-us/windows/win32/perfctrs/creating-a-query)
 
 Future providers should:
 

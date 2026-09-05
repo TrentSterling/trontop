@@ -19,6 +19,9 @@ separate, read-only `native_nvml_read_only_probe` opt-in test queries the instal
 NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
 The `native_storage_ssd_probe` opt-in test is additionally restricted to the exact
 previously identified TEAM SSD. It is not run by generic CI or the visual harness.
+The separately selected `native_gpu_refresh_preserves_warm_counters` test opens its
+own read-only PDH query, primes rates, refreshes inventory, and verifies retained
+handles keep their samples. It never creates windows or installs input hooks.
 
 ## Coverage
 
@@ -57,11 +60,22 @@ previously identified TEAM SSD. It is not run by generic CI or the visual harnes
 - Fake storage backends exercise stuck I/O, independent fast-drive updates, timeout
   cancellation, retry deadlines, worker limits, disconnect/reconnect and bounded
   monitor drop. These tests do not query actual drives or manipulate the desktop.
+- Six GPU activity states keep right-aligned, single-line numeric cells in both
+  modes. Processes, Details and Users render measured zero, partial lower bounds
+  and missing data without clipping. Tree aggregation preserves incomplete coverage.
+- Inspector GPU status uses a short line with the full reason on hover; tests require
+  unchanged Working set geometry through measured/partial/warming/unreported/failed
+  states in compact dark/light layouts. PID/account text uses the main text token.
+- Partial/unavailable GPU samples leave history gaps, preserve known engine rows,
+  and recover to an explicit measured zero. Unknown values sort last in both
+  directions; process-tree and user totals cannot silently treat them as zeros.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes twenty-eight PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes thirty-three PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
+The five GPU-activity additions cover compact Processes, light process tree, Users,
+light selected inspector and partially available Performance counters.
 
 ## Limits
 

@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.7 diagnostics, drive sensors and icon polish
+## Current: alpha.8 GPU lifecycle, diagnostics, drive sensors and icon polish
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -20,14 +20,21 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Save four supplied mockup boards and transparent Signal identity candidate
   under `docs/inspiration`; candidate is not the shipped icon
 - [ ] Preserve/display startup-source details and independently stale service rows
-- [ ] Complete unavailable/warming/zero presentation for GPU activity consumers
+- [x] Preserve warmed PDH handles during inventory refresh and aggregate by real
+  physical-engine identity, not summed engine types or per-process parallel engines
+- [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
+  tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 55 tests pass, strict Clippy clean, 28 offscreen review PNGs
+  geometry coverage: 64 tests pass, strict Clippy clean, 33 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
   separate optimized alpha.7 EXE passes Windows-only dependency inspection
-- [ ] Verify alpha.7 in remote Windows CI; no alpha.7 release is published
+- [x] Alpha.7 Windows CI 33953608787 passed formatting/tests/Clippy/release/artifact
+- [x] Native GPU refresh retained 690 handles with 690/690 valid rates afterward;
+  2.938 ms inventory in one read-only run, not a whole-app performance benchmark
+- [x] Separate optimized alpha.8 EXE and Windows-only import inspection; not launched
+- [ ] Verify alpha.8 in remote Windows CI; no alpha release is published
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance

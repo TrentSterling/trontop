@@ -1,6 +1,6 @@
 # Next slice: provider health and support reports
 
-Alpha.7 source on `feat/provider-diagnostics` implements health metadata, About/status
+Alpha.8 source on `feat/provider-diagnostics` implements health metadata, About/status
 UI and explicit privacy-safe report copy. Timed attempts/success/coverage, service
 cache retention, native startup inventory, periodic CPU frequency, unknown account
 labels and PDH API/CStatus validation are wired. Provider failures can show cached
@@ -12,10 +12,13 @@ Drive sensors are the seventh provider, with independent freshness/coverage and
 per-drive costs rather than a misleading combined query duration. The default report
 still accepts only diagnostic metadata, never opaque storage interfaces or names.
 
-Local verification: 55 passing tests, strict Clippy clean, 28 offscreen PNGs. Read
+Local verification: 64 passing tests, strict Clippy clean, 33 offscreen PNGs. Read
 `CURRENT_STATE.md` for the review build and the separate still-running alpha.5 preview.
-Remote CI/release for this branch is not complete. Individual startup-source result
-preservation/display and per-process GPU unavailable semantics remain open.
+Alpha.7 remote Windows CI passed; alpha.8 remote verification and release remain open.
+Individual startup-source result preservation/display still needs work. Per-process
+GPU missing-value semantics now extend through lists, groups, inspector and sorting.
+PDH inventory refresh retains rate history on existing handles. Partial totals remain
+lower bounds, never exact readings; see `TELEMETRY.md` for semantics and native checks.
 
 The audit findings below describe the original code, not necessarily its current
 state, and are not claims of reproduced failures on Trent's machine.

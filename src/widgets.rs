@@ -494,6 +494,37 @@ fn table_label(ui: &mut egui::Ui, text: RichText) -> egui::Response {
 }
 
 pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t: Tokens) -> bool {
+    heat_cell_response(ui, value, label, color, t).clicked()
+}
+
+pub fn gpu_cell(
+    ui: &mut egui::Ui,
+    usage: crate::gpu_activity::Usage,
+    grouped: bool,
+    t: Tokens,
+) -> bool {
+    let mut explanation = usage.explanation().to_string();
+    if grouped {
+        explanation.push_str(" Grouped rows sum process peaks; this is not whole-GPU utilization.");
+    }
+    heat_cell_response(
+        ui,
+        usage.value().unwrap_or_default(),
+        usage.label(),
+        t.secondary,
+        t,
+    )
+    .on_hover_text(explanation)
+    .clicked()
+}
+
+fn heat_cell_response(
+    ui: &mut egui::Ui,
+    value: f32,
+    label: String,
+    color: Color32,
+    t: Tokens,
+) -> egui::Response {
     let response = ui.allocate_response(ui.available_size(), Sense::click());
     if value > 0.05 {
         let alpha = (18.0 + value.clamp(0.0, 100.0) * 0.72) as u8;
@@ -510,7 +541,7 @@ pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t
         FontId::monospace(11.0),
         t.text,
     );
-    response.clicked()
+    response
 }
 
 pub fn performance_heading(

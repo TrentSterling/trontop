@@ -1,3 +1,4 @@
+use crate::gpu_activity::Usage;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -81,7 +82,7 @@ pub struct ProcessRow {
     pub status: String,
     pub user: String,
     pub cpu_percent: f32,
-    pub gpu_percent: f32,
+    pub gpu_percent: Usage,
     pub memory_bytes: u64,
     pub virtual_memory_bytes: u64,
     pub read_bytes_per_sec: f64,
@@ -119,7 +120,7 @@ impl ProcessRow {
 pub struct ProcessTotals {
     pub process_count: usize,
     pub cpu_percent: f32,
-    pub gpu_percent: f32,
+    pub gpu_percent: Usage,
     pub memory_bytes: u64,
     pub read_bytes_per_sec: f64,
     pub write_bytes_per_sec: f64,
@@ -138,9 +139,12 @@ impl ProcessTotals {
     }
 
     fn add(&mut self, child: Self) {
+        if child.process_count == 0 {
+            return;
+        }
         self.process_count += child.process_count;
         self.cpu_percent += child.cpu_percent;
-        self.gpu_percent += child.gpu_percent;
+        self.gpu_percent = self.gpu_percent.sum(child.gpu_percent);
         self.memory_bytes = self.memory_bytes.saturating_add(child.memory_bytes);
         self.read_bytes_per_sec += child.read_bytes_per_sec;
         self.write_bytes_per_sec += child.write_bytes_per_sec;
@@ -193,8 +197,34 @@ pub struct GpuSnapshot {
     pub valid_counters: usize,
     pub total_counters: usize,
     pub utilization_percent: f32,
-    pub engine_utilization: Vec<(String, f32)>,
+    pub engine_utilization: Vec<(String, Usage)>,
     pub error: Option<String>,
+}
+
+impl GpuSnapshot {
+    pub fn reading(&self) -> Usage {
+        if self.available {
+            if self.valid_counters == self.total_counters && self.error.is_none() {
+                Usage::Measured(self.utilization_percent)
+            } else {
+                Usage::Partial(self.utilization_percent)
+            }
+        } else if self.error.is_none() {
+            Usage::Warming
+        } else {
+            Usage::Unavailable
+        }
+    }
+
+    pub fn for_process(&self, readings: &HashMap<u32, Usage>, pid: u32) -> Usage {
+        readings.get(&pid).copied().unwrap_or_else(|| {
+            if self.available {
+                Usage::Unreported
+            } else {
+                self.reading()
+            }
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -217,7 +247,7 @@ pub struct UserSummary {
     pub name: String,
     pub process_count: usize,
     pub cpu_percent: f32,
-    pub gpu_percent: f32,
+    pub gpu_percent: Usage,
     pub memory_bytes: u64,
     pub disk_bytes_per_sec: f64,
 }
@@ -288,13 +318,21 @@ fn compare_processes(
     column: SortColumn,
     direction: SortDirection,
 ) -> Ordering {
+    // Missing entries stay below numeric values in both sort directions.
+    if column == SortColumn::Gpu {
+        match (a.gpu_percent.value(), b.gpu_percent.value()) {
+            (Some(_), None) => return Ordering::Less,
+            (None, Some(_)) => return Ordering::Greater,
+            _ => {}
+        }
+    }
     let ordering = match column {
         SortColumn::Name => natural_name_cmp(&a.name, &b.name),
         SortColumn::Pid => a.pid.cmp(&b.pid),
         SortColumn::Status => a.status.cmp(&b.status),
         SortColumn::User => natural_name_cmp(&a.user, &b.user),
         SortColumn::Cpu => float_cmp(a.cpu_percent, b.cpu_percent),
-        SortColumn::Gpu => float_cmp(a.gpu_percent, b.gpu_percent),
+        SortColumn::Gpu => float_cmp(a.gpu_percent.value(), b.gpu_percent.value()),
         SortColumn::Memory => a.memory_bytes.cmp(&b.memory_bytes),
         SortColumn::ReadRate => float_cmp(a.read_bytes_per_sec, b.read_bytes_per_sec),
         SortColumn::WriteRate => float_cmp(a.write_bytes_per_sec, b.write_bytes_per_sec),
@@ -523,6 +561,42 @@ fn natural_name_cmp(a: &str, b: &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_sort_keeps_missing_last_and_tree_preserves_incomplete_totals() {
+        let mut root = row(1, "root", 1.0);
+        root.gpu_percent = Usage::Measured(0.0);
+        let mut child = row(2, "child", 2.0);
+        child.parent_pid = Some(1);
+        child.gpu_percent = Usage::Unreported;
+        let mut high = row(3, "high", 3.0);
+        high.gpu_percent = Usage::Measured(80.0);
+        let mut rows = vec![root, child, high];
+        sort_processes(&mut rows, SortColumn::Gpu, SortDirection::Ascending);
+        assert_eq!(rows.iter().map(|r| r.pid).collect::<Vec<_>>(), [1, 3, 2]);
+        sort_processes(&mut rows, SortColumn::Gpu, SortDirection::Descending);
+        assert_eq!(rows.iter().map(|r| r.pid).collect::<Vec<_>>(), [3, 1, 2]);
+        let tree = build_process_tree(
+            &rows,
+            &HashSet::from([1, 2, 3]),
+            &HashSet::new(),
+            SortColumn::Pid,
+            SortDirection::Ascending,
+        );
+        assert_eq!(tree[0].totals.gpu_percent, Usage::Partial(0.0));
+        let mut snapshot = GpuSnapshot::default();
+        let empty = HashMap::new();
+        assert_eq!(snapshot.for_process(&empty, 1), Usage::Warming);
+        snapshot.error = Some("Fixture unavailable".into());
+        assert_eq!(snapshot.for_process(&empty, 1), Usage::Unavailable);
+        snapshot.available = true;
+        snapshot.error = None;
+        assert_eq!(snapshot.for_process(&empty, 1), Usage::Unreported);
+        assert_eq!(
+            snapshot.for_process(&HashMap::from([(1, Usage::Measured(0.0))]), 1),
+            Usage::Measured(0.0)
+        );
+    }
 
     #[test]
     fn contradictory_native_identity_is_not_attached_to_a_snapshot_row() {
