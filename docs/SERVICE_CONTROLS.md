@@ -46,6 +46,11 @@ identity. [Microsoft QueryServiceStatusEx](https://learn.microsoft.com/en-us/win
 - One command can be active, with one coalesced progress slot. Commands never run
   on the render thread or live telemetry sampler, and repeated clicks cannot queue
   a backlog. Worker failure leaves inventory readable and controls disabled.
+- Alpha.25 also makes UI result polling use `try_lock`: a worker descheduled
+  while publishing cannot hold up a frame. A busy slot retains its completion for
+  a later poll, and publication requests repaint after unlocking. A regression
+  holds the slot, verifies polling returns while held, then verifies exactly one
+  completion and busy-state clearing. It issues no native service command.
 - Observation polls every 250 ms with a 30-second deadline per target state.
   This is not an upper bound on a blocking native call. The worker can wait on
   Windows while the UI continues; actual UI responsiveness under a stuck native

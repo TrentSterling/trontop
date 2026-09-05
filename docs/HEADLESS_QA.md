@@ -33,6 +33,15 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.25 adds four regressions for bounded background graphics diagnostics and
+  non-waiting service-result polling. The actual renderer callback is exercised
+  with a saturated queue and blocked writer. Final ordinary suite: 213 pass,
+  13 ignored; strict Clippy/format/release PASS. Fresh optimized offscreen tests
+  recover identical pixels in 3/3 device-loss cycles and keep an injected stalled
+  recovery worker non-blocking. See `FAILURE_REPORTS.md` and `CURRENT_STATE.md`.
+  No visual/layout code changed; alpha.24's 93 PNGs were not regenerated or
+  claimed as fresh alpha.25 visual evidence. No native window or input was used.
+
 - Alpha.24 adds seven compact-control regressions: six dialog types across two
   sizes/four UI scales, stable name/action geometry, full-name hover, affinity
   scrolling/high-bit/zero-mask/review behavior, numeric History alignment and

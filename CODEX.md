@@ -5,6 +5,23 @@ must not modify this repository.
 
 ## Current checkpoint
 
+Alpha.25 is the local callback-responsiveness candidate: recoverable GPU diagnostics
+use one bounded background writer, and service-result polling uses `try_lock`.
+Four new regressions; final gate 213 passed, 13 ignored, strict Clippy/format/release
+PASS. Fresh optimized offscreen recovery: 3/3 pixel-identical cycles. The actual
+main callback also passes a separate full-queue/blocked-writer regression. See
+`docs/FAILURE_REPORTS.md` and latest `docs/CURRENT_STATE.md` for exact identity.
+No layout changes or new PNG claims; no preview opened/closed/replaced or upload.
+The next verified code-level wait is eframe settings persistence: autosave and
+drop join a writer indefinitely, startup reads synchronously and writes truncate
+directly. Fix with preservation/migration/unsaved/error tests, not silent detached
+theme saves. Tray startup also has an unbounded ready wait. These findings do not
+establish the original crash or slow-close trigger. A13/A20/A21/A22/A25 remain open.
+Relaunch, isolated-desktop and upload approval remain unanswered. Do not retry the
+rejected source upload by any route. Keep the persistent goal active.
+
+The alpha.24 and older checkpoints below are historical.
+
 Alpha.24 is the local compact-control candidate: fixed-height dialog identity
 cards, aligned History numeric tracks, bounded responsive affinity tiles and an
 explicit requested-CPU summary on confirmation. Seven new regressions; final gate

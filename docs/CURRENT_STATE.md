@@ -2,7 +2,61 @@
 
 Last updated: 2026-09-05
 
-## Latest candidate: alpha.24 compact controls and History
+## Latest candidate: alpha.25 non-blocking recovery diagnostics
+
+Recoverable GPU events now update recovery state before trying a bounded
+background-log enqueue; slow disk I/O cannot directly block that callback.
+Service-result polling now skips a busy publication mutex and retains its result
+for a later frame. No native action guards, theme/layout behavior or renderer
+recreation algorithms changed. See `FAILURE_REPORTS.md` and `SERVICE_CONTROLS.md`.
+
+Final ordinary gate: **213 passed, 0 failed, 13 ignored** (25.63 s), strict Clippy
+PASS (5.46 s), format/diff checks PASS, optimized build PASS (42.02 s). Four new
+regressions cover the actual callback with a blocked/full writer queue, caller
+metadata/file schema, disabled/healthy/disconnected paths and held service-result
+publication. One optimized blocked-writer run measured **781.2 us** for 1,000
+saturated enqueue attempts plus two real callback state transitions, **7.2 us**
+for drop, and verified all 17 accepted records drained after fixture release.
+
+Fresh optimized offscreen recovery on the RTX 5070 Ti/Vulkan: **3/3 pixel-identical
+recoveries**, **112.99 / 975.97 / 1025.37 ms** (repeated losses rate-limited), longest
+UI-side poll **0.066 ms**, replay storage **262,144 bytes**. Injected recovery
+stall: 1,000 polls **14.7 us**, drop **5.9 us**, one attempt while blocked. These
+tests destroy only their own offscreen device, not an adapter/driver or app window.
+The offscreen harness uses its own event observer; the actual main callback is
+covered separately by the saturated-log-queue regression. No native swapchain,
+drag/close/soak claim. No visual code changed; alpha.24's 93 PNGs were not rerun.
+
+Candidate: **`target/release/trontop.exe`**, **0.3.0-alpha.25**,
+**13,551,616 bytes**, built **2026-09-05 22:41:17.966 UTC** from modified 735fa33 source.
+SHA-256 **`737223AF89168D93A6057697D3973086A89D99EE64E20909DD2DA7ECAE019120`**.
+PE import inspection shows only Windows libraries; no clean-machine claim.
+
+### Next scoped wait: settings persistence (A13/A21/A22)
+
+The exact cached `eframe-0.35.0/src/native/file_storage.rs` was inspected:
+`flush` (line 167) joins a previous save thread without deadline; `Drop` (108)
+joins the final save; `save_to_disk` (197) directly creates/truncates the target;
+`read_ron` (230) loads synchronously without a size limit. Native integration calls
+storage flush after autosave/app-save. Trontop currently uses that storage for
+`state-v2.ron`, including the theme/library, and egui memory persistence is enabled.
+Main also creates the state directory synchronously. These are code-level waits,
+not a measured attribution of Trent's reported close lag or crash.
+
+Next implementation must avoid UI-thread waits while preserving old themes and
+named saves, with staged writes and explicit pending/error/close behavior. Do not
+silently detach an unsaved theme write to claim fast close. Test blocked writer,
+save coalescing, failure/retry, migration and shutdown policy using owned fixtures.
+No persistence code or user settings changed in alpha.25. A separate startup
+wait remains in `TrayController::new`: `ready_rx.recv()` and the failed worker's
+join can wait on slow shell initialization. No tray code changed this slice.
+
+Local only. No preview launched/replaced/closed, no global input and no new upload
+attempt. The older previews were untouched. Relaunch, isolated-desktop and explicit
+source-upload approval remain unanswered. Remote is still last verified alpha.21;
+there is no alpha.25 CI, tag or published release. The ledger and goal remain open.
+
+## Previous candidate: alpha.24 compact controls and History
 
 Long dialog names no longer move action buttons. Fixed-height identity cards
 retain full names on hover; PID/service identities have their own lines. History

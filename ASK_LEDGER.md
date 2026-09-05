@@ -84,6 +84,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   No forced random theme on the real app. Implemented in alpha.19; 175 ordinary
   tests pass, including new theme checks. Six theme views inspected among 67 PNGs.
   Native restart persistence and Trent's visual review remain. See `docs/THEME_STUDIO.md`.
+  Alpha.25 audit also found blocking eframe settings-save joins and direct file
+  truncation. Replace that persistence path without silently losing unsaved themes;
+  include migration, failed writes and close behavior in the acceptance gate.
 - [ ] **A14: Zebra rows AND columns throughout. PARTIAL / REVIEW.** Check every
   table, device list, inspector/detail list, History/Startup/Users/Services list,
   sensor group and dialog. Alternation must remain distinct beneath selection and
@@ -131,6 +134,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   actual native close latency still needs an authorized isolated measurement,
   including a slow provider. Window/tray should disappear promptly with no orphaned
   app instance. Do not call the thread unit test an end-to-end close test.
+  Alpha.25 code audit found an unbounded `FileStorage::drop` save-thread join in
+  pinned eframe 0.35.0. This path is not fixed or proven to explain Trent's slow
+  close. The next scoped task is persistence safety/responsiveness (A13/A21/A22).
 - [ ] **A22: Low overhead and stable responsiveness. PARTIAL.** Indexed process views,
   iterative trees and isolated workers have real improvements and synthetic timing
   evidence. Final release needs visible/hidden/tray/mixed-load CPU, memory, handles,
@@ -142,6 +148,11 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   Alpha.22 removes native process/shell action calls from the UI thread, with
   single-flight dispatch, honest pending/results, and stalled-navigation tests.
   See `docs/PROCESS_ACTION_SAFETY.md`; this does not prove native drag/close timing.
+  Alpha.25 moves recoverable GPU diagnostics off renderer callbacks and makes
+  service-result mailbox polling non-waiting. Four new tests pass, including
+  callback state changes with a saturated queue. See `docs/FAILURE_REPORTS.md`.
+  Settings autosave still joins a prior writer; tray startup still waits for its
+  worker. These audited waits remain open, not assumed causes of the crash.
 - [x] **A23: Safe automation that does not mess with other work.** Headless fixtures
   do not open native windows, inject global input, change focus or execute viewport
   commands. `AGENTS.md` forbids the previous unsafe desktop behavior. Any future
@@ -221,7 +232,9 @@ expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
    (A20/A22/A25), plus focused A15/A16 alignment polish, not a feature expansion.
    Alpha.22 additionally removes synchronous UI process/shell calls (A22).
    Deliver the current tested candidate with its exact identity and native limits.
-2. Keep A13 unchecked until restart persistence and visual acceptance are confirmed.
+2. Address the audited settings-save/startup waits under A13/A21/A22, preserving
+   existing themes and explicit unsaved/error behavior. Keep A13 unchecked until
+   native restart persistence and visual acceptance are confirmed.
 3. Resolve permission for isolated native measurements before touching any windows.
    Work the remaining bounded asks and release decisions, not new alpha features.
 

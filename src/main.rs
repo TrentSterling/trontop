@@ -54,6 +54,7 @@ fn run(failures: std::sync::Arc<failure::Recorder>) -> eframe::Result {
     let persistence_path = trontop_state_path();
     let graphics_recovering = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let recovery_signal = std::sync::Arc::clone(&graphics_recovering);
+    let graphics_events = failure::BackgroundRecorder::new(failures);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Trontop")
@@ -65,19 +66,7 @@ fn run(failures: std::sync::Arc<failure::Recorder>) -> eframe::Result {
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
             recover_device: true,
             on_renderer_event: std::sync::Arc::new(move |event| {
-                use eframe::egui_wgpu::RendererEvent;
-                let kind = match event {
-                    RendererEvent::DeviceLost => failure::Kind::GpuDeviceLost,
-                    RendererEvent::UploadFailed => failure::Kind::GpuUploadFailed,
-                    RendererEvent::RecoveryStarted => failure::Kind::GpuRecoveryStarted,
-                    RendererEvent::Recovered => failure::Kind::GpuRecovered,
-                    RendererEvent::RecoveryFailed => failure::Kind::GpuRecoveryFailed,
-                };
-                recovery_signal.store(
-                    !matches!(event, RendererEvent::Recovered),
-                    std::sync::atomic::Ordering::Release,
-                );
-                failures.record(kind, None);
+                handle_renderer_event(&recovery_signal, &graphics_events, event);
             }),
             ..Default::default()
         },
@@ -92,6 +81,26 @@ fn run(failures: std::sync::Arc<failure::Recorder>) -> eframe::Result {
         options,
         Box::new(move |cc| Ok(Box::new(TrontopApp::new(cc, graphics_recovering)))),
     )
+}
+
+fn handle_renderer_event(
+    signal: &std::sync::atomic::AtomicBool,
+    events: &failure::BackgroundRecorder,
+    event: eframe::egui_wgpu::RendererEvent,
+) {
+    use eframe::egui_wgpu::RendererEvent;
+    let kind = match event {
+        RendererEvent::DeviceLost => failure::Kind::GpuDeviceLost,
+        RendererEvent::UploadFailed => failure::Kind::GpuUploadFailed,
+        RendererEvent::RecoveryStarted => failure::Kind::GpuRecoveryStarted,
+        RendererEvent::Recovered => failure::Kind::GpuRecovered,
+        RendererEvent::RecoveryFailed => failure::Kind::GpuRecoveryFailed,
+    };
+    signal.store(
+        !matches!(event, RendererEvent::Recovered),
+        std::sync::atomic::Ordering::Release,
+    );
+    events.record(kind);
 }
 
 fn trontop_state_path() -> Option<std::path::PathBuf> {

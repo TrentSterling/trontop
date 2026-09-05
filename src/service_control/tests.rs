@@ -319,6 +319,52 @@ fn blocked_native_call_does_not_block_controller_drop() {
     assert!(elapsed < Duration::from_millis(200), "{elapsed:?}");
 }
 
+#[test]
+fn busy_result_mailbox_cannot_block_ui_poll_or_lose_completion() {
+    let mut controller = Controller {
+        active: Some(request(Action::Stop)),
+        requests: None,
+        latest: Arc::new(std::sync::Mutex::new(None)),
+        stop: Arc::new(AtomicBool::new(false)),
+        worker: None,
+    };
+    let mailbox = Arc::clone(&controller.latest);
+    let mut held = mailbox.lock().unwrap();
+    *held = Some(Event {
+        name: "FixtureService".into(),
+        action: Action::Stop,
+        phase: "Completed",
+        observed: None,
+        command_at: Some(Instant::now()),
+        done: true,
+        error: None,
+    });
+    let (sent, received) = mpsc::channel();
+    let poller = thread::spawn(move || {
+        let event = controller.poll();
+        sent.send((controller, event)).unwrap();
+    });
+    // Release even when regressing to lock(), so a failing check cannot hang CI.
+    let early = received.recv_timeout(Duration::from_millis(200));
+    let was_nonblocking = early.is_ok();
+    drop(held);
+    let (mut controller, event) = early
+        .or_else(|_| received.recv_timeout(Duration::from_secs(3)))
+        .unwrap();
+    poller.join().unwrap();
+    assert!(
+        was_nonblocking,
+        "UI poll waited for the worker publication lock"
+    );
+    assert!(event.is_none());
+    assert!(controller.busy());
+    let event = controller.poll().expect("held completion was lost");
+    assert!(event.done);
+    assert_eq!(event.phase, "Completed");
+    assert!(!controller.busy());
+    assert!(controller.poll().is_none());
+}
+
 // Used only by the local egui fixture harness. No native service handles exist.
 pub(crate) fn fixture_controller(ctx: eframe::egui::Context, initial: Status) -> Controller {
     Controller::with_backend(ctx, backend(initial).0)

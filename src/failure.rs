@@ -4,6 +4,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, SyncSender};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const LOG_NAME: &str = "failures-v1.jsonl";
@@ -12,6 +13,7 @@ const HEADER: &str = "{\"format\":\"trontop-failure-log-v1\"}\n";
 const MAX_RECORDS: usize = 32;
 const MAX_RECORD_BYTES: usize = 2048;
 const MAX_FILE_BYTES: usize = HEADER.len() + MAX_RECORDS * MAX_RECORD_BYTES;
+const MAX_PENDING: usize = 16;
 
 #[derive(Clone, Copy)]
 pub enum Kind {
@@ -71,6 +73,15 @@ impl Recorder {
     }
 
     pub fn record(&self, kind: Kind, location: Option<(&str, u32, u32)>) {
+        if self.path.is_none() {
+            return;
+        }
+        if let Ok(record) = capture(kind, location) {
+            self.append_record(&record);
+        }
+    }
+
+    fn append_record(&self, record: &[u8]) {
         let Some(path) = &self.path else { return };
         if self.writing.swap(true, Ordering::AcqRel) {
             return;
@@ -82,16 +93,63 @@ impl Recorder {
             }
         }
         let _reset = Reset(&self.writing);
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .ok()
-            .and_then(|value| u64::try_from(value.as_millis()).ok());
-        let current = std::thread::current();
-        if let Ok(record) = encode(kind, location, current.name(), now) {
-            // Reporting cannot replace the original error. File I/O is best effort;
-            // try_lock never waits on another instance. Disk I/O has no time guarantee.
-            let _ = append(path, &record);
+        // Reporting cannot replace the original error. File I/O is best effort;
+        // try_lock never waits on another instance. Disk I/O has no time guarantee.
+        let _ = append(path, record);
+    }
+}
+
+fn capture(kind: Kind, location: Option<(&str, u32, u32)>) -> io::Result<Vec<u8>> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|value| u64::try_from(value.as_millis()).ok());
+    encode(kind, location, std::thread::current().name(), now)
+}
+
+/// Recoverable graphics events must not put filesystem work on the render/device
+/// callback. Capture only the existing allowlisted metadata on the caller, then
+/// try one bounded enqueue. No retries, unbounded queue, worker respawn, or join.
+/// Panics/terminal runner failures keep the synchronous best-effort recorder.
+#[derive(Default)]
+pub struct BackgroundRecorder {
+    sender: Option<SyncSender<Vec<u8>>>,
+}
+
+impl BackgroundRecorder {
+    pub fn new(recorder: Arc<Recorder>) -> Self {
+        if recorder.path.is_none() {
+            return Self::default();
         }
+        Self::with_writer(move |record| recorder.append_record(&record))
+    }
+
+    fn with_writer(mut write: impl FnMut(Vec<u8>) + Send + 'static) -> Self {
+        let (sender, receiver) = mpsc::sync_channel(MAX_PENDING);
+        let result = std::thread::Builder::new()
+            .name("trontop-failure-writer".into())
+            .spawn(move || {
+                while let Ok(record) = receiver.recv() {
+                    write(record);
+                }
+            });
+        if result.is_ok() {
+            // Dropping a JoinHandle detaches; the worker owns its buffers and
+            // exits after the sender drops and queued records have been handled.
+            Self {
+                sender: Some(sender),
+            }
+        } else {
+            Self::default()
+        }
+    }
+
+    /// True means queued, not durably saved. Saturation/disconnection drops this
+    /// optional diagnostic rather than stalling recovery or UI input.
+    pub fn record(&self, kind: Kind) -> bool {
+        self.sender.as_ref().is_some_and(|sender| {
+            capture(kind, None).is_ok_and(|record| sender.try_send(record).is_ok())
+        })
     }
 }
 

@@ -1,5 +1,37 @@
 # Local failure reports (alpha.17)
 
+## Alpha.25: non-blocking recoverable graphics diagnostics
+
+Recoverable renderer callbacks no longer perform filesystem work. They first
+update the application's recovery flag, capture the same allowlisted event/time/
+caller-role metadata, and try one bounded enqueue. One background writer owns the
+record buffers and the existing recorder. Capacity is 16 pending records plus one
+in flight, each at most 2,048 bytes. A full/disconnected queue drops optional
+diagnostics; no retry, worker respawn, growing queue or shutdown join is added.
+The worker sleeps on its receiver between events. A healthy run creates no log.
+
+Queued does not mean durably saved. Process exit can discard pending diagnostics,
+and the shared writer's non-waiting guard can skip concurrent reports. Rust panic
+hooks and terminal native-runner failures retain synchronous best-effort logging;
+their disk I/O still has no latency guarantee. Schema, file limits, privacy and
+the original stderr panic hook are unchanged.
+
+Three new ordinary tests cover saturation while a writer is blocked, the actual
+main renderer callback's recovery-state transitions despite a full queue, caller
+role/capture time, fixture-file round trip, disabled/disconnected/healthy paths,
+and owned worker completion. One optimized run measured 1,000 rejected enqueue
+attempts plus two callback transitions in **781.2 us**, and controller drop in
+**7.2 us**; all 17 accepted records drained after releasing the fixture worker.
+This is injected-worker evidence, not a whole-app or physical-disk latency claim.
+No real failure log or running preview was touched.
+
+```powershell
+cargo test --offline --release background_records_bound_queue_and_never_wait_for_a_blocked_writer -- --nocapture --test-threads=1
+```
+
+The historical alpha.17/20 implementation and evidence below remain applicable
+except for recoverable renderer events' former synchronous dispatch.
+
 Alpha.20 also records closed-category GPU device loss, failed uploads, recovery
 attempt/success/failure and the `gpu_recovery` worker role. Schema/retention/privacy
 limits are unchanged. Healthy execution still creates no log. See
@@ -52,8 +84,9 @@ Path checks are not a security boundary against changes to ancestor directories.
 This is best-effort incident metadata, not a native exception handler or a
 transactional/power-loss-safe journal. Failed or interrupted writes may leave a
 partial log. No record is guaranteed if storage stalls or is unavailable; ordinary
-file I/O has no hard latency deadline. It runs only on failure, not on sampling or
-repaint. A malformed/oversized log is preserved unchanged; rename it manually if
+file I/O has no hard latency deadline. From alpha.25 recoverable renderer events
+dispatch it to a background worker; panic/terminal-error recording stays synchronous.
+A malformed/oversized log is preserved unchanged; rename it manually if
 you want a fresh one. There is no automatic read, upload or crash-recovery dialog.
 
 Direct forced termination, hangs, OS/driver/native access violations, allocation

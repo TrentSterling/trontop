@@ -371,7 +371,9 @@ impl Controller {
         Ok(())
     }
     pub fn poll(&mut self) -> Option<Event> {
-        let mut event = self.latest.lock().ok().and_then(|mut slot| slot.take());
+        // A worker descheduled while publishing must never park the UI thread.
+        // Leave the result in place for a later frame if it is currently held.
+        let mut event = self.latest.try_lock().ok().and_then(|mut slot| slot.take());
         if event.is_none()
             && self.worker.as_ref().is_some_and(JoinHandle::is_finished)
             && let Some(request) = &self.active

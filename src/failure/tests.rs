@@ -270,6 +270,135 @@ fn healthy_disabled_busy_and_runner_error_paths_do_not_change_original_results()
     assert!(records[0]["source_file"].is_null());
 }
 
+#[test]
+fn background_records_bound_queue_and_never_wait_for_a_blocked_writer() {
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    let (entered, waiting) = mpsc::channel();
+    let (release, blocked) = mpsc::channel();
+    let (written, records) = mpsc::channel();
+    let mut first = Some(blocked);
+    let background = BackgroundRecorder::with_writer(move |record| {
+        if let Some(blocked) = first.take() {
+            entered.send(()).unwrap();
+            let _ = blocked.recv();
+        }
+        written.send(record).unwrap();
+    });
+    assert!(background.record(Kind::GpuDeviceLost));
+    waiting.recv_timeout(Duration::from_secs(3)).unwrap();
+    for _ in 0..MAX_PENDING {
+        assert!(background.record(Kind::GpuRecoveryStarted));
+    }
+    let start = Instant::now();
+    for _ in 0..1000 {
+        assert!(!background.record(Kind::GpuRecoveryFailed));
+    }
+    // The actual renderer callback must update UI recovery state even when its
+    // diagnostic queue is saturated and the writer remains blocked.
+    let signal = AtomicBool::new(true);
+    crate::handle_renderer_event(
+        &signal,
+        &background,
+        eframe::egui_wgpu::RendererEvent::Recovered,
+    );
+    assert!(!signal.load(Ordering::Acquire));
+    crate::handle_renderer_event(
+        &signal,
+        &background,
+        eframe::egui_wgpu::RendererEvent::DeviceLost,
+    );
+    assert!(signal.load(Ordering::Acquire));
+    let enqueue_time = start.elapsed();
+    let start = Instant::now();
+    drop(background);
+    let drop_time = start.elapsed();
+    release.send(()).unwrap();
+    for index in 0..=MAX_PENDING {
+        let bytes = records.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(bytes.len() <= MAX_RECORD_BYTES);
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            value["kind"],
+            if index == 0 {
+                "gpu_device_lost"
+            } else {
+                "gpu_recovery_started"
+            }
+        );
+    }
+    // The owned worker is finished, rather than abandoned in the suite.
+    assert!(matches!(
+        records.recv_timeout(Duration::from_secs(3)),
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    ));
+    assert!(enqueue_time < Duration::from_secs(1), "{enqueue_time:?}");
+    assert!(drop_time < Duration::from_millis(200), "{drop_time:?}");
+    println!(
+        "Background failure log: 1000 saturated attempts {enqueue_time:?}, drop {drop_time:?}; {} buffered records drained",
+        MAX_PENDING + 1
+    );
+}
+
+#[test]
+fn background_records_keep_caller_role_time_and_existing_private_log_schema() {
+    use std::time::Duration;
+    let fixture = Fixture::new();
+    let recorder = Arc::new(Recorder::new(Some(fixture.log())));
+    let (written, records) = std::sync::mpsc::channel();
+    let background = BackgroundRecorder::with_writer(move |record| {
+        recorder.append_record(&record);
+        written.send(record).unwrap();
+    });
+    let caller = std::thread::Builder::new()
+        .name("trontop-gpu-recovery".into())
+        .spawn(move || {
+            let before = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
+            assert!(background.record(Kind::GpuRecovered));
+            let after = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
+            (before, after)
+        })
+        .unwrap();
+    let (before, after) = caller.join().unwrap();
+    let bytes = records.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert!(matches!(
+        records.recv_timeout(Duration::from_secs(3)),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
+    ));
+    let record: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(record["thread_role"], "gpu_recovery");
+    assert_eq!(record["kind"], "gpu_recovered");
+    assert!((before..=after).contains(&(record["utc_unix_ms"].as_u64().unwrap() as u128)));
+    for key in ["source_file", "source_line", "source_column"] {
+        assert!(record[key].is_null());
+    }
+    assert_eq!(fixture.records(), vec![record]);
+}
+
+#[test]
+fn background_disabled_disconnected_and_healthy_paths_do_not_create_files() {
+    let fixture = Fixture::new();
+    let background = BackgroundRecorder::new(Arc::new(Recorder::new(Some(fixture.log()))));
+    assert!(!fixture.log().exists());
+    drop(background); // Healthy path has no disk operation.
+    assert!(!BackgroundRecorder::new(Arc::new(Recorder::new(None))).record(Kind::GpuRecovered));
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    drop(receiver);
+    assert!(
+        !BackgroundRecorder {
+            sender: Some(sender)
+        }
+        .record(Kind::GpuDeviceLost)
+    );
+    assert!(!fixture.log().exists());
+}
+
 // This exact test is also the hidden child entry point. Never creates a native
 // app, sampler, tray or window and never installs a hook into the parent test suite.
 #[test]
