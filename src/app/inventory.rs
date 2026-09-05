@@ -73,6 +73,7 @@ impl TrontopApp {
             "startup_grid",
             ["NAME", "COMMAND / FILE", "SOURCE", "FRESHNESS"],
             shown,
+            None,
             |index| {
                 let (source, entry) = rows[index];
                 [
@@ -91,7 +92,7 @@ impl TrontopApp {
         widgets::hover_label(ui, RichText::new(format!("{shown} matching of {total} retained entries. Read-only inventory; enabled/disabled state is not inferred.")).size(10.0).color(t.text_muted));
     }
 
-    pub(super) fn service_inventory(&self, ui: &mut egui::Ui) {
+    pub(super) fn service_inventory(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         let now = Instant::now();
         let health = self.snapshot.diagnostics.get(Provider::Services);
@@ -121,6 +122,8 @@ impl TrontopApp {
             t,
             false,
         );
+        ui.add_space(6.0);
+        self.service_controls(ui);
         ui.add_space(12.0);
         let needle = self.secondary_query.trim().to_lowercase();
         let rows = self
@@ -134,7 +137,10 @@ impl TrontopApp {
             })
             .collect::<Vec<_>>();
         let shown = rows.len();
-        widgets::inventory_table(
+        let selected = rows
+            .iter()
+            .position(|row| self.selected_service.as_ref() == Some(&row.name));
+        let clicked = widgets::inventory_table(
             ui,
             "services_grid",
             [
@@ -144,29 +150,41 @@ impl TrontopApp {
                 "FRESHNESS",
             ],
             shown,
+            selected,
             |index| {
                 let row = rows[index];
+                let (status, command_read) = self.service_status(row);
                 [
                     row.display_name.clone(),
                     row.name.clone(),
                     format!(
                         "{} | {}",
-                        row.status,
-                        if row.pid == 0 {
+                        status.state.label(),
+                        if status.pid == 0 {
                             "-".into()
                         } else {
-                            row.pid.to_string()
+                            status.pid.to_string()
                         }
                     ),
-                    freshness.into(),
+                    if command_read {
+                        "Command read"
+                    } else if freshness == "Live" && !self.service_is_fresh(row) {
+                        "Pre-command"
+                    } else {
+                        freshness
+                    }
+                    .into(),
                 ]
             },
             t,
         );
+        if let Some(index) = clicked {
+            self.selected_service = Some(rows[index].name.clone());
+        }
         widgets::hover_label(
             ui,
             RichText::new(format!(
-                "{shown} matching of {} retained services. Read-only inventory.",
+                "{shown} matching of {} retained services. Select a row for confirmed controls.",
                 self.snapshot.services.len()
             ))
             .size(10.0)

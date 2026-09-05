@@ -5,7 +5,7 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.10 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.11 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Implemented: Overview and Hardware sensors navigation, About/provider diagnostics
@@ -34,30 +34,35 @@ reads cannot silently delete cached entries; source and row freshness remain vis
 Services labels its retained list as cached after failure. Both inventory tables keep
 their fields in place and format only visible rows. See `docs/STARTUP_INVENTORY.md`.
 
-Local tests: 84 passed, 0 failed, 6 opt-in tests ignored. Strict Clippy passes.
-Offscreen QA produced 42 PNGs without native windows/input. The read-only icon probe
+Alpha.11 adds confirmed Start/Stop/Restart through one independent service-command
+worker, with same-handle state/PID checks, access errors and bounded worker drop.
+Stable status surfaces and Pre-command rows expose uncertain outcomes without
+invented state. Read `docs/SERVICE_CONTROLS.md`: injected command tests and native
+read-only queries passed, but actual native service commands need isolated validation.
+The current command observation is latest-only, not a retained per-service journal.
+
+Local tests: 101 passed, 0 failed, 6 opt-in tests ignored. Strict Clippy passes.
+Offscreen QA produced 47 PNGs without native windows/input; five final service
+variants were inspected, not all 47 images. The earlier read-only icon probe
 extracted this test EXE in 2.4387 ms; 40 repeats left GDI/USER counts at (4, 2).
 The earlier PDH refresh test retained 690 handles with 690/690 valid rates afterward.
-The optimized alpha.10 review EXE is built and dependency-inspected, not launched.
-Native end-to-end close
+The optimized alpha.11 review EXE is built and dependency-inspected. Native end-to-end close
 latency and dragging performance are NOT measured. CPU provider research and the
 slow SSD/HDD probe findings are in `docs/SENSORS_PLAN.md`; no driver install authority.
 
-The separately deployed launch copy is still the alpha.5 preview. A read-only
-process check at 09:22 UTC on 2026-09-05 found no running Trontop process. On
-2026-09-05 Trent explicitly requested replacing/reopening his old running build.
-The old alpha.1 process exited before replacement; no process was terminated.
-The freshly optimized alpha.5 preview was started as PID 255824 from
-`target/release/trontop.exe`. Its native window was observed responsive with title
-Trontop. The previous EXE is backed up at
-`target/replaced-builds/alpha1-20260905-0124/trontop.exe`. No other windows were touched.
-This is a development preview, not a published alpha release. Do not automatically
-restart it again for subsequent edits. Read the newest `docs/CURRENT_STATE.md` section.
+On explicit launch requests, hash-verified preview copies were opened on 2026-09-05:
+alpha.10 at `target/preview/alpha10/trontop.exe`, PID 259420 at 09:48:31 UTC;
+alpha.11 at `target/preview/alpha11/trontop.exe`, PID 274860 at 10:02:27 UTC.
+Both were observed responding with native window handles immediately afterward.
+No old instances or other windows were touched. These observations are historical;
+recheck runtime state if needed. The legacy `target/release` copy remains alpha.5.
+Do not automatically restart or replace any preview. See `docs/CURRENT_STATE.md`
+for exact hashes and the earlier alpha.1 backup.
 
-Next: CPU/motherboard coverage, suspend/resume, service actions, export and the
+Next: CPU/motherboard coverage, suspend/resume, service validation, export and the
 release gates in `RELEASE_PLAN.md`. Slow startup/service inventory calls still run
 on the sampler; independent workers remain a future reliability improvement.
-Alpha.9 Windows CI run 33956631086 passed; that run does not verify the new alpha.10
+Alpha.10 Windows CI run 33958007255 passed; that run does not verify the new alpha.11
 source. No alpha release is published. No new permission to restart
 the deployed copy, manipulate windows or install a shortcut hook.
 

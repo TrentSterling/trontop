@@ -46,6 +46,10 @@ Alpha exit gate:
 
 - Formatting, unit tests, strict Clippy, and release build all pass.
 - Standard-user and administrator action paths produce deliberate results.
+- Service Start/Stop/Restart passes an explicitly authorized disposable-service
+  fixture in an isolated Windows VM, including pending/failure/dependent-service
+  and denied-access paths. Alpha.11's fake-backend/native-query tests do not satisfy
+  this gate; do not test commands against existing working-machine services.
 - A 60-minute mixed-load soak shows no UI stalls, runaway handles, or sampler growth.
 - Every missing provider renders an unavailable state instead of fabricated data.
 

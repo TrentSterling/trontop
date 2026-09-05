@@ -50,7 +50,7 @@ shell execution. Do not broaden it to arbitrary processes or the native tray tes
   pointer, restore it after exit, and preserve geometry. Includes selected/unselected
   navigation/devices, cards, metrics, detail rows, badges, meters, action buttons,
   control rows and charts.
-- Eighteen original vector symbols at 16/18/20/32 px stay within their allocation
+- Nineteen original vector symbols at 16/18/20/32 px stay within their allocation
   and produce no font text. Disabled icon actions cannot click or shift their bounds.
 - About support-report copy only emits a command after explicit local click; report
   checks reject private fixture fields. The harness never executes clipboard commands.
@@ -87,9 +87,19 @@ shell execution. Do not broaden it to arbitrary processes or the native tray tes
   limits. Global alphabetical indices rebuild on inventory refresh.
 - A 20,000-entry inventory fixture requires fewer than 100 row-format callbacks
   for one viewport. This checks virtualization, not whole-app frame rate.
+- Service controls use an injected command backend, never real service commands.
+  Local egui input selects a row, stages/cancels/confirms actions and verifies that
+  expired or changed targets cannot be confirmed. Fixed header geometry is checked
+  through five command states in both themes. Unknown outcomes disable retry and
+  mark older rows Pre-command. Failed inventory cannot erase newer command state.
+- Ten injected service-controller tests cover state/PID preflight, command ordering,
+  single-flight behavior, non-atomic restart errors, timeouts, cancellation and
+  blocked-worker drop. Native mapping/error tests and a bounded read-only SCM query
+  test send no Start/Stop commands. Real command validation is a separate gate in
+  `SERVICE_CONTROLS.md`, not evidence supplied by this harness.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes forty-two PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes forty-seven PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 The five GPU-activity additions cover compact Processes, light process tree, Users,
@@ -99,6 +109,9 @@ the selected inspector. Their colored sample artwork is synthetic fixture data.
 Six inventory additions cover partial/cached/unavailable/starting Startup and
 cached/unavailable Services, including compact and light layouts. Generated images
 are not automatically visually reviewed; checkpoint notes identify inspected cases.
+Five service-control additions cover normal, light and compact layouts, Restart
+confirmation and command-error/uncertain state. The UI fixtures have no sampler;
+Refresh list is intentionally disabled there, not evidence of a broken runtime control.
 
 ## Limits
 

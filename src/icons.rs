@@ -15,6 +15,7 @@ pub enum Icon {
     Theme,
     Info,
     Stop,
+    Restart,
     Expand,
     Collapse,
     Minimize,
@@ -156,6 +157,20 @@ impl Icon {
                 line(&[[12.0, 11.0], [12.0, 17.0]]);
             }
             Self::Stop => box_at(5.0, 5.0, 14.0, 14.0, 2.0),
+            Self::Restart => {
+                line(&[
+                    [20.0, 9.0],
+                    [18.0, 5.0],
+                    [13.0, 3.0],
+                    [7.0, 5.0],
+                    [3.0, 10.0],
+                    [4.0, 17.0],
+                    [9.0, 21.0],
+                    [16.0, 20.0],
+                    [20.0, 16.0],
+                ]);
+                line(&[[20.0, 3.0], [20.0, 9.0], [14.0, 9.0]]);
+            }
             Self::Expand => line(&[[9.0, 5.0], [16.0, 12.0], [9.0, 19.0]]),
             Self::Collapse => line(&[[5.0, 9.0], [12.0, 16.0], [19.0, 9.0]]),
             Self::Minimize => line(&[[5.0, 16.0], [19.0, 16.0]]),
@@ -190,6 +205,7 @@ mod tests {
                 Icon::Users,
                 Icon::Details,
                 Icon::Services,
+                Icon::Restart,
                 Icon::Sensors,
                 Icon::Theme,
                 Icon::Info,

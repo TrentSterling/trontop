@@ -23,6 +23,7 @@ pub struct Sampler {
     latest: Arc<RwLock<SystemSnapshot>>,
     generation: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
+    service_refresh: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -31,19 +32,31 @@ impl Sampler {
         let latest = Arc::new(RwLock::new(SystemSnapshot::default()));
         let generation = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
+        let service_refresh = Arc::new(AtomicBool::new(false));
+        let worker_service_refresh = Arc::clone(&service_refresh);
 
         let worker_latest = Arc::clone(&latest);
         let worker_generation = Arc::clone(&generation);
         let worker_stop = Arc::clone(&stop);
         let worker = thread::Builder::new()
             .name("trontop-sampler".into())
-            .spawn(move || sample_loop(worker_latest, worker_generation, worker_stop, ctx, tray))
+            .spawn(move || {
+                sample_loop(
+                    worker_latest,
+                    worker_generation,
+                    worker_stop,
+                    worker_service_refresh,
+                    ctx,
+                    tray,
+                )
+            })
             .expect("failed to start process sampler");
 
         Self {
             latest,
             generation,
             stop,
+            service_refresh,
             worker: Some(worker),
         }
     }
@@ -53,6 +66,10 @@ impl Sampler {
             return None;
         }
         self.latest.read().ok().map(|snapshot| snapshot.clone())
+    }
+
+    pub fn request_service_refresh(&self) {
+        self.service_refresh.store(true, Ordering::Release);
     }
 }
 
@@ -69,6 +86,7 @@ fn sample_loop(
     latest: Arc<RwLock<SystemSnapshot>>,
     generation: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
+    service_refresh: Arc<AtomicBool>,
     ctx: egui::Context,
     tray: Option<TraySink>,
 ) {
@@ -196,6 +214,10 @@ fn sample_loop(
         );
         if sequence > 0 && sequence.is_multiple_of(INVENTORY_INTERVAL) {
             collect_startup(&mut startup, diagnostics.get_mut(Provider::Startup));
+        }
+        if service_refresh.swap(false, Ordering::AcqRel)
+            || (sequence > 0 && sequence.is_multiple_of(INVENTORY_INTERVAL))
+        {
             collect_inventory(
                 &mut services,
                 diagnostics.get_mut(Provider::Services),

@@ -21,6 +21,7 @@ mod diagnostics;
 mod inventory;
 mod overview;
 mod sensors;
+mod service_controls;
 mod storage;
 
 #[cfg(test)]
@@ -112,6 +113,10 @@ pub struct TrontopApp {
     tree_initialized: bool,
     expanded_pids: HashSet<u32>,
     selected_pid: Option<u32>,
+    selected_service: Option<String>,
+    service_controller: crate::service_control::Controller,
+    pending_service: Option<crate::service_control::Request>,
+    service_event: Option<crate::service_control::Event>,
     pending_end_task: Option<PendingEndTask>,
     pending_control_action: Option<PendingControlAction>,
     message: Option<(String, bool)>,
@@ -145,6 +150,7 @@ impl TrontopApp {
         let sampler = Sampler::spawn(cc.egui_ctx.clone(), tray.as_ref().map(TrayController::sink));
         let mut app = Self::with_services(saved_theme, Some(sampler), tray);
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
+        app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
         app
     }
 
@@ -170,6 +176,10 @@ impl TrontopApp {
             tree_initialized: false,
             expanded_pids: HashSet::new(),
             selected_pid: None,
+            selected_service: None,
+            service_controller: crate::service_control::Controller::default(),
+            pending_service: None,
+            service_event: None,
             pending_end_task: None,
             pending_control_action: None,
             message: None,
@@ -1919,7 +1929,7 @@ impl TrontopApp {
         self.inventory_header(
             ui,
             "Services",
-            "Read-only Windows Service Control Manager inventory",
+            "Windows services with confirmed, background Start / Stop / Restart",
             "Search services",
         );
         self.service_inventory(ui);
@@ -2441,6 +2451,7 @@ impl eframe::App for TrontopApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.process_icons.begin_frame(&ctx);
+        self.poll_service_command();
         self.keyboard_shortcuts(&ctx);
         theme::paint_background(&ctx, self.theme);
         self.custom_chrome(ui);
@@ -2471,6 +2482,7 @@ impl eframe::App for TrontopApp {
         self.priority_editor(&ctx);
         self.affinity_editor(&ctx);
         self.confirm_control_action(&ctx);
+        self.confirm_service_command(&ctx);
         self.run_task_window(&ctx);
         self.theme_editor(&ctx);
         self.diagnostics_window(&ctx);

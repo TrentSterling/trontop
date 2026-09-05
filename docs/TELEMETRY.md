@@ -5,8 +5,15 @@
 The sampler owns one long-lived `sysinfo::System`, disk list, network list, user
 list, and GPU PDH query on a dedicated thread. It refreshes live counters every
 second, publishes one immutable snapshot, and requests one UI repaint. Startup and
-service inventory refresh every 30 seconds. The render thread performs no
+service inventory refresh every 30 sampler cycles. Service commands can request
+an earlier inventory refresh on the next cycle. The render thread performs no
 operating-system queries.
+
+Alpha.11 service Start/Stop/Restart runs on a separate single-flight command worker,
+not the sampler. Its latest typed observation can override older service inventory;
+failed inventory attempts cannot erase it. `SERVICE_CONTROLS.md` describes the
+timestamps and uncertain-result handling. Slow native inventory still shares the
+sampler; isolating that remaining path is not implemented by the command worker.
 
 The sampler also publishes a compact CPU/memory/GPU/process-count sample directly to
 the dedicated `trontop-tray` thread. A coalescing slot and native thread message wake

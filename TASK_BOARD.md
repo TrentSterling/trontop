@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.10 stable inventory caches, icons, GPU/drive sensors
+## Current: alpha.11 confirmed service controls, stable inventories and sensors
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -28,7 +28,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 84 tests pass, strict Clippy clean, 42 offscreen review PNGs
+  geometry coverage: 101 tests pass, strict Clippy clean, 47 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -46,8 +46,19 @@ This is the durable resume board. Keep it honest and update it when a slice land
   review; not launched and no deployed-copy replacement
 - [x] Alpha.9 Windows CI 33956631086 passed formatting/tests/Clippy/release/artifact
 - [x] Separate optimized alpha.10 EXE, Windows-only import scan and selected
-  startup/service state PNG review; not launched or deployed over alpha.5
-- [ ] Verify alpha.10 in remote Windows CI; no alpha release is published
+  startup/service state PNG review; independent preview opened on explicit request
+- [x] Alpha.10 Windows CI 33958007255 passed formatting/tests/Clippy/release/artifact
+- [x] Confirmed single-flight service Start/Stop/Restart worker, same-handle native
+  preflight, uncertainty/access errors, no blocking render-thread commands
+- [x] Fake-backend command/close tests and native read-only status probe; aligned
+  Services controls, expiring confirmation and five new inspected review PNGs
+- [x] Separate optimized alpha.11 EXE, Windows-only import scan; hash-verified preview
+  opened on explicit request as PID 274860 (10:02:27 UTC), older previews untouched
+- [ ] Verify alpha.11 in remote Windows CI; no alpha release is published
+- [ ] Validate real service commands in an explicitly authorized isolated Windows
+  fixture, including denied/dependent/pending/failure cases: `docs/SERVICE_CONTROLS.md`
+- [ ] Retain per-service command observations/uncertainty across subsequent commands
+  to other services; current override covers only the latest command
 - [ ] Isolate potentially slow startup/service inventory calls from the sampler
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
@@ -80,7 +91,8 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] CPU affinity editor with processor-group-aware logical processor labels
 - [x] Exact native creation-time validation on the action handle for End Task/priority/affinity; critical-process protection and stale confirmations: `docs/PROCESS_ACTION_SAFETY.md`
 - [ ] Suspend and resume controls with unmistakable state feedback
-- [ ] Start, stop, and restart service actions with confirmations and access errors
+- [x] Start, stop, and restart service actions with confirmations and access errors;
+  native end-to-end validation remains open above
 - [ ] Startup enable/disable support with a reversible disabled-entry store
 - [ ] Disk active-time and latency counters through Windows performance counters
 - [ ] GPU adapter identity, dedicated/shared memory, temperature where a stable provider exists

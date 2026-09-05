@@ -16,6 +16,9 @@ Version 0.3 alpha provides:
 - optional NVIDIA temperature, board power, clocks, fan target, and VRAM sensors with
   two-minute temperature/power histories; missing sensors stay explicitly unavailable
 - History, Startup, Users, Details, and Services pages backed by native data
+- confirmed service Start/Stop/Restart on an independent worker, with state/PID
+  preflight and explicit permission/uncertain-outcome errors; native command
+  end-to-end validation remains a release gate in `docs/SERVICE_CONTROLS.md`
 - a frameless Tront shell and persistent live gradient Theme Studio
 - alternating row and gradient column bands, padded cells, and high-contrast selection
 - a live full-width CPU tray meter with scrolling history and a resource tooltip,
@@ -41,6 +44,7 @@ MSVC C runtime is statically linked by `.cargo/config.toml`.
 ## Direction
 
 Near-term work is tracked in `TASK_BOARD.md`; product gates and publishing stages are
-defined in `RELEASE_PLAN.md`. The next systems work is recoverable suspend/resume and
-writable service/startup controls. Trontop should remain a focused standalone app, not
+defined in `RELEASE_PLAN.md`. The next systems work includes recoverable suspend/resume,
+startup controls and isolated service-command validation. Trontop remains a development
+preview without full Task Manager parity. It should be a focused standalone app, not
 a general system-utility suite.

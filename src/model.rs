@@ -246,8 +246,7 @@ impl StartupRow {
 pub struct ServiceRow {
     pub name: String,
     pub display_name: String,
-    pub status: String,
-    pub pid: u32,
+    pub status: crate::service_control::Status,
 }
 
 #[derive(Clone, Debug, Default)]

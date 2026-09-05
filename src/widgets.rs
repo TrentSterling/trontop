@@ -870,9 +870,11 @@ pub fn inventory_table<const N: usize>(
     id: &str,
     headers: [&str; N],
     row_count: usize,
+    selected: Option<usize>,
     mut values: impl FnMut(usize) -> [String; N],
     t: Tokens,
-) {
+) -> Option<usize> {
+    let mut clicked = None;
     ui.push_id(id, |ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         let width = ui.available_width();
@@ -912,15 +914,22 @@ pub fn inventory_table<const N: usize>(
             })
             .body(|body| {
                 body.rows(32.0, row_count, |mut row| {
-                    for value in &values(row.index()) {
+                    let index = row.index();
+                    row.set_selected(selected == Some(index));
+                    for value in &values(index) {
                         table_column(&mut row, t, |ui| {
-                            table_label(ui, RichText::new(value).size(12.0).color(t.text))
-                                .on_hover_text(value);
+                            if table_label(ui, RichText::new(value).size(12.0).color(t.text))
+                                .on_hover_text(value)
+                                .clicked()
+                            {
+                                clicked = Some(index);
+                            }
                         });
                     }
                 })
             });
     });
+    clicked
 }
 
 pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {
@@ -954,6 +963,7 @@ mod tests {
                     "virtual_inventory",
                     ["NAME", "COMMAND", "SOURCE", "FRESHNESS"],
                     20_000,
+                    None,
                     |index| {
                         formatted.push(index);
                         [
@@ -964,7 +974,7 @@ mod tests {
                         ]
                     },
                     theme::tokens(settings),
-                )
+                );
             },
         );
         assert!(!formatted.is_empty());

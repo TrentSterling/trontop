@@ -20,9 +20,7 @@ mod native {
     };
     use windows::Win32::System::Services::{
         CloseServiceHandle, ENUM_SERVICE_STATUS_PROCESSW, EnumServicesStatusExW, OpenSCManagerW,
-        SC_ENUM_PROCESS_INFO, SC_MANAGER_ENUMERATE_SERVICE, SERVICE_CONTINUE_PENDING,
-        SERVICE_PAUSE_PENDING, SERVICE_PAUSED, SERVICE_RUNNING, SERVICE_START_PENDING,
-        SERVICE_STATE_ALL, SERVICE_STOP_PENDING, SERVICE_STOPPED, SERVICE_WIN32,
+        SC_ENUM_PROCESS_INFO, SC_MANAGER_ENUMERATE_SERVICE, SERVICE_STATE_ALL, SERVICE_WIN32,
     };
     use windows::core::{PCWSTR, PWSTR};
 
@@ -314,8 +312,7 @@ mod native {
                 .map(|entry| ServiceRow {
                     name: entry.lpServiceName.to_string().unwrap_or_default(),
                     display_name: entry.lpDisplayName.to_string().unwrap_or_default(),
-                    status: service_state(entry.ServiceStatusProcess.dwCurrentState),
-                    pid: entry.ServiceStatusProcess.dwProcessId,
+                    status: crate::service_control::status_from_native(entry.ServiceStatusProcess),
                 })
                 .collect::<Vec<_>>();
             services.sort_by(|a, b| {
@@ -325,22 +322,6 @@ mod native {
             });
             Ok(services)
         }
-    }
-
-    fn service_state(
-        state: windows::Win32::System::Services::SERVICE_STATUS_CURRENT_STATE,
-    ) -> String {
-        match state {
-            SERVICE_RUNNING => "Running",
-            SERVICE_STOPPED => "Stopped",
-            SERVICE_PAUSED => "Paused",
-            SERVICE_START_PENDING => "Starting",
-            SERVICE_STOP_PENDING => "Stopping",
-            SERVICE_PAUSE_PENDING => "Pausing",
-            SERVICE_CONTINUE_PENDING => "Resuming",
-            _ => "Unknown",
-        }
-        .into()
     }
 
     #[cfg(test)]

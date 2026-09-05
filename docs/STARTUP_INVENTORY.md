@@ -54,7 +54,9 @@ Both pages use fixed-height hover status surfaces and four-column zebra tables.
 Startup source fields exist from the first frame. Failures and recovery change
 content/state, not the positions of the table headers. Long values truncate with
 hover detail; ordinary labels remain non-selectable. No native service actions,
-clipboard writes, keyboard hooks or desktop automation are added here.
+clipboard writes, keyboard hooks or desktop automation were added by alpha.10.
+Alpha.11 adds a separate confirmed service-command path and selected-row state;
+see `SERVICE_CONTROLS.md` for command observation freshness and its limits.
 
 ## Verification
 

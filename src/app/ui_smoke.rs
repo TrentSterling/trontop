@@ -192,8 +192,13 @@ fn fixture() -> SystemSnapshot {
             .map(|i| ServiceRow {
                 name: format!("FixtureService{i}"),
                 display_name: format!("Fixture long service display name {i}"),
-                status: "Running".into(),
-                pid: 900_000 + i,
+                status: crate::service_control::Status {
+                    state: crate::service_control::State::Running,
+                    pid: 900_000 + i,
+                    accepts_stop: true,
+                    win32_service: true,
+                    ..Default::default()
+                },
             })
             .collect::<Vec<_>>()
             .into(),
@@ -1318,6 +1323,227 @@ fn inventory_states_keep_sources_and_table_headers_in_place() {
     }
 }
 
+fn fixture_service_controls(app: &mut TrontopApp, ctx: &egui::Context) {
+    // These fixtures exercise chronological action results. Unlike static page
+    // screenshots, the inventory must not be dated an hour after the command.
+    app.snapshot
+        .diagnostics
+        .get_mut(crate::diagnostics::Provider::Services)
+        .record(
+            std::time::Instant::now() - std::time::Duration::from_secs(1),
+            std::time::Duration::ZERO,
+            crate::diagnostics::State::Live,
+            None,
+            None,
+        );
+    app.page = Page::Services;
+    app.selected_service = Some(app.snapshot.services[0].name.clone());
+    app.service_controller =
+        crate::service_control::fixture_controller(ctx.clone(), app.snapshot.services[0].status);
+}
+
+#[test]
+fn failed_inventory_cannot_replace_newer_command_observation_but_complete_read_can() {
+    use crate::diagnostics::{Provider, State as ProviderState};
+    use crate::service_control::{Action, Event, State, Status};
+    use std::time::{Duration, Instant};
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    fixture_service_controls(&mut app, &ctx);
+    let at = Instant::now();
+    app.service_event = Some(Event {
+        name: "FixtureService0".into(),
+        action: Action::Stop,
+        phase: "Completed",
+        command_at: Some(at),
+        observed: Some((
+            at,
+            Status {
+                state: State::Stopped,
+                pid: 0,
+                ..app.snapshot.services[0].status
+            },
+        )),
+        done: true,
+        error: None,
+    });
+    app.snapshot.diagnostics.get_mut(Provider::Services).record(
+        at + Duration::from_millis(1),
+        Duration::ZERO,
+        ProviderState::Unavailable,
+        None,
+        None,
+    );
+    assert_eq!(
+        app.service_status(&app.snapshot.services[0]).0.state,
+        State::Stopped
+    );
+    app.snapshot.diagnostics.get_mut(Provider::Services).record(
+        at + Duration::from_millis(2),
+        Duration::ZERO,
+        ProviderState::Live,
+        None,
+        None,
+    );
+    assert_eq!(
+        app.service_status(&app.snapshot.services[0]).0.state,
+        State::Running
+    );
+    assert!(!app.service_status(&app.snapshot.services[0]).1);
+}
+
+fn click_local_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label: &str) {
+    let mut output = frame(ctx, app, size, vec![]);
+    for _ in 0..20 {
+        output = frame(ctx, app, size, vec![]);
+    }
+    let position = text_shapes(&output)
+        .iter()
+        .find(|(text, clip)| {
+            text.galley.job.text == label && clip.contains_rect(text.visual_bounding_rect())
+        })
+        .unwrap_or_else(|| panic!("missing visible local control {label}"))
+        .0
+        .visual_bounding_rect()
+        .center();
+    for pressed in [true, false] {
+        frame(
+            ctx,
+            app,
+            size,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+    }
+}
+
+#[test]
+fn service_selection_confirmation_cancel_and_submit_use_only_fake_backend() {
+    for dark in [true, false] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        fixture_service_controls(&mut app, &ctx);
+        let size = Vec2::new(1040.0, 640.0);
+        app.selected_service = None;
+        // Select through the table, then verify merely staging and cancelling has
+        // not submitted anything to even the simulated backend.
+        click_local_text(&ctx, &mut app, size, "FixtureService0");
+        assert_eq!(app.selected_service.as_deref(), Some("FixtureService0"));
+        click_local_text(&ctx, &mut app, size, "Restart");
+        assert!(app.pending_service.is_some());
+        assert!(!app.service_controller.busy());
+        assert!(app.service_event.is_none());
+        click_local_text(&ctx, &mut app, size, "Cancel");
+        assert!(app.pending_service.is_none());
+        assert!(app.service_event.is_none());
+        click_local_text(&ctx, &mut app, size, "Stop");
+        click_local_text(&ctx, &mut app, size, "Confirm command");
+        let started = std::time::Instant::now();
+        while app.service_event.as_ref().is_none_or(|event| !event.done) {
+            frame(&ctx, &mut app, size, vec![]);
+            assert!(started.elapsed() < std::time::Duration::from_secs(5));
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(app.service_event.as_ref().unwrap().error.is_none());
+        assert_eq!(
+            app.service_status(&app.snapshot.services[0]).0.state,
+            crate::service_control::State::Stopped
+        );
+    }
+}
+
+#[test]
+fn service_confirmations_expire_and_do_not_retarget_changed_service() {
+    use crate::service_control::{Action, Request};
+    for expired in [true, false] {
+        let ctx = egui::Context::default();
+        let mut app = app(ThemeSettings::default(), true);
+        theme::install(&ctx, app.theme);
+        fixture_service_controls(&mut app, &ctx);
+        let original = app.snapshot.services[0].clone();
+        app.pending_service = Some(Request {
+            name: original.name,
+            display_name: original.display_name,
+            action: Action::Restart,
+            expected: original.status,
+            staged_at: std::time::Instant::now()
+                - std::time::Duration::from_secs(if expired { 31 } else { 0 }),
+        });
+        if !expired {
+            std::sync::Arc::make_mut(&mut app.snapshot.services)[0]
+                .status
+                .pid += 1;
+        }
+        click_local_text(&ctx, &mut app, Vec2::new(1040.0, 640.0), "Confirm command");
+        assert!(app.pending_service.is_some());
+        assert!(!app.service_controller.busy());
+        assert!(app.service_event.is_none());
+    }
+}
+
+#[test]
+fn service_action_states_keep_table_headers_fixed_and_unknown_outcome_disables_retry() {
+    use crate::service_control::{Action, Event, State, Status};
+    let size = Vec2::new(1040.0, 640.0);
+    for dark in [true, false] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        fixture_service_controls(&mut app, &ctx);
+        let mut expected = None;
+        for state in 0..5 {
+            let now = std::time::Instant::now();
+            app.service_event = (state != 0).then(|| Event { name: "FixtureService0".into(), action: Action::Restart,
+                phase: if state == 1 { "Stopping" } else if state == 2 { "Completed" } else { "Not completed" },
+                command_at: Some(now), observed: (state != 3).then_some((now, Status {
+                    state: if state == 1 { State::Stopping } else { State::Running },
+                    ..app.snapshot.services[0].status
+                })), done: state != 1, error: (state >= 3).then(|| "Fixture Windows access/query failure. Outcome unknown; refresh before retrying.".into()) });
+            let mut output = frame(&ctx, &mut app, size, vec![]);
+            for _ in 0..2 {
+                output = frame(&ctx, &mut app, size, vec![]);
+            }
+            let texts = text_shapes(&output);
+            let (header, clip) = texts
+                .iter()
+                .find(|(text, _)| text.galley.job.text == "DISPLAY NAME")
+                .unwrap();
+            let bounds = header.visual_bounding_rect();
+            assert!(clip.contains_rect(bounds));
+            if let Some(expected) = expected {
+                assert_eq!(bounds, expected);
+            }
+            expected = Some(bounds);
+            if state == 3 {
+                assert!(
+                    texts
+                        .iter()
+                        .any(|(text, _)| text.galley.job.text == "Pre-command")
+                );
+                click_local_text(&ctx, &mut app, size, "Restart");
+                assert!(app.pending_service.is_none());
+            }
+            assert!(output.platform_output.commands.is_empty());
+        }
+    }
+}
+
 #[test]
 fn partial_gpu_coverage_leaves_history_gaps_and_keeps_engine_names() {
     let mut app = app(ThemeSettings::default(), true);
@@ -1433,6 +1659,11 @@ fn render_offscreen_visual_pass() {
         "startup-starting-compact",
         "services-cached",
         "services-unavailable-light",
+        "service-controls",
+        "service-controls-light",
+        "service-controls-compact",
+        "service-confirmation",
+        "service-control-error",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1456,6 +1687,26 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant == "theme-studio";
+        if variant.starts_with("service-") {
+            fixture_service_controls(&mut app, &ctx);
+            if variant == "service-confirmation" {
+                let row = &app.snapshot.services[0];
+                app.pending_service = Some(crate::service_control::Request {
+                    name: row.name.clone(),
+                    display_name: row.display_name.clone(),
+                    action: crate::service_control::Action::Restart,
+                    expected: row.status,
+                    staged_at: std::time::Instant::now(),
+                });
+            } else if variant == "service-control-error" {
+                app.service_event = Some(crate::service_control::Event {
+                    name: "FixtureService0".into(), action: crate::service_control::Action::Restart,
+                    phase: "Not completed", command_at: Some(std::time::Instant::now()),
+                    observed: None, done: true,
+                    error: Some("Fixture access denied by Windows. No automatic elevation or recursive dependent-service stop.".into()),
+                });
+            }
+        }
         if variant.starts_with("startup-") || variant.starts_with("services-") {
             let state = if variant.contains("partial") {
                 1
@@ -1545,7 +1796,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 42 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 47 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

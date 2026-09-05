@@ -10,6 +10,7 @@ mod model;
 mod platform;
 mod process_icons;
 mod sampler;
+mod service_control;
 mod shutdown;
 mod startup;
 mod storage_sensors;

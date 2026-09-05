@@ -2,7 +2,64 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.10 stable startup and service inventories
+## Latest source: alpha.11 confirmed service controls
+
+Branch `feat/provider-diagnostics`. Services now has selectable zebra rows,
+Start/Stop/Restart actions, a named expiring confirmation, stable command-status
+surfaces and an independent single-flight command worker. Native SCM state/PID
+and Stop capability are rechecked on the same handle used for the operation.
+Restart waits for Stopped before Start; errors warn that it can remain stopped.
+No elevation, recursive dependent-service stop, host kill or configuration edit.
+See `SERVICE_CONTROLS.md` for the full behavior, race limits and verification gap.
+
+The redesign skill's state/alignment audit guided fixed-height controls and status
+surfaces without replacing Trent's gradient/zebra styling. An uncertain command's
+old row is labeled Pre-command rather than Live. A failed inventory refresh cannot
+overwrite a newer command observation with cached state. The latest-command record
+is not yet a per-service outcome journal. Slow inventory calls still share the sampler.
+
+Final local rerun: formatting PASS; **101 passed, 0 failed, 6 opt-in tests ignored**
+(26.14 s); strict Clippy PASS. Optimized release PASS (41.03 s). The specifically
+selected offscreen pass produced **47 PNGs** in 29.50 s on RTX 5070 Ti/Vulkan, with
+no native window or OS input. Five final images were inspected: normal, light and
+compact Services controls, Restart confirmation, and uncertain/error state. Not all
+47 were inspected. New service actions were tested only through an injected backend;
+the native SCM probe queries status with read-only permissions. Real native command
+execution requires a separately authorized isolated fixture before release.
+
+Review EXE: `target/review-build/release/trontop.exe`, **13,090,304 bytes**, PE version
+**0.3.0-alpha.11**, built from modified 22825c5 source before checkpoint. SHA-256:
+`7AFD2B045B6369FEFDE0FD9BAB03E6C79A758C557231D3C8AFE1E037037AE7C7`.
+Dependency inspection shows Windows-only imports and no dynamic MSVC runtime or
+required vendor DLL/assets directory. This does not replace the clean-machine gate.
+
+### Explicitly requested preview launches
+
+On 2026-09-05 Trent requested opening the newest build without disturbing the old
+one. Hash-verified independent copies were launched, leaving other windows alone:
+
+| Preview | Path | Launch UTC | PID | Read-only result after launch |
+| --- | --- | --- | --- | --- |
+| alpha.10 | `target/preview/alpha10/trontop.exe` | 09:48:31 | 259420 | Responding; native window handle 3869444 |
+| alpha.11 | `target/preview/alpha11/trontop.exe` | 10:02:27 | 274860 | Responding; native window handle 5453272 |
+
+Alpha.10's hash is in the previous entry; alpha.11 matches the review hash above.
+These are timestamped observations, not a promise that either PID remains alive.
+The legacy `target/release/trontop.exe` remains alpha.5. No instances were terminated,
+and no global input, focus, move, minimize or restore commands were used. Do not
+automatically restart/replace these previews during subsequent work.
+
+Alpha.10 private Windows CI
+[33958007255](https://github.com/TrentSterling/trontop/actions/runs/33958007255)
+passed for 22825c594bbb35dc4f2546f876de5d98902e7bd9 at 09:46:46 UTC on 2026-09-05.
+Alpha.11's remote gate is pending. No tag or alpha release is published.
+
+Still open: CPU/motherboard and broader vendor sensors, suspend/resume, startup
+enable/disable, export, native service-command validation, real close/drag timing,
+soak/clean-machine and other release gates. Ctrl+Shift+Esc is proposal-only. No
+driver/hook installation or desktop-test authority is implied. Not Task Manager parity.
+
+## Previous: alpha.10 stable startup and service inventories
 
 Branch `feat/provider-diagnostics`. Startup now retains results independently for
 three Run keys and two Startup folders. Failed enumeration preserves the last known
