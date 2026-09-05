@@ -5,16 +5,18 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Latest local version: 0.3.0-alpha.2. Read the latest section of `docs/CURRENT_STATE.md`
+Latest local version: 0.3.0-alpha.3. Read the latest section of `docs/CURRENT_STATE.md`
 and `docs/HEADLESS_QA.md`. The hover/rounded-controls slice and safe headless harness
 are now implemented. A separate optimized review EXE exists under
 `target/review-build/release/trontop.exe`; do not confuse it with the still-running
-older `target/release` copy. Eleven test-fixture PNGs were reviewed without opening
+older `target/release` copy. Fifteen test-fixture PNGs were generated without opening
 any app window. No native drag fix or published release is verified.
 
-Trent now reports a clear subjective drag improvement. His additional temperature
-and hardware-sensor request is saved in `docs/SENSORS_PLAN.md`; the GPU diagnostic
-query succeeded but the provider/UI integration is not implemented yet.
+Trent reports a clear subjective drag improvement; there is no measured 60 FPS claim.
+Alpha.3 integrates real NVIDIA NVML temperature/power/clocks/fan/VRAM on the sampler,
+with a dedicated GPU Sensors page and bounded, gap-aware histories. Native read-only
+probe and headless checks passed. Details and remaining CPU/storage/vendor work are
+in `docs/SENSORS_PLAN.md`. No app windows were launched or manipulated for this slice.
 
 ## Earlier checkpoint (historical)
 

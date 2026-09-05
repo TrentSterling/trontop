@@ -2,6 +2,7 @@
 
 mod app;
 mod format;
+mod gpu_sensors;
 mod model;
 mod platform;
 mod sampler;

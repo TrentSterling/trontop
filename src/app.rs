@@ -1,4 +1,5 @@
 use crate::format;
+use crate::gpu_sensors::SensorHistory;
 use crate::model::{
     PriorityClass, ProcessRow, ProcessTotals, ProcessTreeRow, SortColumn, SortDirection,
     SystemSnapshot, build_process_tree, sort_processes,
@@ -14,6 +15,8 @@ use egui_extras::{Column, TableBuilder};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 const HISTORY_LENGTH: usize = 120;
+
+mod sensors;
 
 #[cfg(test)]
 mod ui_smoke;
@@ -48,6 +51,7 @@ enum PerformanceDevice {
     Disk(usize),
     Network(usize),
     Gpu,
+    GpuSensors,
 }
 
 #[derive(Clone, Copy)]
@@ -86,6 +90,7 @@ pub struct TrontopApp {
     cpu_history: VecDeque<f32>,
     memory_history: VecDeque<f32>,
     gpu_history: VecDeque<f32>,
+    sensor_history: HashMap<String, SensorHistory>,
     disk_history: HashMap<String, VecDeque<f32>>,
     network_history: HashMap<String, VecDeque<f32>>,
     theme: ThemeSettings,
@@ -138,6 +143,7 @@ impl TrontopApp {
             cpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
             memory_history: VecDeque::with_capacity(HISTORY_LENGTH),
             gpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
+            sensor_history: HashMap::new(),
             disk_history: HashMap::new(),
             network_history: HashMap::new(),
             theme: saved_theme,
@@ -157,6 +163,33 @@ impl TrontopApp {
 
     fn accept_sample(&mut self, snapshot: SystemSnapshot) {
         self.seen_generation = snapshot.sequence;
+        if let Some(at) = snapshot.gpu_sensors.sampled_at {
+            for adapter in &snapshot.gpu_sensors.adapters {
+                if let Some(uuid) = &adapter.uuid {
+                    self.sensor_history.entry(uuid.clone()).or_default();
+                }
+            }
+            for (uuid, history) in &mut self.sensor_history {
+                let adapter = snapshot
+                    .gpu_sensors
+                    .adapters
+                    .iter()
+                    .find(|a| a.uuid.as_ref() == Some(uuid));
+                history.push(at, adapter);
+            }
+            // Expire removed adapters after their entire history window is empty.
+            self.sensor_history.retain(|uuid, history| {
+                snapshot
+                    .gpu_sensors
+                    .adapters
+                    .iter()
+                    .any(|a| a.uuid.as_ref() == Some(uuid))
+                    || history
+                        .points
+                        .iter()
+                        .any(|p| p.temperature_c.is_some() || p.power_w.is_some())
+            });
+        }
         widgets::push_history(&mut self.cpu_history, snapshot.cpu_percent, HISTORY_LENGTH);
         widgets::push_history(
             &mut self.memory_history,
@@ -1199,6 +1232,7 @@ impl TrontopApp {
                                 self.network_performance(ui, index)
                             }
                             PerformanceDevice::Gpu => self.gpu_performance(ui),
+                            PerformanceDevice::GpuSensors => self.gpu_sensor_performance(ui),
                         });
                 },
             );
@@ -1233,6 +1267,25 @@ impl TrontopApp {
             t,
         ) {
             self.performance_device = PerformanceDevice::Memory;
+        }
+        // Keep hardware temperatures near the top instead of below long disk lists.
+        let hottest = self
+            .snapshot
+            .gpu_sensors
+            .adapters
+            .iter()
+            .filter_map(|a| a.temperature_c)
+            .max();
+        if widgets::device_button(
+            ui,
+            self.performance_device == PerformanceDevice::GpuSensors,
+            "GPU SENSORS",
+            &hottest.map_or_else(|| "Unavailable".into(), |v| format!("{v} °C")),
+            &VecDeque::new(),
+            t.secondary,
+            t,
+        ) {
+            self.performance_device = PerformanceDevice::GpuSensors;
         }
         for (index, disk) in self.snapshot.disks.iter().enumerate() {
             let history = self

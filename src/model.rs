@@ -203,6 +203,7 @@ pub struct SystemSnapshot {
     pub disks: Vec<DiskRow>,
     pub networks: Vec<NetworkRow>,
     pub gpu: GpuSnapshot,
+    pub gpu_sensors: crate::gpu_sensors::SensorSnapshot,
     pub users: Vec<UserSummary>,
     pub startup: Arc<Vec<StartupRow>>,
     pub services: Arc<Vec<ServiceRow>>,

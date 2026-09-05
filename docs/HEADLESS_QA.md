@@ -13,8 +13,10 @@ cargo test shared_surfaces -- --nocapture
 cargo test render_offscreen_visual_pass -- --ignored --nocapture
 ```
 
-The last command is specifically selected, not a blanket `--ignored` run. The other
-ignored test creates a native tray icon and must not be run on the working desktop.
+The last command is specifically selected, not a blanket `--ignored` run. The native
+tray ignored test creates a real icon and must not run on the working desktop. A
+separate, read-only `native_nvml_read_only_probe` opt-in test queries the installed
+NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
 
 ## Coverage
 
@@ -28,13 +30,16 @@ ignored test creates a native tray icon and must not be run on the working deskt
   must reveal the bottom CPU detail row in the separately scrolled Performance pane.
 - Search ancestor context, selected inspector, all Performance device types, missing
   device indices, and five dialogs are rendered without native services.
+- Sixteen GPU sensor size/mode/state cases cover available, partially unsupported,
+  missing-driver and multiple-adapter fixtures. Additional tests verify history
+  identity, missing samples and removal after expiration.
 - Thirteen shared surface variants in both modes must change background under the
   pointer, restore it after exit, and preserve geometry. Includes selected/unselected
   navigation/devices, cards, metrics, detail rows, badges, meters, action buttons,
   control rows and charts.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes eleven PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes fifteen PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 

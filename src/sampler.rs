@@ -1,3 +1,4 @@
+use crate::gpu_sensors::SensorSampler;
 use crate::model::{
     CpuInfo, DiskRow, NetworkRow, ProcessControlInfo, ProcessRow, SystemSnapshot, UserSummary,
 };
@@ -75,6 +76,8 @@ fn sample_loop(
     let mut networks = Networks::new_with_refreshed_list();
     let users = Users::new_with_refreshed_list();
     let mut gpu_sampler = GpuSampler::new();
+    // The optional driver library and every sensor call stay on this worker.
+    let mut sensor_sampler = SensorSampler::default();
     let mut sequence = 0_u64;
     let mut previous_sample = Instant::now();
     let mut startup = Arc::new(windows_metrics::enumerate_startup());
@@ -229,6 +232,7 @@ fn sample_loop(
             disks: disk_rows,
             networks: network_rows,
             gpu,
+            gpu_sensors: sensor_sampler.sample(),
             users: user_rows,
             startup: Arc::clone(&startup),
             services: Arc::clone(&services),

@@ -29,7 +29,9 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Startup enable/disable support with a reversible disabled-entry store
 - [ ] Disk active-time and latency counters through Windows performance counters
 - [ ] GPU adapter identity, dedicated/shared memory, temperature where a stable provider exists
-- [ ] Optional GPU temperature/power/clocks/fan provider, then storage health and CPU sensor investigation: `docs/SENSORS_PLAN.md` (5070 Ti diagnostic query succeeded)
+- [x] Optional NVML GPU temperature/power/clocks/fan/VRAM provider with background sampling, partial-support states, and a read-only 5070 Ti probe
+- [x] GPU Sensors page with rounded hover cards and UUID-keyed temperature/power histories and peaks; compact/light/dark/missing-data headless coverage
+- [ ] Storage health/temperature, CPU package/core sensor investigation, and AMD/Intel/legacy NVIDIA coverage: `docs/SENSORS_PLAN.md`
 - [ ] Network link speed, adapter type, address, and per-process ETW traffic
 
 ## Visual polish queue
@@ -60,8 +62,8 @@ This is the durable resume board. Keep it honest and update it when a slice land
 
 ## Release work
 
-- [x] Build a separate optimized alpha.2 review EXE without touching the running release copy
-- [ ] Trent manually reviews alpha.2 hover/scroll behavior in the new EXE; no automated desktop interaction
+- [x] Build a separate optimized alpha.3 review EXE without touching the running release copy; Windows-only imports verified
+- [ ] Trent manually reviews alpha.3 sensors and hover/scroll behavior in the new EXE; no automated desktop interaction
 
 - [x] Define private-alpha, release-candidate, public-preview, and rollback gates in `RELEASE_PLAN.md`
 - [x] Create and push the private `TrentSterling/trontop` GitHub repository; first Windows CI passed

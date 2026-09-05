@@ -79,6 +79,23 @@ fn fixture() -> SystemSnapshot {
             ],
             error: None,
         },
+        gpu_sensors: crate::gpu_sensors::SensorSnapshot {
+            sampled_at: Some(std::time::Instant::now()),
+            adapters: vec![crate::gpu_sensors::AdapterSensors {
+                name: "Fixture NVIDIA GPU (test data)".into(),
+                uuid: Some("FIXTURE-GPU-0".into()),
+                temperature_c: Some(49),
+                power_w: Some(86.74),
+                graphics_clock_mhz: Some(2857),
+                memory_clock_mhz: Some(14001),
+                fan_percent: Some(0),
+                memory: Some((7_924 * 1_048_576, 16_303 * 1_048_576)),
+                memory_includes_reserved: false,
+                error: None,
+            }],
+            query_millis: 0.42,
+            error: None,
+        },
         users: vec![UserSummary {
             name: "FIXTURE\\LongAccountName".into(),
             process_count: 64,
@@ -111,9 +128,15 @@ fn app(settings: ThemeSettings, populated: bool) -> TrontopApp {
     let mut app = TrontopApp::with_services(settings, None, None);
     if populated {
         let mut snapshot = fixture();
+        let sensor_start = std::time::Instant::now();
         for sequence in 1..=HISTORY_LENGTH {
             snapshot.sequence = sequence as u64;
             snapshot.cpu_percent = 31.0 + (sequence as f32 * 0.23).sin() * 16.0;
+            snapshot.gpu_sensors.sampled_at =
+                Some(sensor_start + std::time::Duration::from_secs(sequence as u64));
+            snapshot.gpu_sensors.adapters[0].temperature_c = Some(49 + (sequence % 8) as u32);
+            snapshot.gpu_sensors.adapters[0].power_w =
+                Some(60.0 + (sequence as f32 * 0.2).sin() * 26.0);
             app.accept_sample(snapshot.clone());
         }
     }
@@ -259,6 +282,7 @@ fn search_selection_device_pages_and_dialogs_render_without_native_services() {
         PerformanceDevice::Disk(0),
         PerformanceDevice::Network(0),
         PerformanceDevice::Gpu,
+        PerformanceDevice::GpuSensors,
         PerformanceDevice::Disk(99),
         PerformanceDevice::Network(99),
     ] {
@@ -402,6 +426,112 @@ fn compact_sidebar_preserves_footer_and_performance_details_are_scrollable() {
 }
 
 #[test]
+fn sensor_states_render_without_wrapping_or_fabricated_readings() {
+    for dark in [true, false] {
+        for size in [Vec2::new(1040.0, 640.0), Vec2::new(1280.0, 760.0)] {
+            for state in 0..4 {
+                let settings = ThemeSettings {
+                    dark,
+                    ..Default::default()
+                };
+                let ctx = egui::Context::default();
+                theme::install(&ctx, settings);
+                let mut app = app(settings, true);
+                app.page = Page::Performance;
+                app.performance_device = PerformanceDevice::GpuSensors;
+                match state {
+                    1 => {
+                        let adapter = &mut app.snapshot.gpu_sensors.adapters[0];
+                        adapter.power_w = None;
+                        adapter.fan_percent = None;
+                        adapter.memory = None;
+                    }
+                    2 => {
+                        app.snapshot.gpu_sensors.adapters.clear();
+                        app.snapshot.gpu_sensors.error =
+                            Some("Fixture: driver not installed".into());
+                    }
+                    3 => {
+                        app.snapshot
+                            .gpu_sensors
+                            .adapters
+                            .push(crate::gpu_sensors::AdapterSensors {
+                            name:
+                                "Fixture second adapter with a deliberately very long hardware name"
+                                    .into(),
+                            uuid: Some("FIXTURE-GPU-1".into()),
+                            ..Default::default()
+                        })
+                    }
+                    _ => {}
+                }
+                let mut output = frame(&ctx, &mut app, size, vec![]);
+                for _ in 0..3 {
+                    output = frame(&ctx, &mut app, size, vec![]);
+                }
+                let texts = text_shapes(&output);
+                let visible = |label: &str| {
+                    texts.iter().any(|(text, clip)| {
+                        text.galley.job.text == label
+                            && clip.contains_rect(text.visual_bounding_rect())
+                    })
+                };
+                assert!(visible("GPU sensors"));
+                if state == 2 {
+                    assert!(visible("Hardware sensors unavailable"));
+                    assert!(!visible("GPU temperature"));
+                } else {
+                    assert!(visible("GPU temperature"));
+                    assert!(visible("Board power"));
+                    if state == 1 {
+                        assert!(visible("Unavailable"));
+                    }
+                }
+                for (text, _) in texts {
+                    if text.galley.job.text.ends_with("MHz")
+                        || text.galley.job.text == "Unavailable"
+                        || text.galley.job.text.ends_with("GiB")
+                    {
+                        assert_eq!(text.galley.rows.len(), 1, "sensor value wrapped");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sensor_histories_follow_identity_not_enumeration_order_and_drop_stale_values() {
+    let mut app = TrontopApp::with_services(ThemeSettings::default(), None, None);
+    let mut snapshot = fixture();
+    let start = snapshot.gpu_sensors.sampled_at.unwrap();
+    let mut second = snapshot.gpu_sensors.adapters[0].clone();
+    second.uuid = Some("FIXTURE-GPU-1".into());
+    second.temperature_c = Some(70);
+    snapshot.gpu_sensors.adapters.push(second);
+    app.accept_sample(snapshot.clone());
+    snapshot.gpu_sensors.adapters.reverse();
+    snapshot.gpu_sensors.sampled_at = Some(start + std::time::Duration::from_secs(1));
+    app.accept_sample(snapshot.clone());
+    assert_eq!(app.sensor_history["FIXTURE-GPU-0"].peak(false), Some(49.0));
+    assert_eq!(app.sensor_history["FIXTURE-GPU-1"].peak(false), Some(70.0));
+    snapshot.gpu_sensors.adapters.clear();
+    snapshot.gpu_sensors.sampled_at = Some(start + std::time::Duration::from_secs(2));
+    app.accept_sample(snapshot.clone());
+    assert!(
+        app.sensor_history["FIXTURE-GPU-0"]
+            .points
+            .back()
+            .unwrap()
+            .temperature_c
+            .is_none()
+    );
+    snapshot.gpu_sensors.sampled_at = Some(start + std::time::Duration::from_secs(130));
+    app.accept_sample(snapshot);
+    assert!(app.sensor_history.is_empty());
+}
+
+#[test]
 #[ignore = "offscreen GPU visual QA; writes test-only PNGs under target/ui-smoke, never opens a window"]
 fn render_offscreen_visual_pass() {
     let mut renderer = offscreen::Renderer::new();
@@ -435,10 +565,14 @@ fn render_offscreen_visual_pass() {
         "performance-hover",
         "theme-studio",
         "inspector",
+        "gpu-sensors",
+        "gpu-sensors-light",
+        "gpu-sensors-compact",
+        "gpu-sensors-unavailable",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
-            dark: variant != "performance-light",
+            dark: variant != "performance-light" && variant != "gpu-sensors-light",
             ..Default::default()
         };
         theme::install(&ctx, settings);
@@ -450,7 +584,19 @@ fn render_offscreen_visual_pass() {
         };
         app.selected_pid = (variant == "inspector").then_some(900_001);
         app.show_theme_editor = variant == "theme-studio";
-        let size = Vec2::new(1280.0, 760.0);
+        if variant.starts_with("gpu-sensors") {
+            app.performance_device = PerformanceDevice::GpuSensors;
+        }
+        if variant == "gpu-sensors-unavailable" {
+            app.snapshot.gpu_sensors.adapters.clear();
+            app.snapshot.gpu_sensors.error =
+                Some("Fixture: NVIDIA driver unavailable. Other telemetry still works.".into());
+        }
+        let size = if variant == "gpu-sensors-compact" {
+            Vec2::new(1040.0, 640.0)
+        } else {
+            Vec2::new(1280.0, 760.0)
+        };
         let mut output = egui::FullOutput::default();
         for _ in 0..20 {
             let events = if variant == "performance-hover" {
@@ -468,7 +614,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 11 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 15 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

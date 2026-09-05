@@ -2,7 +2,33 @@
 
 Last updated: 2026-09-04
 
-## Latest: alpha.2 hover and safe UI verification
+## Latest: alpha.3 GPU sensors
+
+Version 0.3.0-alpha.3 adds optional read-only NVIDIA sensors on the background
+sampler. Performance > GPU Sensors shows per-adapter temperature, board power,
+graphics/memory clocks, fan target and VRAM. Rounded theme-aware cards include
+two-minute temperature/power histories with rolling peaks and explicit missing data.
+UUID-keyed histories survive enumeration reorder and expire on disconnect.
+Existing PDH GPU Engine/per-process usage is unchanged. Read `SENSORS_PLAN.md` for
+provider scope, safe loading, tests, measured query timings and future CPU/storage work.
+
+Final verification: formatting PASS; 30 unit/headless tests passed, 0 failed,
+3 opt-in tests ignored; strict Clippy PASS; optimized release build PASS. Explicit
+native read-only NVML probe PASS; explicit offscreen visual pass PASS (15 PNGs).
+No interactive tray test or desktop input automation was used. New dark/light,
+compact and unavailable sensor images were inspected. These images use fixture data.
+
+Review EXE: `target/review-build/release/trontop.exe`, 12,783,104 bytes,
+SHA-256 `C957FA769F89CE73D7A2B6967B8433D355B47951E23AA4E16F5EFCF7A4387A2A`.
+PE version is 0.3.0-alpha.3. `dumpbin /dependents` shows only Windows imports, no
+NVML or dynamic MSVC runtime dependency. Sensor support dynamically uses the installed
+driver, but no vendor DLL is required to launch the app. Clean-machine QA remains open.
+
+This build has NOT been launched. PID 62220 still runs the older alpha.1 release-path
+EXE and was left untouched. No new drag measurement, cross-project patch, push, or
+GitHub release was performed in this slice. The broad product goal remains unfinished.
+
+## Earlier: alpha.2 hover and safe UI verification
 
 Work resumed on the UI after the parked checkpoint below. Version 0.3.0-alpha.2
 adds shared hover backgrounds for navigation, device tiles, metrics, detail rows,
