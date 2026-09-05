@@ -11,10 +11,11 @@ pub enum Provider {
     Startup,
     ProcessControls,
     StorageSensors,
+    DiskActivity,
 }
 
 impl Provider {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::System,
         Self::GpuActivity,
         Self::GpuSensors,
@@ -22,6 +23,7 @@ impl Provider {
         Self::Startup,
         Self::ProcessControls,
         Self::StorageSensors,
+        Self::DiskActivity,
     ];
 
     pub fn name(self) -> &'static str {
@@ -33,6 +35,7 @@ impl Provider {
             Self::Startup => "Startup inventory",
             Self::ProcessControls => "Process inspection",
             Self::StorageSensors => "Drive sensors / Windows storage",
+            Self::DiskActivity => "Physical disks / Windows PDH",
         }
     }
 
@@ -81,6 +84,7 @@ pub enum Issue {
     InventoryWorker,
     ProcessAccess,
     StorageSensors,
+    DiskCounters,
 }
 
 impl Issue {
@@ -99,6 +103,9 @@ impl Issue {
             Self::ProcessAccess => "Some process identities or scheduler fields are inaccessible.",
             Self::StorageSensors => {
                 "Some drive temperatures are unavailable, cached, timed out or beyond the worker limit."
+            }
+            Self::DiskCounters => {
+                "Physical disk counters are unavailable, partial or stale; retained values are not live readings."
             }
         }
     }
@@ -155,7 +162,7 @@ impl Health {
 
 #[derive(Clone, Debug, Default)]
 pub struct Diagnostics {
-    entries: [Health; 7],
+    entries: [Health; 8],
 }
 
 impl Diagnostics {

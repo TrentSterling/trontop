@@ -5,8 +5,20 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.17 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.18 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
+
+Alpha.18 adds independent physical-disk PDH activity, latency, queue and read/write
+rates, retained missing states, gap-aware charts and JSON diagnostics. Local gate:
+166 passed, 0 failed, 10 ignored; strict Clippy/formatting/release PASS. Sixty
+offscreen PNGs produced, physical disk dark/light/compact inspected. Native read-only
+probe returned all five fields on three disks. See `docs/PHYSICAL_DISKS.md`.
+Alpha.17 CI 33969106100 passed for 02ea7f8. Alpha.18 remote gate not yet run.
+No alpha.18 preview launched. Next requested work: four-peg gradients and polished
+Theme Studio, with saved-theme migration and offscreen tests. Current open previews
+must remain untouched unless Trent explicitly requests a new launch/replacement.
+
+The following alpha.17 implementation and preview details are historical.
 
 Alpha.17 adds best-effort bounded local Rust-panic/native-runner failure metadata,
 an allowlisted JSONL format, non-waiting file locking and About discoverability.
@@ -15,7 +27,11 @@ Local gate: 153 passed, 0 failed, 9 ignored; formatting/strict Clippy/release PA
 57 offscreen PNGs produced; About dark/light/compact inspected. Actual panic probes
 used only owned hidden test children and fixture files, not the running GUI.
 Alpha.16 CI 33967714299 passed for df7e3fb; alpha.17 remote gate pending.
-No alpha.17 preview launched; alpha.16 below remains the last explicitly opened app.
+On explicit request, alpha.17 was opened at 13:41:08 UTC on 2026-09-05 from
+`target/preview/alpha17-20260905-134108/trontop.exe`, PID 275020. A read-only desktop
+check confirmed Responding=true, HWND 9577990 and title Trontop. Its hash matches
+the verified review build. Older instances and other windows were untouched.
+Do not restart or replace this preview without fresh permission.
 Next major gaps: suspend/resume, CPU/motherboard sensors, startup controls, native
 isolated service/export and close/drag/soak verification. Do not restart the demo.
 

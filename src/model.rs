@@ -283,6 +283,7 @@ pub struct SystemSnapshot {
     pub cpu: CpuInfo,
     pub processes: Vec<ProcessRow>,
     pub disks: Vec<DiskRow>,
+    pub physical_disks: Arc<crate::disk_activity::Snapshot>,
     pub networks: Vec<NetworkRow>,
     pub gpu: GpuSnapshot,
     pub gpu_sensors: crate::gpu_sensors::SensorSnapshot,

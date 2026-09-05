@@ -2,6 +2,7 @@
 
 mod app;
 mod diagnostics;
+mod disk_activity;
 mod export;
 mod failure;
 mod format;

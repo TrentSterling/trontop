@@ -37,6 +37,10 @@ an action will do.
 - About and diagnostics surface with version, build identity, provider health, and a
   copyable support report.
 - JSON and CSV snapshot export.
+- Physical-disk activity, response latency, outstanding requests and throughput
+  on an independent worker, with stable cached/unavailable states (alpha.18).
+  Native hotplug/localized Windows/controller-mapping coverage remains open:
+  `docs/PHYSICAL_DISKS.md`.
 - Stable icon and Windows PE version metadata.
 - Panic/crash logging beside user settings, with no telemetry upload. Alpha.17
   records bounded Rust-panic/native-runner metadata; direct native crashes/hangs

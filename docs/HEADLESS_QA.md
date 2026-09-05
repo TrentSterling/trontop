@@ -33,6 +33,13 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.18 adds physical-disk provider/unit/native-buffer, latest-mailbox/stall,
+  export freshness/privacy, identity selection and metric-geometry regressions.
+  Dark/light and compact missing-data fixtures add three PNGs. The specifically
+  selected `native_physical_disk_pdh_probe` is read-only, creates no app window
+  and makes no disk writes; never replace its filter with a blanket ignored run.
+  See `PHYSICAL_DISKS.md` for the native observations and remaining coverage.
+
 - Alpha.17 adds allowlisted bounded failure-log checks and owned hidden child panic
   probes (no GUI, tray or sampler). About geometry/explicit-location-copy checks
   run at 1040x640 and 1280x900 in both themes; commands never reach the OS clipboard.

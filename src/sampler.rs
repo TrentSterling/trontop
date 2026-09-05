@@ -92,6 +92,7 @@ fn sample_loop(
     // These workers start without waiting for either native inventory. Their
     // immutable snapshots can be read even while a provider call is stuck.
     let mut inventories = crate::inventory::Inventories::spawn();
+    let mut disk_activity = crate::disk_activity::Monitor::spawn();
     let mut system = System::new_all();
     let mut disks = Disks::new_with_refreshed_list();
     let mut networks = Networks::new_with_refreshed_list();
@@ -352,6 +353,8 @@ fn sample_loop(
         }
         let storage_sensors = storage_monitor.latest();
         *diagnostics.get_mut(Provider::StorageSensors) = storage_sensors.health(Instant::now());
+        let physical_disks = disk_activity.snapshot();
+        *diagnostics.get_mut(Provider::DiskActivity) = physical_disks.health(Instant::now());
         let snapshot = SystemSnapshot {
             diagnostics: diagnostics.clone(),
             sequence,
@@ -369,6 +372,7 @@ fn sample_loop(
             cpu,
             processes,
             disks: disk_rows,
+            physical_disks,
             networks: network_rows,
             gpu,
             gpu_sensors: sensors,

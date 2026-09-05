@@ -6,6 +6,7 @@ use crate::model::{
 };
 use eframe::App;
 
+mod disks;
 mod export;
 mod failure;
 mod offscreen;
@@ -98,6 +99,7 @@ fn fixture() -> SystemSnapshot {
             total_received_bytes: 6_000_000_000,
             total_transmitted_bytes: 940_000_000,
         }],
+        physical_disks: Default::default(),
         gpu: GpuSnapshot {
             available: true,
             valid_counters: 32,
@@ -1638,6 +1640,9 @@ fn render_offscreen_visual_pass() {
     for variant in [
         "performance-light",
         "performance-hover",
+        "physical-disks",
+        "physical-disks-light",
+        "physical-disks-partial-compact",
         "theme-studio",
         "inspector",
         "gpu-sensors",
@@ -1707,6 +1712,9 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_theme_editor = variant == "theme-studio";
+        if variant.starts_with("physical-disks") {
+            disks::install(&mut app, variant.contains("partial"));
+        }
         if variant.starts_with("process-tree-deep") {
             process_perf::install_chain(&mut app);
         }
@@ -1860,7 +1868,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 57 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 60 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

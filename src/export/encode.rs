@@ -112,6 +112,19 @@ fn json_snapshot(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::Resu
         "kind": d.kind, "total_bytes": d.total_bytes, "available_bytes": d.available_bytes,
         "read_bytes_per_sec": d.read_bytes_per_sec, "write_bytes_per_sec": d.write_bytes_per_sec, "removable": d.removable
     })), stop)?;
+    array(w, "physical_disks", s.physical_disks.devices.iter().map(|d| {
+        let mut fields = serde_json::Map::new();
+        for metric in crate::disk_activity::Metric::ALL {
+            let reading = d.readings[metric as usize];
+            fields.insert(metric.key().into(), json!({
+                "value": reading.value, "state": reading.state(&s.physical_disks, c.at),
+                "last_usable_age_seconds": seconds(reading.at, c.at)
+            }));
+        }
+        json!({"disk_number": d.number, "instance": private.then_some(&d.instance),
+            "identity_scope": "Windows PDH instance, not a persistent hardware serial or volume mapping",
+            "provider_state": s.physical_disks.state(c.at).label(), "metrics": fields})
+    }), stop)?;
     array(w, "networks", s.networks.iter().enumerate().map(|(index, n)| json!({
         "index": index, "name": private.then_some(&n.name), "received_bytes_per_sec": n.received_bytes_per_sec,
         "transmitted_bytes_per_sec": n.transmitted_bytes_per_sec, "total_received_bytes": n.total_received_bytes,

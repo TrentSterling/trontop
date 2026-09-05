@@ -16,6 +16,9 @@ Version 0.3 alpha provides:
 - native creation-time validation on the same action handle for termination, priority,
   and affinity; reused PIDs and Windows-critical processes are refused
 - CPU, memory, disk, network, and GPU performance drill-downs
+- independent physical-disk active time, response latency, queue depth and read/write
+  throughput, with explicit cached/missing fields and gap-aware charts; mounted
+  volumes stay separate: `docs/PHYSICAL_DISKS.md`
 - optional NVIDIA temperature, board power, clocks, fan target, and VRAM sensors with
   two-minute temperature/power histories; missing sensors stay explicitly unavailable
 - History, Startup, Users, Details, and Services pages backed by native data

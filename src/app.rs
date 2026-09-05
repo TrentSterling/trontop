@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 const HISTORY_LENGTH: usize = 120;
 
 mod diagnostics;
+mod disks;
 mod export;
 mod inventory;
 mod overview;
@@ -78,6 +79,7 @@ enum PerformanceDevice {
     Network(usize),
     Gpu,
     GpuSensors,
+    PhysicalDisks,
 }
 
 #[derive(Clone, Copy)]
@@ -130,6 +132,8 @@ pub struct TrontopApp {
     gpu_engine_names: Vec<String>,
     sensor_history: HashMap<String, SensorHistory>,
     disk_history: HashMap<String, VecDeque<f32>>,
+    physical_disk_history: disks::Histories,
+    selected_physical_disk: Option<String>,
     network_history: HashMap<String, VecDeque<f32>>,
     theme: ThemeSettings,
     show_theme_editor: bool,
@@ -205,6 +209,8 @@ impl TrontopApp {
             ],
             sensor_history: HashMap::new(),
             disk_history: HashMap::new(),
+            physical_disk_history: disks::Histories::default(),
+            selected_physical_disk: None,
             network_history: HashMap::new(),
             theme: saved_theme,
             show_theme_editor: false,
@@ -248,6 +254,8 @@ impl TrontopApp {
             }
         }
         self.seen_generation = snapshot.sequence;
+        self.physical_disk_history
+            .push(&snapshot.physical_disks, std::time::Instant::now());
         if let Some(at) = snapshot.gpu_sensors.sampled_at {
             for adapter in &snapshot.gpu_sensors.adapters {
                 if let Some(uuid) = &adapter.uuid {
@@ -1475,6 +1483,7 @@ impl TrontopApp {
                             }
                             PerformanceDevice::Gpu => self.gpu_performance(ui),
                             PerformanceDevice::GpuSensors => self.gpu_sensor_performance(ui),
+                            PerformanceDevice::PhysicalDisks => self.physical_disks_performance(ui),
                         });
                 },
             );
@@ -1525,6 +1534,20 @@ impl TrontopApp {
         ) {
             self.performance_device = PerformanceDevice::GpuSensors;
         }
+        if widgets::device_button(
+            ui,
+            self.performance_device == PerformanceDevice::PhysicalDisks,
+            "PHYSICAL DISKS",
+            self.snapshot
+                .physical_disks
+                .state(std::time::Instant::now())
+                .label(),
+            &VecDeque::new(),
+            t.good,
+            t,
+        ) {
+            self.performance_device = PerformanceDevice::PhysicalDisks;
+        }
         for (index, disk) in self.snapshot.disks.iter().enumerate() {
             let history = self
                 .disk_history
@@ -1534,7 +1557,7 @@ impl TrontopApp {
             if widgets::device_button(
                 ui,
                 self.performance_device == PerformanceDevice::Disk(index),
-                &format!("DISK {}", disk.mount),
+                &format!("VOLUME {}", disk.mount),
                 &format::rate(disk.read_bytes_per_sec + disk.write_bytes_per_sec),
                 &history,
                 t.good,
@@ -1698,7 +1721,7 @@ impl TrontopApp {
         let total_rate = disk.read_bytes_per_sec + disk.write_bytes_per_sec;
         widgets::performance_heading(
             ui,
-            &format!("DISK {}", disk.mount),
+            &format!("VOLUME {}", disk.mount),
             &format!("{} | {}", disk.name, disk.kind),
             &format::rate(total_rate),
             t.good,

@@ -90,6 +90,7 @@ fn thread_role(name: Option<&str>) -> &'static str {
     match name {
         Some("main") => "main",
         Some("trontop-sampler") => "sampler",
+        Some("trontop-disk-activity") => "disk_activity",
         Some("trontop-tray") => "tray",
         Some("trontop-icons") => "process_icons",
         Some("trontop-service-control") => "service_control",

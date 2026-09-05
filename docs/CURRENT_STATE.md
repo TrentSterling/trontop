@@ -2,7 +2,17 @@
 
 Last updated: 2026-09-05
 
-## Latest explicitly requested preview: alpha.16
+## Latest explicitly requested preview: alpha.17
+
+On Trent's explicit request, the hash-verified optimized alpha.17 EXE was copied
+to `target/preview/alpha17-20260905-134108/trontop.exe` and opened at
+**13:41:08 UTC** on 2026-09-05 as **PID 275020**. A subsequent read-only desktop
+check confirmed Responding=true, HWND 9577990 and title Trontop. Version, size
+and SHA-256 match the alpha.17 review build below. Older instances and other
+windows were untouched. This is a launch observation, not a native performance
+test. Do not restart or replace this preview without fresh permission.
+
+## Previous explicitly requested preview: alpha.16
 
 On Trent's explicit request, the optimized alpha.16 review EXE was hash-verified
 and copied to `target/preview/alpha16-20260905-1251/trontop.exe`. It launched at
@@ -15,7 +25,32 @@ Older instances and other windows were untouched. Do not automatically replace,
 restart or manipulate this preview. This observation is not an ongoing liveness
 guarantee or a native performance test.
 
-## Latest source: alpha.17 bounded local failure reporting
+## Latest source: alpha.18 physical disks
+
+Independent bounded Windows PDH collection now provides physical-disk active time,
+response time, queue depth and read/write rates. Volume entries remain separate.
+Missing/cached readings retain their fields and chart gaps. JSON export includes
+metric freshness; raw instance names require private-details opt-in. See
+`PHYSICAL_DISKS.md` for semantics, limitations and the native read-only probe.
+
+Final local gate: **166 passed, 0 failed, 10 ignored** (23.05 s), strict Clippy and
+formatting PASS, optimized release PASS (38.58 s). The offscreen pass generated
+**60 PNGs** (34.28 s); physical disk dark/light/compact were inspected. No native
+window or desktop input was used. Probe: five valid fields on three disks; cold
+query 136.823 ms, subsequent queries 0.210/0.168/0.188 ms. Not whole-app timing.
+
+Review EXE: `target/review-build/release/trontop.exe`, **13,337,600 bytes**, version
+**0.3.0-alpha.18**, SHA-256
+`FAB727152D5C54DCFF27567837B5B288DF716BA1FAAE7D8F9DC06CF737FA47DC`.
+No alpha.18 launch; the earlier requested previews are unchanged. Alpha.17 CI
+[33969106100](https://github.com/TrentSterling/trontop/actions/runs/33969106100)
+passed for 02ea7f857245d49df18681eee602a9d883a54b58. Alpha.18 remote gate pending.
+No release published. CPU temperatures and full Task Manager parity remain open.
+
+Next explicit request: four-peg color gradients and a more complete, polished
+theme system. Preserve old saved themes, avoid global desktop testing.
+
+## Previous source: alpha.17 bounded local failure reporting
 
 Rust panics and errors returned by the native runner now leave best-effort local
 metadata beside settings. The JSONL log keeps the latest 32 records and excludes
@@ -34,8 +69,8 @@ No live user failure log was generated. No native drag/close/soak claim is made.
 Review EXE: `target/review-build/release/trontop.exe`, **13,270,016 bytes**, version
 **0.3.0-alpha.17**, built at **13:25:26 UTC** from modified df7e3fb source.
 SHA-256 `0E9F89C8B983A0CDD2C24C8D4197AB2A0FDD85B21EE5F92A2A87BE0AB46CD9A6`.
-No alpha.17 preview was launched or existing instance replaced. Alpha.16 above
-remains the latest explicitly opened preview.
+The subsequent explicitly requested alpha.17 preview launch is recorded above;
+no existing instance was replaced.
 
 Alpha.16 Windows CI [33967714299](https://github.com/TrentSterling/trontop/actions/runs/33967714299)
 passed for df7e3fbc4aea6f2a1ae49b65ac83156dd4fc8c4e. Alpha.17 remote verification is

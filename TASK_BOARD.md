@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.17 bounded local failure reports
+## Current: alpha.18 physical-disk activity
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -104,7 +104,14 @@ This is the durable resume board. Keep it honest and update it when a slice land
   non-waiting OS lock, retention/error tests and safe hidden child panic probes
 - [x] About failure-log location/limits and explicit copy, compact light/dark geometry
   checks and three inspected offscreen layouts: `docs/FAILURE_REPORTS.md`
-- [ ] Verify alpha.17 in remote Windows CI
+- [x] Alpha.17 Windows CI 33969106100 passed for 02ea7f857245d49df18681eee602a9d883a54b58
+- [x] Independent physical-disk PDH worker: active time, latency, queue depth and
+  physical read/write rates, bounded latest-snapshot mailbox and non-waiting drop
+- [x] Stable cached/missing fields, instance-based selection, gap-aware charts,
+  separate Volume labels, provider health and privacy-gated JSON instance names
+- [x] Read-only probe returned all five metrics on three physical disks after warmup;
+  warm queries 0.210/0.168/0.188 ms in one short debug run: `docs/PHYSICAL_DISKS.md`
+- [ ] Verify alpha.18 in remote Windows CI
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
@@ -139,7 +146,9 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Start, stop, and restart service actions with confirmations and access errors;
   native end-to-end validation remains open above
 - [ ] Startup enable/disable support with a reversible disabled-entry store
-- [ ] Disk active-time and latency counters through Windows performance counters
+- [x] Disk active-time, response latency and current queue counters through Windows PDH
+- [ ] Broaden physical-disk native verification to localized Windows, unplug/replug,
+  disabled categories and storage-controller/volume-extent identity mappings
 - [ ] GPU adapter identity, dedicated/shared memory, temperature where a stable provider exists
 - [x] Optional NVML GPU temperature/power/clocks/fan/VRAM provider with background sampling, partial-support states, and a read-only 5070 Ti probe
 - [x] GPU Sensors page with rounded hover cards and UUID-keyed temperature/power histories and peaks; compact/light/dark/missing-data headless coverage

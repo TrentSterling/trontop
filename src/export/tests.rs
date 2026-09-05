@@ -72,8 +72,57 @@ fn empty_json_is_valid_and_has_no_invented_system_sample() {
     let doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(doc["system"].is_null());
     assert_eq!(doc["metadata"]["has_sample"], false);
-    assert_eq!(doc["providers"].as_array().unwrap().len(), 7);
+    assert_eq!(
+        doc["providers"].as_array().unwrap().len(),
+        Provider::ALL.len()
+    );
     assert_eq!(doc["processes"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn physical_disk_export_preserves_cached_missing_zero_and_private_instances() {
+    use crate::disk_activity::{Device, Reading, Snapshot};
+    let mut c = capture(false, Format::Json);
+    let at = c.at;
+    c.snapshot.physical_disks = Arc::new(Snapshot {
+        at: Some(at),
+        generation: 3,
+        devices: vec![Device {
+            number: 7,
+            instance: "7 PRIVATE-MOUNT".into(),
+            readings: [
+                Reading {
+                    value: Some(0.0),
+                    at: Some(at),
+                },
+                Reading {
+                    value: Some(4.5),
+                    at: Some(at - Duration::from_secs(10)),
+                },
+                Reading::default(),
+                Reading::default(),
+                Reading::default(),
+            ],
+        }],
+        ..Default::default()
+    });
+    let bytes = encoded(&c);
+    let doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let disk = &doc["physical_disks"][0];
+    assert_eq!(disk["disk_number"], 7);
+    assert!(disk["instance"].is_null());
+    assert_eq!(disk["metrics"]["active_percent"]["value"], 0.0);
+    assert_eq!(disk["metrics"]["active_percent"]["state"], "Live");
+    assert_eq!(disk["metrics"]["response_millis"]["value"], 4.5);
+    assert_eq!(disk["metrics"]["response_millis"]["state"], "Cached");
+    assert!(disk["metrics"]["outstanding_requests"]["value"].is_null());
+    assert!(!String::from_utf8(bytes).unwrap().contains("PRIVATE-MOUNT"));
+    c.options.private_details = true;
+    assert!(
+        String::from_utf8(encoded(&c))
+            .unwrap()
+            .contains("PRIVATE-MOUNT")
+    );
 }
 
 #[test]

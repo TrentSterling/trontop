@@ -593,6 +593,27 @@ pub fn history_graph(
     fixed_max: Option<f32>,
     t: Tokens,
 ) {
+    history_graph_with_window(
+        ui,
+        history,
+        color,
+        height,
+        fixed_max,
+        t,
+        ("120 SECONDS", history.capacity().max(history.len())),
+    );
+}
+
+/// Explicit window units for series sampled independently from the UI refresh.
+pub fn history_graph_with_window(
+    ui: &mut egui::Ui,
+    history: &VecDeque<f32>,
+    color: Color32,
+    height: f32,
+    fixed_max: Option<f32>,
+    t: Tokens,
+    window: (&str, usize),
+) {
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
     let painter = ui.painter_at(rect);
@@ -624,7 +645,7 @@ pub fn history_graph(
         let maximum = fixed_max
             .unwrap_or_else(|| observed.max(1.0) * 1.15)
             .max(0.001);
-        let denominator = (history.capacity().max(history.len()).max(2) - 1) as f32;
+        let denominator = (window.1.max(history.len()).max(2) - 1) as f32;
         let points = history
             .iter()
             .enumerate()
@@ -666,7 +687,7 @@ pub fn history_graph(
         painter.text(
             rect.left_bottom() + Vec2::new(8.0, -7.0),
             egui::Align2::LEFT_BOTTOM,
-            "120 SECONDS",
+            window.0,
             FontId::monospace(9.0),
             t.text_muted,
         );
