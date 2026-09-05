@@ -144,23 +144,18 @@ pub fn table_header(
         } else {
             ""
         };
-        if ui
-            .add_sized(
-                ui.available_size(),
-                egui::Label::new(
-                    RichText::new(format!("{label}{arrow}"))
-                        .size(10.0)
-                        .strong()
-                        .color(if active == column {
-                            t.text
-                        } else {
-                            t.text_muted
-                        }),
-                )
-                .halign(Align::LEFT)
-                .sense(Sense::click()),
-            )
-            .clicked()
+        if table_label(
+            ui,
+            RichText::new(format!("{label}{arrow}"))
+                .size(10.0)
+                .strong()
+                .color(if active == column {
+                    t.text
+                } else {
+                    t.text_muted
+                }),
+        )
+        .clicked()
         {
             *requested = Some(column);
         }
@@ -200,14 +195,28 @@ pub fn table_column(
 }
 
 pub fn table_cell(ui: &mut egui::Ui, text: RichText) -> bool {
-    ui.add_sized(
-        ui.available_size(),
-        egui::Label::new(text)
-            .halign(Align::LEFT)
-            .sense(Sense::click())
-            .truncate(),
-    )
-    .clicked()
+    table_label(ui, text).clicked()
+}
+
+fn table_label(ui: &mut egui::Ui, text: RichText) -> egui::Response {
+    let label = text.text().to_owned();
+    let galley = egui::WidgetText::from(text).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Truncate),
+        ui.available_width(),
+        egui::TextStyle::Body,
+    );
+    let response = ui.allocate_response(ui.available_size(), Sense::click());
+    let position = egui::pos2(
+        response.rect.left(),
+        response.rect.center().y - galley.size().y * 0.5,
+    );
+    ui.painter()
+        .galley(position, galley, ui.visuals().text_color());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), label.as_str())
+    });
+    response
 }
 
 pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t: Tokens) -> bool {
@@ -486,13 +495,8 @@ pub fn inventory_table(
                 body.rows(32.0, rows.len(), |mut row| {
                     for value in &rows[row.index()] {
                         table_column(&mut row, t, |ui| {
-                            ui.add_sized(
-                                ui.available_size(),
-                                egui::Label::new(RichText::new(value).size(12.0).color(t.text))
-                                    .halign(Align::LEFT)
-                                    .truncate(),
-                            )
-                            .on_hover_text(value);
+                            table_label(ui, RichText::new(value).size(12.0).color(t.text))
+                                .on_hover_text(value);
                         });
                     }
                 })
@@ -505,4 +509,101 @@ pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {
         history.pop_front();
     }
     history.push_back(value);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Real egui layout and input, but no native window, OS input, tray or sampler.
+    #[test]
+    fn headless_labels_are_left_aligned_centered_vertically_and_clickable_across_cell() {
+        for width in [76.0, 240.0, 420.0] {
+            let ctx = egui::Context::default();
+            let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(width, 30.0));
+            let mut clicked = false;
+            for phase in 0..3 {
+                let pointer = rect.right_center() - Vec2::new(2.0, 0.0);
+                let events = if phase == 0 {
+                    vec![]
+                } else {
+                    vec![
+                        egui::Event::PointerMoved(pointer),
+                        egui::Event::PointerButton {
+                            pos: pointer,
+                            button: egui::PointerButton::Primary,
+                            pressed: phase == 1,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ]
+                };
+                let output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            Vec2::new(640.0, 480.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        ui.scope_builder(
+                            egui::UiBuilder::new()
+                                .max_rect(rect)
+                                .layout(Layout::left_to_right(Align::Center)),
+                            |ui| {
+                                clicked |= table_cell(ui, RichText::new("Unity.exe").size(12.0));
+                            },
+                        );
+                    },
+                );
+                let text = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) => Some(text),
+                        _ => None,
+                    })
+                    .expect("label must produce text geometry");
+                assert!(
+                    (text.pos.x - rect.left()).abs() < 0.1,
+                    "text should hug the left inset at width {width}"
+                );
+                assert!((text.pos.y + text.galley.size().y * 0.5 - rect.center().y).abs() < 0.1);
+                assert_eq!(
+                    text.galley.rows.len(),
+                    1,
+                    "labels must never character-wrap"
+                );
+            }
+            assert!(clicked, "empty right-hand cell area must remain clickable");
+        }
+    }
+
+    #[test]
+    fn headless_heat_values_are_right_aligned_and_vertically_centered() {
+        let ctx = egui::Context::default();
+        let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(98.0, 30.0));
+        let t = theme::tokens(ThemeSettings::default());
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .max_rect(rect)
+                    .layout(Layout::left_to_right(Align::Center)),
+                |ui| {
+                    heat_cell(ui, 25.0, "25.0%".into(), t.accent, t);
+                },
+            );
+        });
+        let text = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text),
+                _ => None,
+            })
+            .expect("numeric value must produce text geometry");
+        assert!((text.pos.x + text.galley.size().x - (rect.right() - 3.0)).abs() < 0.1);
+        assert!((text.pos.y + text.galley.size().y * 0.5 - rect.center().y).abs() < 0.1);
+    }
 }

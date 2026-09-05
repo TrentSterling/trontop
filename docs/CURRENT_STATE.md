@@ -11,10 +11,16 @@ The newest local checkpoint adds a dedicated native tray thread fed directly by 
 sampler, a full-area CPU level with scrolling history, alternating gradient column
 bands, padded/vertically aligned table cells, corrected footer space, a rebuilt Users
 resource table, wider inventory tables, and scrollable inspector content. Ordinary
-selected labels now use the high-contrast text token. Some labels still appear centered;
-the visual pass is not finished.
+selected labels now use the high-contrast text token. A final source follow-up fixes
+centered table labels caused by add_sized forcing a centered widget layout. Two
+headless tests check actual text geometry and full-cell input. This follow-up is NOT
+release-built or visually checked in the running app; the visual pass is not finished.
 
-Final code-side verification: formatting PASS; unit tests 16 passed, 0 failed,
+Final source verification: formatting PASS; unit tests 18 passed, 0 failed,
+1 interactive tray test ignored; strict Clippy PASS. No desktop interaction was used
+for the alignment tests, and the running executable was not restarted.
+
+Pre-alignment checkpoint verification: formatting PASS; unit tests 16 passed, 0 failed,
 1 interactive tray test ignored; strict Clippy PASS; release build PASS. Earlier in
 this session the ignored native tray test was explicitly run and passed without any
 application UI frames. Four real tray captures also differed while the window was

@@ -40,6 +40,8 @@ is prohibited by the explicit safety rule in `AGENTS.md`.
 
 Already implemented in the checkpoint: row/column bands in process and inventory
 tables, an aligned Users table, normalized cell insets, reserved footer space,
-scrollable inspector, and higher-contrast selected labels. Remaining issues include
-apparently centered table labels, incomplete Performance overflow handling, incomplete
-global rounded surfaces, and unfinished branding. Do not report the visual pass done.
+scrollable inspector, and higher-contrast selected labels. A source-only follow-up
+corrects centered table labels and adds two headless text-geometry/input tests. It is
+not release-built or visually checked yet. Remaining issues include incomplete
+Performance overflow handling, incomplete global rounded surfaces, and unfinished
+branding. Do not report the visual pass done.

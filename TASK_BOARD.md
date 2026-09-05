@@ -38,7 +38,8 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Alternating column bands, consistent table cell insets, reserved table-footer space
 - [x] Replace broken character-wrapping Users cards with an aligned resource table
 - [x] Scrollable inspector and visible non-floating scrollbars
-- [ ] Recheck left alignment: some labels still appear centered despite Label::halign
+- [x] Fix centered table labels caused by add_sized; headless tests check left/right alignment, vertical centers, single-line layout, and full-cell clicks
+- [ ] Visually verify the final alignment follow-up across pages after the next safe release rebuild
 - [ ] Finish code-drawn vector navigation/window controls and stronger Tront branding (no emoji icons)
 - [ ] Finish small-window Performance content scrolling and remaining spacing audit
 - [ ] Diagnose sustained window-drag lag; findings in `docs/DRAG_INVESTIGATION.md`

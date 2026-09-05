@@ -23,6 +23,10 @@ and scrolling history, column bands, consistent table cells, a rebuilt Users res
 table, and scrollable inspector content. Branding/icon polish and a proper headless UI
 smoke harness remain unfinished. Do not mistake the passive drag recorder for that harness.
 
+Two small headless widget tests now check left-aligned labels, right-aligned numbers,
+vertical centers, and full-cell clicks. The final table-label alignment fix is tested
+in source but not release-built or visually checked; the running EXE is older.
+
 No global mouse/keyboard injection, focus stealing, or automatic minimize/restore/move
 tests on Trent's working desktop. Earlier automation almost closed a day-job Claude
 session. Use headless tests. The old temporary desktop-control helper is now guarded

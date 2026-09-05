@@ -96,8 +96,10 @@ measurement can be scheduled only when Trent is ready to perform the drag himsel
 ## Other work to resume
 
 The Users wrapping defect and broader tray meter have been implemented and release-built.
-Column/row bands and improved spacing are in progress; several name/header labels still
-look centered. Compact Performance details still need an overflow pass. Stronger Tront
+Column/row bands and improved spacing are in progress. A final source-only follow-up
+fixes centered name/header labels, with two headless geometry/input tests; it is not
+release-built or visually checked yet. Compact Performance details still need an
+overflow pass. Stronger Tront
 branding and a unified vector icon set are requested, not implemented in this checkpoint.
 Do not use emoji as icons. The safe comprehensive smoke harness is still pending.
 
