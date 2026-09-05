@@ -20,6 +20,7 @@ const HISTORY_LENGTH: usize = 120;
 mod diagnostics;
 mod overview;
 mod sensors;
+mod storage;
 
 #[cfg(test)]
 mod ui_smoke;

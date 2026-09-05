@@ -1,6 +1,6 @@
 # Next slice: provider health and support reports
 
-Alpha.6 source on `feat/provider-diagnostics` implements health metadata, About/status
+Alpha.7 source on `feat/provider-diagnostics` implements health metadata, About/status
 UI and explicit privacy-safe report copy. Timed attempts/success/coverage, service
 cache retention, native startup inventory, periodic CPU frequency, unknown account
 labels and PDH API/CStatus validation are wired. Provider failures can show cached
@@ -8,7 +8,11 @@ sensor readings with original freshness, not falsely live values. The allowliste
 support report has no path/process/account/host/GPU-ID fields and is never uploaded.
 Headless tests capture the CopyText command without executing the system clipboard.
 
-Local verification: 48 passing tests, strict Clippy clean, 25 offscreen PNGs. Read
+Drive sensors are the seventh provider, with independent freshness/coverage and
+per-drive costs rather than a misleading combined query duration. The default report
+still accepts only diagnostic metadata, never opaque storage interfaces or names.
+
+Local verification: 55 passing tests, strict Clippy clean, 28 offscreen PNGs. Read
 `CURRENT_STATE.md` for the review build and the separate still-running alpha.5 preview.
 Remote CI/release for this branch is not complete. Individual startup-source result
 preservation/display and per-process GPU unavailable semantics remain open.

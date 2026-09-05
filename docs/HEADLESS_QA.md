@@ -17,6 +17,8 @@ The last command is specifically selected, not a blanket `--ignored` run. The na
 tray ignored test creates a real icon and must not run on the working desktop. A
 separate, read-only `native_nvml_read_only_probe` opt-in test queries the installed
 NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
+The `native_storage_ssd_probe` opt-in test is additionally restricted to the exact
+previously identified TEAM SSD. It is not run by generic CI or the visual harness.
 
 ## Coverage
 
@@ -49,9 +51,15 @@ NVIDIA driver without any app window or input. See `SENSORS_PLAN.md`.
 - Six sensor fields keep identical geometry across live, cached and unavailable
   snapshots. Cached snapshots cannot extend the live history. Missing GPU graph
   samples produce gaps, not zero values or connecting traces.
+- Three drive sensor rows retain identical label geometry, visible single-line
+  readings and explicit state across live/cached/unavailable/disconnected snapshots
+  in both modes. Opaque device-interface IDs never enter the rendered text.
+- Fake storage backends exercise stuck I/O, independent fast-drive updates, timeout
+  cancellation, retry deadlines, worker limits, disconnect/reconnect and bounded
+  monitor drop. These tests do not query actual drives or manipulate the desktop.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes twenty-five PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes twenty-eight PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 

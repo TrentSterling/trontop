@@ -79,6 +79,8 @@ fn sample_loop(
     let mut gpu_sampler = GpuSampler::new();
     // The optional driver library and every sensor call stay on this worker.
     let mut sensor_sampler = SensorSampler::default();
+    // Storage enumeration and every drive query have isolated, bounded workers.
+    let storage_monitor = crate::storage_sensors::Monitor::spawn();
     let mut sequence = 0_u64;
     let mut previous_sample = Instant::now();
     let mut diagnostics = Diagnostics::default();
@@ -340,6 +342,8 @@ fn sample_loop(
         if stop.load(Ordering::Acquire) {
             return;
         }
+        let storage_sensors = storage_monitor.latest();
+        *diagnostics.get_mut(Provider::StorageSensors) = storage_sensors.health(Instant::now());
         let snapshot = SystemSnapshot {
             diagnostics: diagnostics.clone(),
             sequence,
@@ -360,6 +364,7 @@ fn sample_loop(
             networks: network_rows,
             gpu,
             gpu_sensors: sensors,
+            storage_sensors,
             users: user_rows,
             startup: Arc::clone(&startup),
             services: Arc::clone(&services),

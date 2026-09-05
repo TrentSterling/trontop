@@ -121,6 +121,34 @@ fn fixture() -> SystemSnapshot {
             query_millis: 0.42,
             error: None,
         },
+        storage_sensors: std::sync::Arc::new(crate::storage_sensors::Snapshot {
+            inventory_at: Some(fixture_at),
+            inventory_error: None,
+            drives: vec![crate::storage_sensors::DriveReading {
+                device: crate::storage_sensors::Device {
+                    id: "PRIVATE-FIXTURE-STORAGE-INTERFACE".into(),
+                    name: "Fixture NVMe drive (test data)".into(),
+                },
+                temperatures: crate::storage_sensors::Temperatures {
+                    warning: Some(90),
+                    critical: Some(95),
+                    sensors: (0..3)
+                        .map(|index| crate::storage_sensors::Temperature {
+                            index,
+                            celsius: Some(44 - index as i16),
+                            over_threshold: Some(90),
+                            under_threshold: None,
+                            event: false,
+                        })
+                        .collect(),
+                },
+                last_attempt: Some(fixture_at),
+                last_success: Some(fixture_at),
+                query_millis: Some(3.72),
+                error: None,
+                present: true,
+            }],
+        }),
         users: vec![UserSummary {
             name: "FIXTURE\\LongAccountName".into(),
             process_count: 64,
@@ -738,6 +766,88 @@ fn sensor_states_render_without_wrapping_or_fabricated_readings() {
 }
 
 #[test]
+fn drive_sensor_fields_stay_aligned_for_live_cached_unavailable_and_disconnected_data() {
+    for dark in [true, false] {
+        let mut expected = None;
+        for state in 0..4 {
+            let settings = ThemeSettings {
+                dark,
+                ..Default::default()
+            };
+            let ctx = egui::Context::default();
+            theme::install(&ctx, settings);
+            let mut app = app(settings, true);
+            let storage = std::sync::Arc::make_mut(&mut app.snapshot.storage_sensors);
+            let drive = &mut storage.drives[0];
+            if state == 1 {
+                drive.error = Some(crate::storage_sensors::Error::Timeout);
+            }
+            if state == 2 {
+                drive.last_success = None;
+                drive.error = Some(crate::storage_sensors::Error::Windows(5));
+                for sensor in &mut drive.temperatures.sensors {
+                    sensor.celsius = None;
+                }
+            }
+            if state == 3 {
+                drive.present = false;
+            }
+            let mut output = egui::FullOutput::default();
+            for _ in 0..3 {
+                output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            Vec2::new(640.0, 480.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| app.storage_sensor_cards(ui),
+                );
+            }
+            assert!(output.platform_output.commands.is_empty());
+            let texts = text_shapes(&output);
+            let bounds: Vec<_> = (0..3)
+                .map(|index| {
+                    let (text, clip) = texts
+                        .iter()
+                        .find(|(text, _)| text.galley.job.text == format!("Sensor {index}"))
+                        .unwrap();
+                    assert!(clip.contains_rect(text.visual_bounding_rect()));
+                    text.visual_bounding_rect()
+                })
+                .collect();
+            if let Some(expected) = &expected {
+                assert_eq!(&bounds, expected);
+            }
+            expected = Some(bounds);
+            assert!(texts.iter().any(|(text, _)| text.galley.job.text
+                == ["Live", "Cached", "Unavailable", "Disconnected"][state]));
+            assert!(!texts.iter().any(|(text, _)| {
+                text.galley
+                    .job
+                    .text
+                    .contains("PRIVATE-FIXTURE-STORAGE-INTERFACE")
+            }));
+            let values: Vec<_> = texts
+                .iter()
+                .filter(|(text, _)| {
+                    ["44 °C", "43 °C", "42 °C", "-- °C"].contains(&text.galley.job.text.as_str())
+                })
+                .collect();
+            assert_eq!(values.len(), 3);
+            for (text, clip) in values {
+                assert_eq!(text.galley.rows.len(), 1);
+                assert!(clip.contains_rect(text.visual_bounding_rect()));
+                if state == 2 {
+                    assert_eq!(text.galley.job.text, "-- °C");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn sensor_histories_follow_identity_not_enumeration_order_and_drop_stale_values() {
     let mut app = TrontopApp::with_services(ThemeSettings::default(), None, None);
     let mut snapshot = fixture();
@@ -814,6 +924,9 @@ fn render_offscreen_visual_pass() {
         "about-light",
         "about-compact",
         "gpu-sensors-cached",
+        "storage-sensors-light",
+        "storage-sensors-cached",
+        "storage-sensors-unavailable",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -845,6 +958,21 @@ fn render_offscreen_visual_pass() {
             app.snapshot.gpu_sensors.using_cached = true;
             app.snapshot.gpu_sensors.error = Some("Fixture provider unavailable".into());
         }
+        if variant.starts_with("storage-sensors") {
+            app.page = Page::Sensors;
+            let storage = std::sync::Arc::make_mut(&mut app.snapshot.storage_sensors);
+            if variant.ends_with("-cached") {
+                storage.drives[0].error = Some(crate::storage_sensors::Error::Timeout);
+            } else if variant.ends_with("-unavailable") {
+                storage.drives[0]
+                    .temperatures
+                    .sensors
+                    .iter_mut()
+                    .for_each(|s| s.celsius = None);
+                storage.drives[0].last_success = None;
+                storage.drives[0].error = Some(crate::storage_sensors::Error::Windows(5));
+            }
+        }
         if variant.starts_with("gpu-sensors") {
             app.performance_device = PerformanceDevice::GpuSensors;
         }
@@ -875,7 +1003,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 25 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 28 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

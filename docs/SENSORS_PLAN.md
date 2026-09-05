@@ -1,7 +1,56 @@
 # Sensors: implementation and next steps
 
 Trent asked about temperatures and additional hardware telemetry on September 4, 2026.
-The alpha.2 checkpoint had no provider. Alpha.3 now implements the first NVIDIA slice.
+The alpha.2 checkpoint had no provider. Alpha.3 added NVIDIA; alpha.7 adds storage.
+
+## Implemented in alpha.7: isolated native drive temperatures
+
+`src/storage_sensors/` enumerates GUID_DEVINTERFACE_DISK through SetupAPI and opens
+opaque device interfaces with access 0. Only the device temperature property (52)
+is queried, avoiding duplicate adapter/device copies. No external assets, vendor
+DLLs, installed service, additional driver, elevation or hardware-setting writes.
+
+The coordinator inventories every 30 s. Each interface has one owned worker and
+one request in flight. Maximum 32 drive workers; retiring workers count toward the
+cap until actually finished. Requests sample after 5 s on success, back off 60 s
+after errors/slow completion, and request cancellation after 1 s. No replacement
+thread is created for stuck I/O, even after unplug/replug. Buffers/handles stay owned
+by their worker until return. The normal system sampler/UI only reads an Arc snapshot.
+Native cancellation is not guaranteed; blocked inventory can stall this provider's
+coordinator, but not the normal sampler/UI. Monitor drop signals stop without waiting
+for stuck calls. Whole-app native close latency remains unmeasured.
+
+UI: scoped GPU/drive/CPU health, compact zebra/hover sensor rows, stable numeric
+alignment and fields, true original freshness on cached readings, query cost and
+threshold details. Overview shows the hottest reported sensor per drive. Sensor
+indices are not CPU cores or mount letters. Threshold-notification-enabled is not
+an overheating event. Readings below absolute zero (including the SSD's unset -274 C
+threshold) are unavailable; valid zero and reasonable negative Celsius remain valid.
+
+Verification: 55 passing tests, strict Clippy and optimized build pass, 28 offscreen
+PNGs. Storage tests cover descriptor truncation/version/count/duplicate indices,
+missing values/cache ages, bounded slots, blocked-query isolation, hotplug duplicate
+prevention, retry deadlines, lost workers and fast monitor drop. Eight new sensor
+layout/state combinations pass. Real native probe, explicitly selected:
+
+```powershell
+cargo test native_storage_ssd_probe --offline -- --ignored --nocapture
+```
+
+It uses the actual monitor/native backend, restricted to exactly one known
+TEAM TM8FP6002T SSD. Latest: 45/45/43 C, 7.2355 ms query, warning 90 C and critical
+95 C. Earlier: 44/44/41 C, 7.2946 ms. Both passed without an app window, disk writes
+or elevated execution. No HDD query was repeated; unsupported controllers remain
+explicitly unavailable. These brief measurements are not a sustained performance
+or clean-machine permission matrix. CPU/motherboard sensors are still unconnected.
+
+Primary API references checked before implementation:
+
+- [Device-interface details and opaque paths](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw)
+- [CancelSynchronousIo](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelsynchronousio)
+- [Cancellation ownership and completion limits](https://learn.microsoft.com/en-us/windows/win32/fileio/canceling-pending-i-o-operations)
+- [Temperature descriptor](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_temperature_data_descriptor)
+- [Sensor fields and notification flag](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_temperature_info)
 
 ## Implemented in alpha.3
 
@@ -65,7 +114,7 @@ graphics clock 802 MHz, memory clock 405 MHz, fan 0%, and 6976 / 16303 MiB VRAM.
 These are a single instantaneous observation, not expected values or test assertions.
 The query changed no clocks, power limits, fan settings, driver settings, or processes.
 
-## Storage capability probe (September 5, not integrated)
+## Historical storage capability probe (before alpha.7 integration)
 
 A separate one-shot metadata probe used the documented temperature property query
 on the three disks identified by read-only Windows inventory. `CreateFileW` used
@@ -135,7 +184,7 @@ observed. This only describes those checked interfaces in the current context; i
 does not prove the hardware lacks sensors or rule out every existing provider.
 
 Decision: retain portable base EXE with optional installed NVIDIA driver telemetry;
-implement the verified Windows storage query in an isolated slow worker next. Further
+the verified Windows storage query is now integrated in isolated workers. Further
 CPU provider research should check existing vendor interfaces and authorized existing
 monitoring providers before proposing an optional low-level backend. Any driver/service
 installation, elevation or security-setting change needs explicit approval. Trent has
@@ -147,14 +196,14 @@ not approved it. No driver-free all-CPU-temperature solution has been verified h
    provider recovery tests. Validate unsupported-driver startup on another machine.
 2. Optional temperature in the tray tooltip, per-adapter alert thresholds and export.
    No fabricated CPU temperatures and no claim that missing fan data means a stopped fan.
-3. Storage temperature, wear, power-on hours and error counters through Windows
-   storage APIs where the device/controller/permissions expose them. The probe above
-   proves temperature-query support on this SSD, not production integration.
+3. Broader storage-controller temperature coverage, wear, power-on hours and error
+   counters through Windows APIs where exposed. Alpha.7 integrates temperature only;
+   this SSD passed the native runtime probe, not every device/controller.
 4. Investigate CPU package/core temperature and power separately. Do not label ACPI
    thermal zones as CPU package temperature. A driver-based provider changes security,
    privilege, distribution and portability requirements; do not silently install one.
 
-Keep all queries on the background sampler, with slower cadence for expensive sensors.
+Keep all queries off the UI thread, with isolated slow workers for storage sensors.
 Load NVML only from trusted system/driver locations with safe dependency resolution,
 never from an arbitrary working directory. If the driver library or a symbol is
 missing, Trontop must still start as one portable EXE. Do not bundle vendor DLLs or

@@ -2,7 +2,54 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.6 diagnostics, overview and vector controls
+## Latest source: alpha.7 isolated drive temperatures
+
+Branch `feat/provider-diagnostics`. Added a native read-only storage provider and
+slim zebra/hover sensor rows with fixed numeric alignment, guided by the supplied
+component studies and the redesign skill. GPU, drive and CPU provider labels are
+explicitly scoped; a live GPU does not imply complete sensor coverage.
+
+- SetupAPI enumerates opaque disk interfaces. Access-0 handles query only
+  `StorageDeviceTemperatureProperty`; no sectors, SMART pass-through, writes,
+  threshold changes, additional drivers, services or elevation.
+- One storage coordinator and at most 32 drive workers, one request per worker.
+  Successful requests repeat after 5 s; failed/slow completed requests back off
+  60 s. At 1 s, cancellation is requested on that owned worker only. A stuck call
+  retains its slot/resources until completion, including across unplug/replug;
+  it cannot create replacement-thread growth or block the regular sampler/UI.
+- Failures keep the last usable readings and original timestamp marked Cached.
+  Unsupported data remains unavailable. Per-drive query costs and provider-health
+  coverage are visible. Overview reports each drive's hottest available sensor.
+- Descriptor bounds/indices are validated. The SSD's unset -274 C threshold and
+  SDK missing sentinel are unavailable, never presented as valid limits.
+
+Verification: 55 tests passed, 0 failed, 4 opt-in tests ignored (29.45 s); strict
+Clippy PASS; optimized build PASS (48.18 s). Explicit offscreen pass PASS with
+28 PNGs (20.77 s); reviewed compact/light/cached/unavailable Sensors and Overview.
+New tests cover parser bounds, stale cache, worker limits, failed-query backoff,
+lost worker state, blocked-query isolation, hotplug duplicate prevention, bounded
+drop and stable sensor text geometry. UI checks use fixture data and no OS input.
+
+The explicitly selected native runtime probe queried ONLY the previously identified
+TEAM TM8FP6002T SSD: 45/45/43 C, query 7.2355 ms, warning 90 C, critical 95 C.
+The earlier run was 44/44/41 C at 7.2946 ms. No HDD query was repeated this slice.
+These are short read-only measurements, not a sustained runtime/close benchmark.
+
+Separate review EXE: `target/review-build/release/trontop.exe`, 12,900,864 bytes,
+PE version 0.3.0-alpha.7, SHA-256:
+`94B0396710AA005A3F5C169FCAAF72A6282479F65EA46CE2D6D5C4883C39537D`.
+Built from modified b157f7e source before checkpoint. Windows-only imports including
+SetupAPI; no bundled vendor DLL, dynamic MSVC runtime or runtime asset directory.
+Not launched. The separately deployed alpha.5 copy was not replaced/restarted.
+No native window manipulation, global input or unrelated process changes.
+
+CPU/motherboard, unsupported storage-controller coverage, wear/error counters and
+the alpha release gates remain open. Cancellation is a request, not a guaranteed
+driver completion; coordinator inventory itself can stall only the storage provider.
+No new end-to-end closing/dragging measurement. Remote CI for alpha.7 is pending;
+no release/tag has been published. See `SENSORS_PLAN.md` for sources and exact limits.
+
+## Previous: alpha.6 diagnostics, overview and vector controls
 
 Branch `feat/provider-diagnostics`. The existing running alpha.5 preview was NOT
 closed, replaced, moved or relaunched for this work. The separate optimized alpha.6

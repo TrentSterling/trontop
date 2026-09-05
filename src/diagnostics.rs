@@ -10,16 +10,18 @@ pub enum Provider {
     Services,
     Startup,
     ProcessControls,
+    StorageSensors,
 }
 
 impl Provider {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::System,
         Self::GpuActivity,
         Self::GpuSensors,
         Self::Services,
         Self::Startup,
         Self::ProcessControls,
+        Self::StorageSensors,
     ];
 
     pub fn name(self) -> &'static str {
@@ -30,13 +32,14 @@ impl Provider {
             Self::Services => "Windows services",
             Self::Startup => "Startup inventory",
             Self::ProcessControls => "Process inspection",
+            Self::StorageSensors => "Drive sensors / Windows storage",
         }
     }
 
     pub fn cadence(self) -> Duration {
         Duration::from_secs(match self {
             Self::Services | Self::Startup => 30,
-            Self::ProcessControls => 5,
+            Self::ProcessControls | Self::StorageSensors => 5,
             _ => 1,
         })
     }
@@ -75,6 +78,7 @@ pub enum Issue {
     ServiceQuery,
     StartupSources,
     ProcessAccess,
+    StorageSensors,
 }
 
 impl Issue {
@@ -87,6 +91,9 @@ impl Issue {
             Self::ServiceQuery => "Service inventory could not refresh; cached rows may remain.",
             Self::StartupSources => "Some startup sources could not be read completely.",
             Self::ProcessAccess => "Some process identities or scheduler fields are inaccessible.",
+            Self::StorageSensors => {
+                "Some drive temperatures are unavailable, cached, timed out or beyond the worker limit."
+            }
         }
     }
 }
@@ -142,7 +149,7 @@ impl Health {
 
 #[derive(Clone, Debug, Default)]
 pub struct Diagnostics {
-    entries: [Health; 6],
+    entries: [Health; 7],
 }
 
 impl Diagnostics {

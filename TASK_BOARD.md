@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.6 diagnostics, overview and icon polish
+## Current: alpha.7 diagnostics, drive sensors and icon polish
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -22,10 +22,14 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Preserve/display startup-source details and independently stale service rows
 - [ ] Complete unavailable/warming/zero presentation for GPU activity consumers
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 48 tests pass, strict Clippy clean, 25 offscreen review PNGs
-- [ ] Verify alpha.6 in remote Windows CI; no alpha.6 release is published
-- [ ] Integrate CPU/motherboard/drive sensor providers. Existing GPU readings are real;
-  CPU/drive temperature fields remain unconnected, not simulated.
+  geometry coverage: 55 tests pass, strict Clippy clean, 28 offscreen review PNGs
+- [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
+  retry, honest cached data, hotplug duplicate prevention and stable zebra rows
+- [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
+  separate optimized alpha.7 EXE passes Windows-only dependency inspection
+- [ ] Verify alpha.7 in remote Windows CI; no alpha.7 release is published
+- [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
+  Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
 
 ## Shipped in 0.2

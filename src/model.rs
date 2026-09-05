@@ -243,6 +243,7 @@ pub struct SystemSnapshot {
     pub networks: Vec<NetworkRow>,
     pub gpu: GpuSnapshot,
     pub gpu_sensors: crate::gpu_sensors::SensorSnapshot,
+    pub storage_sensors: Arc<crate::storage_sensors::Snapshot>,
     pub users: Vec<UserSummary>,
     pub startup: Arc<Vec<StartupRow>>,
     pub services: Arc<Vec<ServiceRow>>,

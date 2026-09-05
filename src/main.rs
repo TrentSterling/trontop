@@ -9,6 +9,7 @@ mod model;
 mod platform;
 mod sampler;
 mod shutdown;
+mod storage_sensors;
 mod theme;
 mod tray;
 mod widgets;

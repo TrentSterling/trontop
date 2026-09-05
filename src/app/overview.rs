@@ -28,7 +28,7 @@ impl TrontopApp {
             ui.horizontal(|ui| {
                 widgets::section_label(ui, "Temperatures & power", t);
                 let state = self.snapshot.diagnostics.get(Provider::GpuSensors).state(Provider::GpuSensors, Instant::now());
-                widgets::status_pill(ui, if self.snapshot.gpu_sensors.using_cached { "Cached" } else { state.label() }, diagnostics::state_color(state, t));
+                widgets::status_pill(ui, &format!("GPU: {}", if self.snapshot.gpu_sensors.using_cached { "Cached" } else { state.label() }), diagnostics::state_color(state, t));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui.button("All sensors").clicked() { self.page = Page::Sensors; }
                 });
@@ -47,7 +47,12 @@ impl TrontopApp {
                 });
                 ui.add_space(4.0);
             }
-            widgets::hover_label(ui, RichText::new("CPU and drive temperature coverage is in progress. Missing readings are never estimated.").size(11.0).color(t.text_muted));
+            for drive in &self.snapshot.storage_sensors.drives {
+                let hottest = drive.temperatures.sensors.iter().filter_map(|s| s.celsius).max();
+                let value = hottest.map_or_else(|| "-- °C".into(), |v| format!("{v} °C / {}", drive.status(Instant::now())));
+                widgets::detail_row(ui, &drive.device.name, &value, t);
+            }
+            widgets::hover_label(ui, RichText::new("Drive summary uses the hottest reported sensor. CPU temperature coverage is not connected.").size(11.0).color(t.text_muted));
             ui.add_space(12.0);
             ui.columns(2, |cols| {
                 widgets::hover_label(&mut cols[0], RichText::new("CPU history").strong().size(14.0));
@@ -100,17 +105,23 @@ impl TrontopApp {
             false,
         );
         egui::ScrollArea::vertical().id_salt("all_sensors_scroll").auto_shrink([false, false]).show(ui, |ui| {
-            self.provider_notice(ui, Provider::GpuSensors);
-            self.gpu_sensor_performance(ui);
             let t = self.colors();
+            let now = Instant::now();
+            ui.horizontal_wrapped(|ui| {
+                let gpu = self.snapshot.diagnostics.get(Provider::GpuSensors).state(Provider::GpuSensors, now);
+                let drives = self.snapshot.storage_sensors.health(now).state(Provider::StorageSensors, now);
+                widgets::status_pill(ui, &format!("GPU: {}", if self.snapshot.gpu_sensors.using_cached { "Cached" } else { gpu.label() }), diagnostics::state_color(gpu, t));
+                widgets::status_pill(ui, &format!("Drives: {}", drives.label()), diagnostics::state_color(drives, t));
+                widgets::status_pill(ui, "CPU: not connected", t.text_muted);
+            });
+            ui.add_space(8.0);
             widgets::section_label(ui, "CPU & motherboard", t);
             widgets::detail_row(ui, "CPU temperature", "-- °C", t);
             widgets::hover_label(ui, RichText::new("A CPU hardware-sensor provider is not connected. ACPI thermal zones are not assumed to be CPU package readings.").size(11.0).color(t.text_muted));
             ui.add_space(10.0);
-            widgets::section_label(ui, "Drive temperatures", t);
-            if self.snapshot.disks.is_empty() { widgets::detail_row(ui, "Drive sensor", "-- °C", t); }
-            for disk in &self.snapshot.disks { widgets::detail_row(ui, &disk.mount, "-- °C", t); }
-            widgets::hover_label(ui, RichText::new("Drive temperature sampling is not connected yet. The SSD capability probe succeeded; runtime integration is still in progress.").size(11.0).color(t.text_muted));
+            self.storage_sensor_cards(ui);
+            ui.add_space(10.0);
+            self.gpu_sensor_performance(ui);
         });
     }
 }

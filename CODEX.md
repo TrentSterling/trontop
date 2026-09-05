@@ -5,7 +5,7 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.6 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.7 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Implemented: Overview and Hardware sensors navigation, About/provider diagnostics
@@ -13,11 +13,13 @@ and explicit privacy-safe report copy, stable missing/cached GPU sensor fields,
 gap-aware GPU activity charts, bounded worker-shutdown waiting, and original vector
 navigation/window/action/tree icons. Four user mockup boards and a generated
 transparent Signal icon candidate are saved in `docs/inspiration`; the candidate
-is not installed as the application icon. CPU/motherboard/drive providers are NOT
-connected, despite their stable placeholder fields. No full Task Manager parity.
+is not installed as the application icon. Alpha.7 integrates read-only Windows drive
+temperatures using isolated, bounded workers with timeout/backoff/cache states.
+The TEAM SSD returned three real readings in the opt-in native test. CPU/motherboard
+providers remain unconnected. No full Task Manager parity.
 
-Local tests: 48 passed, 0 failed, 3 opt-in tests ignored. Strict Clippy passes.
-Offscreen QA produced 25 PNGs without native windows/input. Native end-to-end close
+Local tests: 55 passed, 0 failed, 4 opt-in tests ignored. Strict Clippy passes.
+Offscreen QA produced 28 PNGs without native windows/input. Native end-to-end close
 latency and dragging performance are NOT measured. CPU provider research and the
 slow SSD/HDD probe findings are in `docs/SENSORS_PLAN.md`; no driver install authority.
 
@@ -32,9 +34,9 @@ This is a development preview, not a published alpha release. Do not automatical
 restart it again for subsequent edits. Read the newest `docs/CURRENT_STATE.md` section.
 
 Next: preserve/display individual startup-source results, finish per-process GPU
-missing-value semantics, integrate safe isolated storage sampling, then continue
+missing-value semantics, investigate remaining CPU/motherboard sensor coverage, then continue
 slim components and real executable icons with a bounded background cache. Complete
-the release gates in `RELEASE_PLAN.md`; alpha.4 CI is not verification of alpha.6.
+the release gates in `RELEASE_PLAN.md`; alpha.4 CI is not verification of alpha.7.
 
 ## Previous verified checkpoint
 

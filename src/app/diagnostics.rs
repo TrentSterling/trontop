@@ -52,7 +52,7 @@ impl TrontopApp {
                             widgets::hover_label(ui, RichText::new(format!("Attempt {}", age(health.last_attempt, now))).size(11.0).monospace());
                             widgets::hover_label(ui, RichText::new(format!("Usable {}", age(health.last_success, now))).size(11.0).monospace());
                         });
-                        let timing = health.query_millis.map_or_else(|| "Not sampled".into(), |ms| format!("{ms:.3} ms query"));
+                        let timing = health.query_millis.map_or_else(|| if provider == Provider::StorageSensors { "Query times shown per drive".into() } else { "Not sampled".into() }, |ms| format!("{ms:.3} ms query"));
                         let coverage = health.coverage.map_or_else(String::new, |(present, total)| format!(" / {present} of {total} readable"));
                         widgets::hover_label(ui, RichText::new(format!("{timing}{coverage}")).size(11.0).color(t.text_muted));
                         if let Some(issue) = health.issue { widgets::hover_label(ui, RichText::new(issue.description()).size(11.0)); }
