@@ -34,8 +34,11 @@ pub(super) fn install_chain(app: &mut TrontopApp) {
     app.page = Page::Processes;
     app.tree_mode = true;
     app.selected_pid = None;
-    app.expanded_pids = snapshot.processes.iter().map(|r| r.pid).collect();
     app.accept_sample(snapshot);
+    for row in &app.snapshot.processes {
+        app.tree_expansion.expand(row);
+    }
+    app.rebuild_visible_processes();
 }
 
 #[test]

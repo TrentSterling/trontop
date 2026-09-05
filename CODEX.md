@@ -5,8 +5,21 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.15 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.16 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
+
+Alpha.16 sorts tree resources by displayed subtree totals, retains expansion using
+observed process identity, and prevents invisible sort keys after page switches.
+Local gate: 143 passed, 0 failed, 9 ignored; formatting/strict Clippy/release PASS.
+57 offscreen PNGs produced; four relevant layouts inspected. See `docs/PROCESS_SORTING.md`.
+Alpha.15 CI 33965959216 passed for 7df48c9. Alpha.16 remote verification is pending.
+On explicit request, alpha.16 was opened at 12:51:50 UTC on 2026-09-05 from
+`target/preview/alpha16-20260905-1251/trontop.exe`, PID 272352, HWND 6370918,
+Responding=true. Sandbox window enumeration cannot verify desktop liveness; a
+read-only desktop-session check confirmed this launch. Older instances untouched.
+Do not restart or replace this preview without fresh permission.
+
+The alpha.15 implementation details below are historical.
 
 Alpha.15 replaces recursive hierarchy building with indexed iterative traversal,
 rejects known newer-parent links, makes cycle members honest separate roots, and

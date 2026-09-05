@@ -235,6 +235,98 @@ fn missing_matches_do_not_create_rows_or_hide_search_context() {
     );
 }
 
+#[test]
+fn tree_resource_sort_uses_full_subtree_values_for_roots_and_siblings() {
+    let mut processes = fixture(6, "wide");
+    for (row, (parent, value)) in processes.iter_mut().zip([
+        (None, 1),
+        (Some(1), 2),
+        (Some(1), 8),
+        (Some(2), 12),
+        (None, 10),
+        (Some(5), 0),
+    ]) {
+        row.parent_pid = parent;
+        row.cpu_percent = value as f32;
+        row.gpu_percent = Usage::Measured(value as f32);
+        row.memory_bytes = value;
+        row.read_bytes_per_sec = value as f64;
+        row.write_bytes_per_sec = value as f64;
+    }
+    let all = (1..=6).collect::<HashSet<_>>();
+    for column in [
+        SortColumn::Cpu,
+        SortColumn::Gpu,
+        SortColumn::Memory,
+        SortColumn::ReadRate,
+        SortColumn::WriteRate,
+    ] {
+        for direction in [SortDirection::Ascending, SortDirection::Descending] {
+            let tree = build_process_tree(&processes, &all, &all, column, direction);
+            let expected = if direction == SortDirection::Ascending {
+                vec![5, 6, 1, 3, 2, 4]
+            } else {
+                vec![1, 2, 4, 3, 5, 6]
+            };
+            assert_eq!(
+                pids(&processes, &tree),
+                expected,
+                "{column:?} {direction:?}"
+            );
+            // Collapse and filtering cannot change the totals that determine root order.
+            let collapsed =
+                build_process_tree(&processes, &all, &HashSet::new(), column, direction);
+            let filtered =
+                build_process_tree(&processes, &HashSet::from([1, 5]), &all, column, direction);
+            let root_order = if direction == SortDirection::Ascending {
+                [5, 1]
+            } else {
+                [1, 5]
+            };
+            assert_eq!(pids(&processes, &collapsed), root_order);
+            assert_eq!(pids(&processes, &filtered), root_order);
+        }
+    }
+}
+
+#[test]
+fn tree_gpu_sort_uses_aggregate_coverage_keeps_missing_last_and_ties_by_pid() {
+    let mut processes = fixture(7, "wide");
+    for row in &mut processes {
+        row.parent_pid = None;
+    }
+    processes[1].parent_pid = Some(1);
+    processes[0].gpu_percent = Usage::Unreported;
+    processes[1].gpu_percent = Usage::Measured(50.0); // Aggregate root is numeric partial.
+    processes[2].gpu_percent = Usage::Measured(20.0);
+    processes[3].gpu_percent = Usage::Unavailable;
+    processes[4].gpu_percent = Usage::Measured(0.0);
+    processes[5].gpu_percent = Usage::Partial(0.0);
+    processes[6].gpu_percent = Usage::Warming;
+    let all = (1..=7).collect::<HashSet<_>>();
+    for (direction, expected) in [
+        (SortDirection::Ascending, vec![5, 6, 3, 1, 4, 7]),
+        (SortDirection::Descending, vec![1, 3, 6, 5, 7, 4]),
+    ] {
+        let tree = build_process_tree(
+            &processes,
+            &all,
+            &HashSet::new(),
+            SortColumn::Gpu,
+            direction,
+        );
+        assert_eq!(pids(&processes, &tree), expected);
+        assert_eq!(
+            tree.iter()
+                .find(|r| processes[r.process_index].pid == 1)
+                .unwrap()
+                .totals
+                .gpu_percent,
+            Usage::Partial(50.0)
+        );
+    }
+}
+
 // Intentionally simple recursive oracle only for small, valid, unique-PID trees.
 // It does not share the production normalization, traversal or totals algorithm.
 fn reference_tree(
@@ -287,9 +379,21 @@ fn reference_tree(
                 .map(|(i, _)| i)
                 .collect::<Vec<_>>();
             children.sort_by(|&a, &b| {
+                // Independent oracle: project recursively computed displayed
+                // counters into disposable rows and use ordinary row ordering.
+                let display_row = |index| {
+                    let sum = total(index, self.processes);
+                    let mut row = self.processes[index].clone();
+                    row.cpu_percent = sum.cpu_percent;
+                    row.gpu_percent = sum.gpu_percent;
+                    row.memory_bytes = sum.memory_bytes;
+                    row.read_bytes_per_sec = sum.read_bytes_per_sec;
+                    row.write_bytes_per_sec = sum.write_bytes_per_sec;
+                    row
+                };
                 compare_processes(
-                    &self.processes[a],
-                    &self.processes[b],
+                    &display_row(a),
+                    &display_row(b),
                     self.column,
                     self.direction,
                 )

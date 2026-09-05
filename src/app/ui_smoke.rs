@@ -9,6 +9,7 @@ use eframe::App;
 mod export;
 mod offscreen;
 mod process_perf;
+mod process_sort;
 mod service_retention;
 
 fn fixture() -> SystemSnapshot {
@@ -1680,6 +1681,8 @@ fn render_offscreen_visual_pass() {
         "export-failed-compact",
         "process-tree-deep",
         "process-tree-deep-light",
+        "process-sort-totals",
+        "process-sort-totals-light",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1705,6 +1708,9 @@ fn render_offscreen_visual_pass() {
         app.show_theme_editor = variant == "theme-studio";
         if variant.starts_with("process-tree-deep") {
             process_perf::install_chain(&mut app);
+        }
+        if variant.starts_with("process-sort-totals") {
+            process_sort::install_groups(&mut app);
         }
         if variant.starts_with("service-") {
             fixture_service_controls(&mut app, &ctx);
@@ -1853,7 +1859,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 55 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 57 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

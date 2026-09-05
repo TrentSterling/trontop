@@ -24,6 +24,7 @@ mod overview;
 mod sensors;
 mod service_controls;
 mod storage;
+mod tree_state;
 
 #[cfg(test)]
 mod ui_smoke;
@@ -113,7 +114,7 @@ pub struct TrontopApp {
     history_processes: Vec<usize>,
     tree_mode: bool,
     tree_initialized: bool,
-    expanded_pids: HashSet<u32>,
+    tree_expansion: tree_state::Expansion,
     selected_pid: Option<u32>,
     selected_service: Option<String>,
     service_controller: crate::service_control::Controller,
@@ -183,7 +184,7 @@ impl TrontopApp {
             history_processes: Vec::new(),
             tree_mode: true,
             tree_initialized: false,
-            expanded_pids: HashSet::new(),
+            tree_expansion: tree_state::Expansion::default(),
             selected_pid: None,
             selected_service: None,
             service_controller: crate::service_control::Controller::default(),
@@ -226,6 +227,7 @@ impl TrontopApp {
     }
 
     fn accept_sample(&mut self, snapshot: SystemSnapshot) {
+        self.tree_expansion.retain_live(&snapshot.processes);
         if let Some(selected) = self.selected_process() {
             let same = snapshot
                 .processes
@@ -317,17 +319,13 @@ impl TrontopApp {
                 .iter()
                 .map(|process| process.pid)
                 .collect::<HashSet<_>>();
-            self.expanded_pids.extend(
-                self.snapshot
-                    .processes
-                    .iter()
-                    .filter(|process| {
-                        process
-                            .parent_pid
-                            .is_none_or(|parent| !live_pids.contains(&parent))
-                    })
-                    .map(|process| process.pid),
-            );
+            for process in self.snapshot.processes.iter().filter(|process| {
+                process
+                    .parent_pid
+                    .is_none_or(|parent| !live_pids.contains(&parent))
+            }) {
+                self.tree_expansion.expand(process);
+            }
             self.tree_initialized = true;
         }
         self.rebuild_visible_processes();
@@ -378,7 +376,7 @@ impl TrontopApp {
         self.visible_process_tree = build_process_tree(
             &self.snapshot.processes,
             &matching_pids,
-            &self.expanded_pids,
+            self.tree_expansion.pids(),
             self.sort_column,
             self.sort_direction,
         );
@@ -1065,6 +1063,21 @@ impl TrontopApp {
     }
 
     fn process_table(&mut self, ui: &mut egui::Ui, detailed: bool) {
+        let hidden_sort = if detailed {
+            self.sort_column == SortColumn::WriteRate
+        } else {
+            matches!(
+                self.sort_column,
+                SortColumn::User | SortColumn::Status | SortColumn::CpuTime
+            )
+        };
+        if hidden_sort {
+            // Page switches must not leave an invisible sort key with no marked
+            // header. Keep shared visible sorts; otherwise return to CPU descending.
+            self.sort_column = SortColumn::Cpu;
+            self.sort_direction = SortDirection::Descending;
+            self.rebuild_visible_processes();
+        }
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             egui::ScrollArea::horizontal()
@@ -1413,8 +1426,8 @@ impl TrontopApp {
             self.selected_pid = Some(pid);
         }
         if let Some(pid) = toggled_pid {
-            if !self.expanded_pids.insert(pid) {
-                self.expanded_pids.remove(&pid);
+            if let Some(process) = self.snapshot.processes.iter().find(|row| row.pid == pid) {
+                self.tree_expansion.toggle(process);
             }
             self.rebuild_visible_processes();
         }

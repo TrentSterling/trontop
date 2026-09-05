@@ -1,5 +1,10 @@
 # Process hierarchy robustness and scaling (alpha.15)
 
+Historical alpha.15 measurements and implementation notes follow. Alpha.16 changes
+resource sorting to the displayed subtree values and adds observed-identity expansion
+retention; see `PROCESS_SORTING.md`. The measurements below were not repeated for
+alpha.16 and are not claims about its native window performance.
+
 ## Display contract
 
 The tree is a snapshot-scoped forest of indices, not an authority for native actions.
@@ -132,8 +137,7 @@ launched and no existing window was touched.
 ## Still open
 
 Native dragging/closing/frame rates, provider overhead/stalls, search metadata
-caching, broader hardware coverage, controls and release gates remain open. Tree
-resource sorting still uses each process's own counter while rows display subtree
-totals; that pre-existing policy needs a separate, visible-sort correctness pass.
-Expanded-PID retention across PID reuse is not a process-action authorization and
-needs its own view-state policy. No full Task Manager parity is claimed.
+caching, broader hardware coverage, controls and release gates remain open.
+The displayed-resource sorting and expanded-PID retention issues identified in
+alpha.15 are addressed by alpha.16 (`PROCESS_SORTING.md`), with explicit unknown
+identity limitations. No full Task Manager parity is claimed.

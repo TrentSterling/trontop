@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.15 iterative process hierarchy
+## Current: alpha.16 displayed sorting and retained tree state
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -28,7 +28,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 134 tests pass, strict Clippy clean, 55 offscreen review PNGs
+  geometry coverage: 143 tests pass, strict Clippy clean, 57 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -93,7 +93,13 @@ This is the durable resume board. Keep it honest and update it when a slice land
   selection checks, two new rendered variants inspected, alpha.15 EXE not launched
 - [x] Three paired headless hierarchy probes: collapsed 1,000-node chain rebuild
   16,771.9 to 132.8 us; exact evidence/limits in `docs/PROCESS_TREE.md`
-- [ ] Verify alpha.15 in remote Windows CI
+- [x] Alpha.15 Windows CI 33965959216 passed for 7df48c9
+- [x] Sort displayed tree totals; keep missing GPU last and preserve flat ordering
+- [x] Retain expansion through refresh/search, expire disappearance/observed PID reuse,
+  and reset invisible sort keys after Processes/Details switches
+- [x] Nine new model/state/headless UI tests and two grouped-sort visual fixtures;
+  optimized alpha.16 preview explicitly opened as PID 272352 at 12:51:50 UTC
+- [ ] Verify alpha.16 in remote Windows CI
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
@@ -154,8 +160,9 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Replace cloned/sorted process records with snapshot indices and allocation-free
   name/account comparisons; History sorting happens only on view rebuild
 - [x] Stress and repair deep/cyclic process hierarchies: `docs/PROCESS_TREE.md`
-- [ ] Sort tree resource columns by displayed subtree values, not individual counters
-- [ ] Expire expanded-PID view state on PID reuse; native action identity is separate
+- [x] Sort tree resource columns by displayed subtree values, not individual counters
+- [x] Expire expanded-PID view state on observed PID reuse; unknown identity remains
+  best-effort presentation only, never native action authority
 - [ ] Cache expensive search metadata; `docs/PROCESS_VIEW_PERFORMANCE.md`
 - [ ] Responsive compact navigation below 1150 logical pixels
 - [ ] Configurable table columns and saved widths

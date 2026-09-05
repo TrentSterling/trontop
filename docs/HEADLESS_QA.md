@@ -33,6 +33,11 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.16 adds nine ordinary tests for displayed group sorting, GPU missing/partial
+  order, identity-retained expansion and page-switch sort visibility. Local egui
+  header/Tree/List/search interactions inspect the actual displayed row order.
+  Two new dark/light grouped-sort fixtures bring the offscreen pass to 57 PNGs.
+  See `PROCESS_SORTING.md`; no native window or input is involved in these tests.
 - Alpha.15 adds eight hierarchy regressions and one deep-name production-UI test:
   50,000-node chain/cycle on 256 KiB stack, 128 arbitrary graphs, 2,880 small valid
   reference comparisons, creation-time guards and compact light/dark hover/selection.
@@ -46,7 +51,7 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
   failed replacement, cancellation, one-job/drop behavior and explicit-only Save.
   Save/Close/status text must fit both clip rect and screen at 1040x640, with stable
   positions across outcomes in both themes. Native Save As is a separate gate.
-- The offscreen pass now produces 55 PNGs, including two deep-tree layouts.
+- The offscreen pass now produces 57 PNGs, including two deep-tree layouts.
   The three export variants are fixture
   data and do not open a file picker or write an exported process snapshot.
 - 432 page/size/preset/mode/data cases: nine pages, 1040x640 / 1280x760 /
@@ -120,7 +125,7 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
   `SERVICE_CONTROLS.md`, not evidence supplied by this harness.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes fifty PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 The five GPU-activity additions cover compact Processes, light process tree, Users,

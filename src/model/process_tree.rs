@@ -1,6 +1,8 @@
 use super::{
-    ProcessRow, ProcessTotals, ProcessTreeRow, SortColumn, SortDirection, sort_process_indices,
+    ProcessRow, ProcessTotals, ProcessTreeRow, SortColumn, SortDirection, compare_processes,
+    float_cmp,
 };
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 /// Snapshot-scoped display forest. Original parent IDs remain unchanged in the
@@ -87,11 +89,11 @@ pub fn build_process_tree(
         }
     }
     roots.retain(|&index| included[index]);
-    sort_process_indices(&mut roots, processes, column, direction);
+    sort_tree_indices(&mut roots, processes, &totals, column, direction);
     for nodes in &mut children {
         // Totals were computed before filtering: hidden descendants still count.
         nodes.retain(|&index| included[index]);
-        sort_process_indices(nodes, processes, column, direction);
+        sort_tree_indices(nodes, processes, &totals, column, direction);
     }
 
     let mut pending = roots
@@ -122,6 +124,40 @@ pub fn build_process_tree(
         }
     }
     rows
+}
+
+fn sort_tree_indices(
+    indices: &mut [usize],
+    processes: &[ProcessRow],
+    totals: &[ProcessTotals],
+    column: SortColumn,
+    direction: SortDirection,
+) {
+    indices.sort_by(|&a, &b| {
+        let (left, right) = (totals[a], totals[b]);
+        // Match the displayed aggregate, including partial numeric GPU coverage.
+        // Entirely missing readings stay last in either direction, as in flat view.
+        if column == SortColumn::Gpu {
+            match (left.gpu_percent.value(), right.gpu_percent.value()) {
+                (Some(_), None) => return Ordering::Less,
+                (None, Some(_)) => return Ordering::Greater,
+                _ => {}
+            }
+        }
+        let order = match column {
+            SortColumn::Cpu => float_cmp(left.cpu_percent, right.cpu_percent),
+            SortColumn::Gpu => float_cmp(left.gpu_percent.value(), right.gpu_percent.value()),
+            SortColumn::Memory => left.memory_bytes.cmp(&right.memory_bytes),
+            SortColumn::ReadRate => float_cmp(left.read_bytes_per_sec, right.read_bytes_per_sec),
+            SortColumn::WriteRate => float_cmp(left.write_bytes_per_sec, right.write_bytes_per_sec),
+            _ => return compare_processes(&processes[a], &processes[b], column, direction),
+        }
+        .then_with(|| processes[a].pid.cmp(&processes[b].pid));
+        match direction {
+            SortDirection::Ascending => order,
+            SortDirection::Descending => order.reverse(),
+        }
+    });
 }
 
 fn parent_is_newer(parent: &ProcessRow, child: &ProcessRow) -> bool {

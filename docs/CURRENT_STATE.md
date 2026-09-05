@@ -2,7 +2,42 @@
 
 Last updated: 2026-09-05
 
-## Latest explicitly requested preview: alpha.14
+## Latest explicitly requested preview: alpha.16
+
+On Trent's explicit request, the optimized alpha.16 review EXE was hash-verified
+and copied to `target/preview/alpha16-20260905-1251/trontop.exe`. It launched at
+**12:51:50 UTC** on 2026-09-05 as **PID 272352**. A read-only check from the desktop
+session confirmed Responding=true, HWND 6370918 and title Trontop. Sandboxed window
+enumeration could not see it; that was not evidence of an app startup stall.
+Version **0.3.0-alpha.16**, **13,224,448 bytes**, SHA-256
+`54B051804B52548B4386DB089601655723FFECA8AED54DEDC6A86DA2E2406918`.
+Older instances and other windows were untouched. Do not automatically replace,
+restart or manipulate this preview. This observation is not an ongoing liveness
+guarantee or a native performance test.
+
+## Latest source: alpha.16 displayed sorting and retained tree state
+
+Tree CPU/GPU/memory/read/write ordering now follows the full subtree totals shown
+in each row, including hidden descendants. Partial GPU values sort numerically;
+missing values remain last in either direction. Flat sorting is unchanged.
+Expansion choices survive refresh and search without transferring across observed
+PID reuse. Missing identity access retains the last known identity; continuous
+unknown-only identity is explicitly best effort for presentation, not action authority.
+Processes/Details switches reset unsupported hidden sort keys to CPU descending.
+See `PROCESS_SORTING.md` for the contract and regression evidence.
+
+Local gate: **143 passed, 0 failed, 9 opt-in ignored** (27.32 s), formatting and
+strict Clippy PASS, optimized release PASS. Offscreen pass produced **57 PNGs**;
+grouped sorting dark/light, deep tree and Details were actually visually inspected.
+Review build at `target/review-build/release/trontop.exe` was produced at 12:42:26 UTC
+from modified 7df48c9 source, with the same identity as the preview above. Windows-only
+imports were verified; clean-machine portability remains open. No new FPS claim.
+
+Alpha.15 Windows CI [33965959216](https://github.com/TrentSterling/trontop/actions/runs/33965959216)
+passed for 7df48c99c8e6bcff5d653ff8f9eab3460139ec17. Alpha.16 remote verification is
+pending. No release is published and full Task Manager parity remains incomplete.
+
+## Previous explicitly requested preview: alpha.14
 
 On Trent's request to open the latest build, the alpha.14 review EXE below was
 hash-verified and copied to `target/preview/alpha14-20260905-1200/trontop.exe`.
@@ -14,7 +49,7 @@ Older instances and all other windows were left untouched. No global input or
 window manipulation was used. This is a launch observation, not a native smoke
 test or ongoing liveness guarantee. Earlier launch notes below are historical.
 
-## Latest source: alpha.15 iterative process hierarchy
+## Previous: alpha.15 iterative process hierarchy
 
 Branch `feat/provider-diagnostics`. Hierarchy building now uses iterative indexed
 walks instead of recursion and repeated ancestor scans. Known newer-parent IDs are
