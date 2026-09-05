@@ -29,6 +29,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Startup enable/disable support with a reversible disabled-entry store
 - [ ] Disk active-time and latency counters through Windows performance counters
 - [ ] GPU adapter identity, dedicated/shared memory, temperature where a stable provider exists
+- [ ] Optional GPU temperature/power/clocks/fan provider, then storage health and CPU sensor investigation: `docs/SENSORS_PLAN.md` (5070 Ti diagnostic query succeeded)
 - [ ] Network link speed, adapter type, address, and per-process ETW traffic
 
 ## Visual polish queue
@@ -39,9 +40,11 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Replace broken character-wrapping Users cards with an aligned resource table
 - [x] Scrollable inspector and visible non-floating scrollbars
 - [x] Fix centered table labels caused by add_sized; headless tests check left/right alignment, vertical centers, single-line layout, and full-cell clicks
-- [ ] Visually verify the final alignment follow-up across pages after the next safe release rebuild
+- [x] Verify table alignment across seven offscreen-rendered pages; alpha.2 release build contains the correction
+- [x] Shared hover backgrounds for navigation, device tiles, metrics, cards, labels, badges, charts, table cells and custom action buttons; Theme Studio gets aligned rounded zebra control rows
 - [ ] Finish code-drawn vector navigation/window controls and stronger Tront branding (no emoji icons)
-- [ ] Finish small-window Performance content scrolling and remaining spacing audit
+- [x] Independently scroll Performance rail/content and pin the sidebar footer; headless input tests verify compact scrolling and no GPU-label/footer overlap
+- [ ] Continue remaining app-wide spacing, zebra details and visual-state audit; new QA is not a universal proof
 - [ ] Diagnose sustained window-drag lag; findings in `docs/DRAG_INVESTIGATION.md`
 - [ ] Port a VERIFIED drag fix to other egui apps only after isolated before/after measurement
 - [ ] Replace the cloned/sorted process view with stable snapshot indices and cached sort keys
@@ -57,6 +60,9 @@ This is the durable resume board. Keep it honest and update it when a slice land
 
 ## Release work
 
+- [x] Build a separate optimized alpha.2 review EXE without touching the running release copy
+- [ ] Trent manually reviews alpha.2 hover/scroll behavior in the new EXE; no automated desktop interaction
+
 - [x] Define private-alpha, release-candidate, public-preview, and rollback gates in `RELEASE_PLAN.md`
 - [x] Create and push the private `TrentSterling/trontop` GitHub repository; first Windows CI passed
 - [ ] Push the parked local UI/tray checkpoint, run CI for that exact commit, and publish the private alpha
@@ -64,7 +70,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Add a Windows GitHub Actions gate that uploads the portable review executable
 - [ ] Add an About panel with build hash and provider health
 - [ ] Add snapshot export to JSON/CSV
-- [ ] Add a deterministic HEADLESS telemetry replay harness for all seven pages, compact layouts, themes, search, selection, and text bounds. No desktop input injection.
+- [x] Add a HEADLESS fixture harness for all seven pages, compact layouts, themes, search, selection and text bounds, plus offscreen PNG output: `docs/HEADLESS_QA.md`
 - [ ] Sign the portable executable when the Tront signing pipeline is available
 
 ## Non-negotiables

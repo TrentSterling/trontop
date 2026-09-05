@@ -27,6 +27,15 @@ These still feel unfinished to him.
 
 ## Verification and current gaps
 
+Alpha.2 update: shared hover backgrounds and rounded surfaces now cover navigation,
+device tiles, metric/stat cards, detail rows, labels, badges, charts, table cells and
+custom action buttons. Theme Studio has aligned zebra control rows. The new headless
+and offscreen harness is documented in `HEADLESS_QA.md`; Performance overflow and
+the sidebar/footer overlap have dedicated scrolling/layout fixes and tests. The
+larger icon/branding system and consistent zebra detail grouping remain pending.
+
+The notes below describe the initial parked checkpoint and are retained for context.
+
 Run headless layout smoke tests at 1040x640 and 1280x760 logical pixels, plus larger
 sizes, with each preset and light/dark modes. Include long names, narrow columns,
 empty/unavailable data, selections, expanded trees, scrolled inspectors, and dialogs.

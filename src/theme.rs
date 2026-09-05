@@ -187,12 +187,15 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     style.visuals.selection.bg_fill = mix(t.accent_dim, signal_blend, 0.24);
     style.visuals.selection.stroke = Stroke::new(1.0, t.text);
     style.visuals.widgets.noninteractive.fg_stroke.color = t.text;
-    style.visuals.widgets.inactive.bg_fill = t.panel_raised;
+    // Strong fill is used by slider rails and handles; keep it visible on cards.
+    style.visuals.widgets.inactive.bg_fill = t.border;
+    style.visuals.slider_trailing_fill = true;
     style.visuals.widgets.inactive.fg_stroke.color = t.text_muted;
     style.visuals.widgets.inactive.weak_bg_fill = t.panel_raised;
     style.visuals.widgets.hovered.bg_fill = t.row_hover;
     style.visuals.widgets.hovered.weak_bg_fill = mix(t.row_hover, signal_blend, 0.18);
     style.visuals.widgets.hovered.fg_stroke.color = t.text;
+    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, t.secondary);
     style.visuals.widgets.active.bg_fill = t.accent_dim;
     style.visuals.widgets.active.fg_stroke.color = t.text;
     style.visuals.window_stroke = Stroke::new(1.0, t.border);

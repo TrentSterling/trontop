@@ -4,6 +4,14 @@ Checkpoint: September 4, 2026. Trent chose to save findings and switch projects.
 
 ## Report and current conclusion
 
+Later update (September 4, about 23:06): Trent is now confident dragging feels
+noticeably smoother, while still asking whether it could improve further. Record
+that positive subjective feedback without turning it into a measured 60 FPS claim.
+A read-only process check confirmed PID 62220 was already running the older
+`target/release/trontop.exe`, not a debug build. The alpha.2 UI review build uses a
+separate target directory so that instance stays untouched. There is still no
+validated cross-project drag patch or controlled native before/after measurement.
+
 Trontop lags while the whole window is moving, not merely at the beginning of a drag.
 Terminal and Explorer look smoothly 60 FPS to Trent on the same desktop. Synthetic
 dragging sometimes looked smoother than his real mouse. Trent briefly thought it was
@@ -101,7 +109,8 @@ fixes centered name/header labels, with two headless geometry/input tests; it is
 release-built or visually checked yet. Compact Performance details still need an
 overflow pass. Stronger Tront
 branding and a unified vector icon set are requested, not implemented in this checkpoint.
-Do not use emoji as icons. The safe comprehensive smoke harness is still pending.
+Do not use emoji as icons. The later alpha.2 follow-up adds a safe headless UI harness
+and Performance scrolling; see `HEADLESS_QA.md` for actual coverage and limitations.
 
 The private repository exists and baseline CI run 33940457527 passed. No alpha tag or
 release was published. Re-run CI on the newer local checkpoint before publishing its

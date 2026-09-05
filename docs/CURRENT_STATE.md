@@ -2,7 +2,43 @@
 
 Last updated: 2026-09-04
 
-## Parked at Trent's request
+## Latest: alpha.2 hover and safe UI verification
+
+Work resumed on the UI after the parked checkpoint below. Version 0.3.0-alpha.2
+adds shared hover backgrounds for navigation, device tiles, metrics, detail rows,
+stat cards, badges, graphs, table cells, passive labels and custom action buttons.
+Selected items retain a distinct state. Theme Studio uses aligned, rounded zebra
+control rows and scrolls on short windows; slider tracks now contrast with cards.
+Performance rail/content scroll independently. The sidebar footer has reserved
+space and cannot overlap its GPU meter at the tested minimum size.
+
+`docs/HEADLESS_QA.md` documents the new harness, local-pointer navigation/selection
+and scrolling tests, 336 page/size/preset/mode/data cases, and eleven actual egui-WGPU
+offscreen PNGs. No native app window or desktop input is used. This supersedes the
+older statement below that only two cell tests exist. The wider branding/icon and
+app-wide zebra/detail polish are still incomplete; do not call the whole UI done.
+
+Review EXE: `target/review-build/release/trontop.exe`, 12,756,992 bytes,
+SHA-256 `42B4AB4D8D16DAF19D8CC71FA47DC39674961031B4842992FFD60CA5A2DD1FF8`.
+The optimized build succeeds and PE metadata reports Tront / Trontop /
+0.3.0-alpha.2. It has NOT been launched on Trent's desktop. The running PID 62220
+was confirmed to be the older release-path EXE, not debug; it was left untouched.
+No new native dragging measurement was performed. Trent's later feedback is that
+dragging now feels noticeably smoother; preserve that observation without claiming
+a verified 60 FPS fix. No cross-project patch or GitHub release is published.
+
+Final alpha.2 verification: formatting PASS, 23 unit/headless tests passed with
+2 opt-in tests ignored by default, strict Clippy PASS, optimized release build PASS.
+The offscreen GPU test was explicitly selected and passed separately (11 PNGs).
+The native tray test was not run in this continuation. The UI images use fixtures,
+not live system samples; native drag performance and real sensor integration are
+outside this gate.
+
+Sensor expansion is planned in `SENSORS_PLAN.md`. A read-only 5070 Ti query confirmed
+temperature/power/clocks/fan/VRAM availability on this machine. Those fields are not
+yet integrated into Trontop; CPU temperature needs separate provider research.
+
+## Earlier parked checkpoint (historical)
 
 Read `DRAG_INVESTIGATION.md` for unresolved window-movement lag and the explicit
 ban on global desktop input automation. No dragging fix was validated or ported.

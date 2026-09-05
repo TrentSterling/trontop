@@ -5,6 +5,19 @@ must not modify this repository.
 
 ## Current checkpoint
 
+Latest local version: 0.3.0-alpha.2. Read the latest section of `docs/CURRENT_STATE.md`
+and `docs/HEADLESS_QA.md`. The hover/rounded-controls slice and safe headless harness
+are now implemented. A separate optimized review EXE exists under
+`target/review-build/release/trontop.exe`; do not confuse it with the still-running
+older `target/release` copy. Eleven test-fixture PNGs were reviewed without opening
+any app window. No native drag fix or published release is verified.
+
+Trent now reports a clear subjective drag improvement. His additional temperature
+and hardware-sensor request is saved in `docs/SENSORS_PLAN.md`; the GPU diagnostic
+query succeeded but the provider/UI integration is not implemented yet.
+
+## Earlier checkpoint (historical)
+
 Version 0.3.0-alpha.1 builds on the seven-page native system control deck with a real
 process hierarchy, guarded scheduler controls, theme-derived zebra tables, and an
 embedded multi-resolution Windows icon and version resource.
