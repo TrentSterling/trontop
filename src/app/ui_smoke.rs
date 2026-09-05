@@ -6,6 +6,7 @@ use crate::model::{
 };
 use eframe::App;
 
+mod export;
 mod offscreen;
 mod service_retention;
 
@@ -1673,6 +1674,9 @@ fn render_offscreen_visual_pass() {
         "service-outcomes",
         "startup-timeout",
         "services-timeout-light",
+        "export",
+        "export-private-light",
+        "export-failed-compact",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1779,6 +1783,18 @@ fn render_offscreen_visual_pass() {
             }
         }
         app.show_diagnostics = variant.starts_with("about");
+        if variant.starts_with("export") {
+            app.page = Page::Processes;
+            app.show_export = true;
+            app.exporter =
+                crate::export::Exporter::with_backend(|_, _| crate::export::Outcome::Cancelled);
+            app.export_options.private_details = variant == "export-private-light";
+            if variant == "export-failed-compact" {
+                app.export_result = Some(crate::export::Outcome::Failed(
+                    "Fixture: access denied. The destination was not replaced.".into(),
+                ));
+            }
+        }
         if variant.starts_with("overview") {
             app.page = Page::Overview;
         }
@@ -1831,7 +1847,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 50 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 53 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

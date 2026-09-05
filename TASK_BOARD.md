@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.12 independent inventories and retained service state
+## Current: alpha.13 explicit snapshot export
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -28,7 +28,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 111 tests pass, strict Clippy clean, 50 offscreen review PNGs
+  geometry coverage: 121 tests pass, strict Clippy clean, 53 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -67,7 +67,16 @@ This is the durable resume board. Keep it honest and update it when a slice land
   three new final state screenshots inspected in the 50-image offscreen pass
 - [x] Optimized alpha.12 preview opened on explicit request as PID 263640 at
   10:42:33 UTC; responding with a native HWND, older previews untouched
-- [ ] Verify alpha.12 in remote Windows CI; no alpha release is published
+- [x] Alpha.12 Windows CI 33961633447 passed for cc2b793 at 11:09:25 UTC
+- [x] Explicit JSON snapshot/CSV process export, private details off by default,
+  freshness/missing-state preservation, one worker and staged file replacement
+- [x] Ten new export data/worker/owned-file/headless UI tests and three reviewed
+  export layouts; final optimized alpha.13 EXE dependency-inspected, not launched
+- [x] Final alpha.12 preview opened on fresh explicit request as PID 262932 at
+  11:15:53 UTC; `docs/CURRENT_STATE.md` records path/hash, older previews untouched
+- [ ] Validate the native export Save As flow in an authorized isolated instance;
+  injected picker/owned-file tests do not satisfy this gate: `docs/EXPORTS.md`
+- [ ] Verify alpha.13 in remote Windows CI; no alpha release is published
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
@@ -150,7 +159,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Add a Windows GitHub Actions gate that uploads the portable review executable
 - [ ] Update deprecated workflow action runtimes and add a correctly keyed Rust dependency cache; preserve cold-build and test gates
 - [x] Add an About panel with build hash, provider health/freshness and privacy-safe support report: `docs/DIAGNOSTICS_PLAN.md`
-- [ ] Add snapshot export to JSON/CSV
+- [x] Add snapshot export to JSON/CSV; native picker validation remains open above
 - [x] Add a HEADLESS fixture harness for all nine pages, compact layouts, themes, search, selection and text bounds, plus offscreen PNG output: `docs/HEADLESS_QA.md`
 - [ ] Sign the portable executable when the Tront signing pipeline is available
 

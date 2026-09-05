@@ -2,7 +2,65 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.12 independent inventories and retained service state
+## Latest source: alpha.13 explicit JSON/CSV export
+
+Branch `feat/provider-diagnostics`. Export now offers JSON for the published sampler
+snapshot and CSV for every process row. The user explicitly chooses a destination
+through Windows Save As. Capture happens on Save, not when the panel opens or the
+picker completes. Encoding/file I/O use one export worker; live sampling continues.
+Private details default off and reset on idle reopening together with the previous
+result, so an old private save cannot label new limited options Saved. Names still
+identify software; this is not an anonymous report. See `EXPORTS.md` for schema 1,
+scope, CSV formula-text handling, privacy, size limits and cancellation caveats.
+
+The writer exclusively stages a sibling temporary file, then flushes/syncs/closes
+before replacement. Cancellation, encoding limits and locked-target tests preserve
+the original fixture. Worker drop signals cancellation without joining a blocked
+picker/filesystem call. App exit can leave partial temporary files; it does not
+promise forced cancellation or secure deletion. A native Save As end-to-end test
+remains an explicit isolated-validation release gate. No picker was opened on the
+working desktop, and no real process snapshot was exported in this slice.
+
+The redesign skill's state/layout audit guided a wrapped privacy warning and pinned
+Save/Close/status area. New tests require text inside both screen and clip bounds at
+1040x640 in light/dark, stable outcome geometry, disabled missing-sample dispatch,
+explicit-only capture, and private-option reset. The three final layout PNGs reviewed
+were `export`, `export-private-light` and `export-failed-compact`; all use fixtures.
+
+Final local gate on 2026-09-05: formatting PASS; **121 passed, 0 failed, 7 opt-in
+tests ignored** (27.64 s); strict Clippy PASS (1.58 s); optimized release PASS
+(31.77 s). The selected offscreen pass generated **53 PNGs** in 34.30 s with no
+native window or OS input. Three export PNGs were inspected, not all 53. The final
+reopen-result reset followed that render pass; its headless input test passed in
+the final suite and it does not change panel geometry.
+
+Optimized review EXE: `target/review-build/release/trontop.exe`, **13,239,296 bytes**,
+PE version **0.3.0-alpha.13**, built from modified cc2b793 source before checkpoint.
+SHA-256: `BBA6F177B6B8A97EFFA3F4FF34600F3406660B2E35AE45FB65095608C6F75C16`.
+Final dependency inspection shows only Windows imports, no dynamic MSVC runtime;
+this is not clean-machine validation. This alpha.13 EXE was not launched.
+
+Alpha.12 Windows CI
+[33961633447](https://github.com/TrentSterling/trontop/actions/runs/33961633447)
+passed for cc2b793184431abd02116f9eb54f19fceb2b124a at 11:09:25 UTC.
+Alpha.13 has not yet passed its remote gate. No release or tag is published.
+
+### Latest explicitly requested preview launch
+
+On Trent's latest launch request, the final alpha.12 review build was hash-verified
+and copied to `target/preview/alpha12-final-20260905-111553/trontop.exe`.
+It launched at **11:15:53 UTC** on 2026-09-05 as **PID 262932**, subsequently observed
+Responding=true with native HWND 3553034. Version 0.3.0-alpha.12, 13,109,248 bytes,
+SHA-256 `A11F950774733466C09D08DEC7594E418E71BE91164C43A282F9CE2ADE2D6678`.
+The three older preview instances were left alone. This is historical launch
+evidence, not permission to restart it, close old instances or manipulate windows.
+
+Next: native export/service isolated validation, CPU/motherboard/vendor sensors,
+suspend/resume, reversible startup controls, richer disk/network/GPU data, crash
+logging, performance/accessibility review and release gates. Full Task Manager
+parity, native close/drag timing and clean-machine/soak coverage remain unproven.
+
+## Previous: alpha.12 independent inventories and retained service state
 
 Branch `feat/provider-diagnostics`. Startup and Services each have one independent
 read-only inventory worker. They no longer enumerate on the live system sampler.

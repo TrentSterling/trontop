@@ -14,6 +14,7 @@ pub enum Icon {
     Sensors,
     Theme,
     Info,
+    Export,
     Stop,
     Restart,
     Expand,
@@ -49,6 +50,11 @@ impl Icon {
             painter.circle_stroke(point(x, y), radius * scale, stroke);
         };
         match self {
+            Self::Export => {
+                line(&[[12.0, 3.0], [12.0, 15.0]]);
+                line(&[[7.0, 10.0], [12.0, 15.0], [17.0, 10.0]]);
+                line(&[[4.0, 16.0], [4.0, 21.0], [20.0, 21.0], [20.0, 16.0]]);
+            }
             Self::Overview => {
                 box_at(3.0, 3.0, 7.0, 8.0, 1.0);
                 box_at(14.0, 3.0, 7.0, 5.0, 1.0);
@@ -209,6 +215,7 @@ mod tests {
                 Icon::Sensors,
                 Icon::Theme,
                 Icon::Info,
+                Icon::Export,
                 Icon::Stop,
                 Icon::Expand,
                 Icon::Collapse,

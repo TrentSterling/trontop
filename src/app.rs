@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 const HISTORY_LENGTH: usize = 120;
 
 mod diagnostics;
+mod export;
 mod inventory;
 mod overview;
 mod sensors;
@@ -131,6 +132,10 @@ pub struct TrontopApp {
     theme: ThemeSettings,
     show_theme_editor: bool,
     show_diagnostics: bool,
+    show_export: bool,
+    export_options: crate::export::Options,
+    exporter: crate::export::Exporter,
+    export_result: Option<crate::export::Outcome>,
     show_run_task: bool,
     show_priority_editor: bool,
     show_affinity_editor: bool,
@@ -152,6 +157,7 @@ impl TrontopApp {
         let mut app = Self::with_services(saved_theme, Some(sampler), tray);
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
+        app.exporter = crate::export::Exporter::native();
         app
     }
 
@@ -200,6 +206,10 @@ impl TrontopApp {
             theme: saved_theme,
             show_theme_editor: false,
             show_diagnostics: false,
+            show_export: false,
+            export_options: crate::export::Options::default(),
+            exporter: crate::export::Exporter::default(),
+            export_result: None,
             show_run_task: false,
             show_priority_editor: false,
             show_affinity_editor: false,
@@ -660,6 +670,22 @@ impl TrontopApp {
                         .clicked()
                         {
                             self.show_diagnostics = true;
+                        }
+                        if widgets::icon_button(
+                            ui,
+                            Icon::Export,
+                            "Export",
+                            Vec2::ZERO,
+                            t.panel_raised,
+                            t,
+                        )
+                        .clicked()
+                        {
+                            if !self.exporter.busy() {
+                                self.export_options = crate::export::Options::default();
+                                self.export_result = None;
+                            }
+                            self.show_export = true;
                         }
                     });
                 });
@@ -2454,6 +2480,9 @@ impl eframe::App for TrontopApp {
         let ctx = ui.ctx().clone();
         self.process_icons.begin_frame(&ctx);
         self.poll_service_command();
+        if let Some(result) = self.exporter.poll() {
+            self.export_result = Some(result);
+        }
         self.keyboard_shortcuts(&ctx);
         theme::paint_background(&ctx, self.theme);
         self.custom_chrome(ui);
@@ -2488,6 +2517,7 @@ impl eframe::App for TrontopApp {
         self.run_task_window(&ctx);
         self.theme_editor(&ctx);
         self.diagnostics_window(&ctx);
+        self.export_window(&ctx);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

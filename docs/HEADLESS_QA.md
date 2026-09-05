@@ -31,6 +31,13 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.13 export uses injected file-picker results only. Ten new encoding/worker/
+  owned-file/UI tests cover privacy, Unicode, CSV parsing, unavailable/partial GPU,
+  failed replacement, cancellation, one-job/drop behavior and explicit-only Save.
+  Save/Close/status text must fit both clip rect and screen at 1040x640, with stable
+  positions across outcomes in both themes. Native Save As is a separate gate.
+- The offscreen pass now produces 53 PNGs. The three export variants are fixture
+  data and do not open a file picker or write an exported process snapshot.
 - 432 page/size/preset/mode/data cases: nine pages, 1040x640 / 1280x760 /
   1920x1080, four presets, light/dark, populated/empty fixtures.
 - Actual text geometry: visible page titles, finite bounds, single-line table names.

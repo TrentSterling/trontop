@@ -2,6 +2,7 @@
 
 mod app;
 mod diagnostics;
+mod export;
 mod format;
 mod gpu_activity;
 mod gpu_sensors;

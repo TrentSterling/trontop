@@ -1,6 +1,6 @@
 [package]
 name = "trontop"
-version = "0.3.0-alpha.12"
+version = "0.3.0-alpha.13"
 edition = "2024"
 rust-version = "1.93"
 description = "A fast, native Windows process and performance manager"
@@ -10,6 +10,7 @@ license = "Proprietary"
 eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "persistence", "wgpu"] }
 egui_extras = "0.35.0"
 sysinfo = "=0.38.4"
+serde_json = "=1.0.150"
 
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21.3"
@@ -20,6 +21,7 @@ windows = { version = "0.62.2", features = [
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
+    "Win32_System_Com",
     "Win32_System_Ioctl",
     "Win32_System_LibraryLoader",
     "Win32_System_Performance",
@@ -28,6 +30,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
 ] }
 
 [build-dependencies]

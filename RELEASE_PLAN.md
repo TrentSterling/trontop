@@ -52,6 +52,9 @@ Alpha exit gate:
   this gate; do not test commands against existing working-machine services.
 - A 60-minute mixed-load soak shows no UI stalls, runaway handles, or sampler growth.
 - Every missing provider renders an unavailable state instead of fabricated data.
+- Native export Save As passes isolated cancellation, overwrite, Unicode filename,
+  rejected/locked destination and app-close-during-export checks. Alpha.13's injected
+  picker and owned-file tests do not validate the native dialog: `docs/EXPORTS.md`.
 
 ### 0.4 release candidate
 

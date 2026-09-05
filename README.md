@@ -23,6 +23,9 @@ Version 0.3 alpha provides:
   end-to-end validation remains a release gate in `docs/SERVICE_CONTROLS.md`
 - per-service command-state retention across selections and subsequent commands;
   unresolved outcomes stay labeled until a newer read resolves them
+- explicit JSON snapshot and CSV process export, with private details excluded by
+  default, provider freshness, background writing and a native Save As picker;
+  format/limitations and the remaining picker-validation gate: `docs/EXPORTS.md`
 - a frameless Tront shell and persistent live gradient Theme Studio
 - alternating row and gradient column bands, padded cells, and high-contrast selection
 - a live full-width CPU tray meter with scrolling history and a resource tooltip,
