@@ -31,6 +31,9 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
+- [ ] Discuss/prototype opt-in Ctrl+Shift+Esc interception while preserving Windows
+  Task Manager through Ctrl+Alt+Del: `docs/HOTKEY_PLAN.md`. Research only; no hook
+  installed or keyboard setting changed. Native validation needs fresh permission.
 
 ## Shipped in 0.2
 
