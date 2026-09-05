@@ -4,8 +4,12 @@ use egui::{Color32, FontFamily, FontId, Stroke, TextStyle, Theme, Visuals};
 pub const STORAGE_KEY: &str = "trontop.theme.v3";
 pub const LEGACY_STORAGE_KEY: &str = "trontop.theme.v2";
 
+mod contrast;
 mod gradient;
 mod storage;
+#[cfg(test)]
+pub(crate) use contrast::ratio as contrast_ratio;
+pub use contrast::{ink, readable_text, surface as text_surface};
 pub use gradient::{Stop, paint_gradient};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -186,6 +190,7 @@ impl ThemeSettings {
 
 #[derive(Clone, Copy)]
 pub struct Tokens {
+    pub dark: bool,
     pub bg: Color32,
     pub panel: Color32,
     pub panel_raised: Color32,
@@ -202,11 +207,22 @@ pub struct Tokens {
     pub column_strength: f32,
 }
 
+impl Tokens {
+    pub fn surface(self, color: Color32) -> Color32 {
+        text_surface(color, self.dark)
+    }
+
+    pub fn ink(self, color: Color32) -> Color32 {
+        ink(color, self.dark)
+    }
+}
+
 pub fn tokens(settings: ThemeSettings) -> Tokens {
     let accent = rgb(settings.accent);
     let secondary = rgb(settings.secondary);
     let mut result = if settings.dark {
         Tokens {
+            dark: true,
             bg: Color32::from_rgb(9, 9, 13),
             panel: Color32::from_rgb(16, 16, 23),
             panel_raised: Color32::from_rgb(25, 24, 34),
@@ -224,6 +240,7 @@ pub fn tokens(settings: ThemeSettings) -> Tokens {
         }
     } else {
         Tokens {
+            dark: false,
             bg: Color32::from_rgb(236, 234, 242),
             panel: Color32::from_rgb(247, 246, 250),
             panel_raised: Color32::WHITE,
@@ -249,6 +266,8 @@ pub fn tokens(settings: ThemeSettings) -> Tokens {
         result.text_muted = result.text;
         result.border = mix(result.border, result.text, 0.25);
     }
+    result.row_hover = result.surface(result.row_hover);
+    result.accent_dim = result.surface(result.accent_dim);
     result
 }
 
@@ -269,10 +288,12 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     };
     style.visuals.panel_fill = Color32::TRANSPARENT;
     style.visuals.window_fill = t.panel;
+    style.visuals.weak_text_color = Some(t.text_muted);
     style.visuals.extreme_bg_color = t.graph_bg;
     let signal_blend = mix(t.accent, t.secondary, 0.48);
-    style.visuals.faint_bg_color = mix(t.panel_raised, signal_blend, settings.zebra_strength);
-    style.visuals.selection.bg_fill = mix(t.accent_dim, signal_blend, 0.24);
+    style.visuals.faint_bg_color =
+        t.surface(mix(t.panel_raised, signal_blend, settings.zebra_strength));
+    style.visuals.selection.bg_fill = t.surface(mix(t.accent_dim, signal_blend, 0.24));
     style.visuals.selection.stroke = Stroke::new(1.0, t.text);
     style.visuals.widgets.noninteractive.fg_stroke.color = t.text;
     // Strong fill is used by slider rails and handles; keep it visible on cards.
@@ -282,11 +303,17 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     style.visuals.widgets.inactive.weak_bg_fill = t.panel_raised;
     style.visuals.widgets.hovered.bg_fill = t.row_hover;
     style.visuals.widgets.hovered.weak_bg_fill =
-        mix(t.row_hover, signal_blend, settings.hover_strength);
+        t.surface(mix(t.row_hover, signal_blend, settings.hover_strength));
     style.visuals.widgets.hovered.fg_stroke.color = t.text;
-    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, t.secondary);
+    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, t.ink(t.secondary));
     style.visuals.widgets.active.bg_fill = t.accent_dim;
+    style.visuals.widgets.active.weak_bg_fill = t.accent_dim;
     style.visuals.widgets.active.fg_stroke.color = t.text;
+    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0, t.ink(t.accent));
+    style.visuals.widgets.open = style.visuals.widgets.active;
+    style.visuals.hyperlink_color = t.ink(t.secondary);
+    style.visuals.error_fg_color = t.ink(t.danger);
+    style.visuals.warn_fg_color = t.ink(Color32::from_rgb(230, 160, 50));
     style.visuals.window_stroke = Stroke::new(1.0, t.border);
     style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, t.border);
     style.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, t.border);
@@ -351,23 +378,7 @@ pub fn paint_background(ctx: &egui::Context, settings: ThemeSettings) {
 pub fn backdrop(settings: ThemeSettings, color: Color32) -> Color32 {
     let t = tokens(settings);
     let raw = mix(t.bg, color, settings.gradient_strength);
-    if settings.dark {
-        let max = raw.r().max(raw.g()).max(raw.b()).max(1) as f32;
-        let scale = (64.0 / max).min(1.0);
-        Color32::from_rgb(
-            (raw.r() as f32 * scale) as u8,
-            (raw.g() as f32 * scale) as u8,
-            (raw.b() as f32 * scale) as u8,
-        )
-    } else {
-        let min = raw.r().min(raw.g()).min(raw.b()) as f32;
-        let lift = if min < 205.0 {
-            (205.0 - min) / (255.0 - min)
-        } else {
-            0.0
-        };
-        mix(raw, Color32::WHITE, lift)
-    }
+    t.surface(raw)
 }
 
 pub fn panel_color(settings: ThemeSettings) -> Color32 {

@@ -6,6 +6,9 @@ use eframe::egui;
 use egui::{Align, Color32, FontId, Layout, RichText, Sense, Stroke, Vec2};
 use std::collections::VecDeque;
 
+#[cfg(test)]
+mod contrast_tests;
+
 /// Passive labels respond visually without becoming selectable or clickable.
 pub fn hover_label(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
     let background = ui.painter().add(egui::Shape::Noop);
@@ -103,6 +106,19 @@ pub fn action_button_enabled(
     states.inactive.weak_bg_fill = base;
     states.hovered.weak_bg_fill = theme::mix(base, t.accent, 0.22);
     states.active.weak_bg_fill = theme::mix(base, t.secondary, 0.28);
+    let stroke_width = states.inactive.bg_stroke.width;
+    for state in [
+        &mut states.inactive,
+        &mut states.hovered,
+        &mut states.active,
+    ] {
+        state.fg_stroke.color = theme::readable_text(t.text, state.weak_bg_fill);
+        state.bg_stroke.color = theme::readable_text(state.bg_stroke.color, state.weak_bg_fill);
+        state.bg_stroke.width = stroke_width;
+    }
+    // A caller's fixed RichText color must not defeat per-state button contrast.
+    // PLACEHOLDER is resolved by egui's button painter using that state's ink.
+    let text = text.into().color(Color32::PLACEHOLDER);
     let response = ui.add_enabled(enabled, egui::Button::new(text).min_size(size));
     ui.visuals_mut().widgets = before;
     response
@@ -111,41 +127,48 @@ pub fn action_button_enabled(
 pub fn tront_mark(ui: &mut egui::Ui, primary: Color32, secondary: Color32, size: f32) {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(
-        rect,
-        size * 0.22,
-        if response.hovered() {
-            theme::mix(primary, secondary, 0.35)
-        } else {
-            theme::mix(primary, Color32::BLACK, 0.20)
-        },
-    );
+    let fill = if response.hovered() {
+        theme::mix(primary, secondary, 0.35)
+    } else {
+        theme::mix(primary, Color32::BLACK, 0.20)
+    };
+    painter.rect_filled(rect, size * 0.22, fill);
     let inset = rect.shrink(size * 0.17);
     painter.line_segment(
         [inset.left_top(), inset.right_top()],
-        Stroke::new((size * 0.11).max(2.0), secondary),
+        Stroke::new(
+            (size * 0.11).max(2.0),
+            theme::readable_text(secondary, fill),
+        ),
     );
     painter.line_segment(
         [
             egui::pos2(inset.center().x, inset.top()),
             egui::pos2(inset.center().x, inset.bottom()),
         ],
-        Stroke::new((size * 0.11).max(2.0), Color32::WHITE),
+        Stroke::new(
+            (size * 0.11).max(2.0),
+            theme::readable_text(Color32::WHITE, fill),
+        ),
     );
 }
 
 pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) {
+    let dark = ui.visuals().dark_mode;
     let frame = egui::Frame::new()
-        .fill(Color32::from_rgba_unmultiplied(
-            color.r(),
-            color.g(),
-            color.b(),
-            38,
+        .fill(theme::text_surface(
+            theme::mix(ui.visuals().window_fill, color, 0.15),
+            dark,
         ))
         .corner_radius(20.0)
         .inner_margin(egui::Margin::symmetric(8, 3));
     hover_frame(ui, frame, |ui| {
-        ui.label(RichText::new(label).size(10.0).strong().color(color));
+        ui.label(
+            RichText::new(label)
+                .size(10.0)
+                .strong()
+                .color(theme::ink(color, dark)),
+        );
     });
 }
 
@@ -195,21 +218,26 @@ pub fn icon_button(
     base: Color32,
     t: Tokens,
 ) -> egui::Response {
-    let color = if ui.is_enabled() {
-        t.text
-    } else {
-        t.text_muted
-    };
-    let galley = ui
-        .painter()
-        .layout_no_wrap(label.into(), FontId::proportional(12.0), color);
+    let galley = ui.painter().layout_no_wrap(
+        label.into(),
+        FontId::proportional(12.0),
+        Color32::PLACEHOLDER,
+    );
     let desired = if label.is_empty() {
         Vec2::splat(20.0).max(size)
     } else {
         Vec2::new(galley.size().x + 42.0, 28.0).max(size)
     };
     let response = ui.allocate_response(desired, Sense::click());
-    paint_interactive_surface(ui, &response, false, base, t);
+    let fill = paint_interactive_surface(ui, &response, false, base, t);
+    let color = theme::readable_text(
+        if ui.is_enabled() {
+            t.text
+        } else {
+            t.text_muted
+        },
+        fill,
+    );
     let center = if label.is_empty() {
         response.rect.center()
     } else {
@@ -239,12 +267,12 @@ fn paint_interactive_surface(
     selected: bool,
     base: Color32,
     t: Tokens,
-) {
+) -> Color32 {
     let fill = if response.is_pointer_button_down_on() {
-        theme::mix(t.accent_dim, t.secondary, 0.24)
+        t.surface(theme::mix(t.accent_dim, t.secondary, 0.24))
     } else if response.hovered() || response.has_focus() {
         if selected {
-            theme::mix(t.accent_dim, t.secondary, 0.22)
+            t.surface(theme::mix(t.accent_dim, t.secondary, 0.22))
         } else {
             ui.visuals().widgets.hovered.weak_bg_fill
         }
@@ -260,15 +288,16 @@ fn paint_interactive_surface(
         Stroke::new(
             1.0,
             if selected || response.has_focus() {
-                t.accent
+                theme::readable_text(t.accent, fill)
             } else if response.hovered() {
-                t.secondary
+                theme::readable_text(t.secondary, fill)
             } else {
                 t.border
             },
         ),
         egui::StrokeKind::Inside,
     );
+    fill
 }
 
 pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32, t: Tokens) {
@@ -286,7 +315,7 @@ pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Col
         });
         ui.add(
             egui::ProgressBar::new((value.unwrap_or(0.0) / 100.0).clamp(0.0, 1.0))
-                .fill(color)
+                .fill(t.ink(color))
                 .desired_width(ui.available_width())
                 .desired_height(3.0),
         );
@@ -441,24 +470,20 @@ pub fn table_column(
                 Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
             };
             let alpha = (t.column_strength * 255.0) as u8;
-            mesh.colored_vertex(rect.left_top(), tint(t.accent, alpha));
-            mesh.colored_vertex(rect.right_top(), tint(t.secondary, alpha));
-            mesh.colored_vertex(rect.right_bottom(), tint(t.secondary, alpha));
-            mesh.colored_vertex(rect.left_bottom(), tint(t.accent, alpha));
+            mesh.colored_vertex(rect.left_top(), tint(t.surface(t.accent), alpha));
+            mesh.colored_vertex(rect.right_top(), tint(t.surface(t.secondary), alpha));
+            mesh.colored_vertex(rect.right_bottom(), tint(t.surface(t.secondary), alpha));
+            mesh.colored_vertex(rect.left_bottom(), tint(t.surface(t.accent), alpha));
             mesh.add_triangle(0, 1, 2);
             mesh.add_triangle(0, 2, 3);
             ui.painter().add(egui::Shape::mesh(mesh));
         }
         if response.contains_pointer() && ui.is_enabled() {
+            let color = t.surface(t.secondary);
             ui.painter().rect_filled(
                 rect.shrink(1.0),
                 ui.visuals().widgets.inactive.corner_radius,
-                Color32::from_rgba_unmultiplied(
-                    t.secondary.r(),
-                    t.secondary.g(),
-                    t.secondary.b(),
-                    38,
-                ),
+                Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 38),
             );
         }
         ui.scope_builder(
@@ -529,11 +554,11 @@ fn heat_cell_response(
 ) -> egui::Response {
     let response = ui.allocate_response(ui.available_size(), Sense::click());
     if value > 0.05 {
-        let alpha = (18.0 + value.clamp(0.0, 100.0) * 0.72) as u8;
+        let amount = (18.0 + value.clamp(0.0, 100.0) * 0.72) / 255.0;
         ui.painter().rect_filled(
             response.rect.shrink2(Vec2::new(1.0, 2.0)),
             2.0,
-            Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha),
+            t.surface(theme::mix(t.panel_raised, color, amount)),
         );
     }
     ui.painter().text(
@@ -658,7 +683,8 @@ pub fn history_graph_with_window(
                 value.is_finite().then_some(egui::pos2(x, y))
             })
             .collect::<Vec<_>>();
-        let fill_color = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 30);
+        let fill = t.surface(color);
+        let fill_color = Color32::from_rgba_unmultiplied(fill.r(), fill.g(), fill.b(), 30);
         let mut fill = egui::Mesh::default();
         for pair in points.windows(2) {
             let [Some(first), Some(second)] = pair else {
@@ -676,7 +702,7 @@ pub fn history_graph_with_window(
         for run in points.split(Option::is_none) {
             let run: Vec<_> = run.iter().flatten().copied().collect();
             if run.len() > 1 {
-                painter.add(egui::Shape::line(run, Stroke::new(2.0, color)));
+                painter.add(egui::Shape::line(run, Stroke::new(2.0, t.ink(color))));
             }
         }
         painter.text(
@@ -760,7 +786,7 @@ pub fn device_button(
             .collect::<Vec<_>>();
         if points.len() > 1 {
             ui.painter()
-                .add(egui::Shape::line(points, Stroke::new(1.2, color)));
+                .add(egui::Shape::line(points, Stroke::new(1.2, t.ink(color))));
         }
     }
     response.widget_info(|| {
@@ -814,7 +840,7 @@ pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: C
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(rect.min, Vec2::new(fill_width, rect.height())),
                     12.0,
-                    theme::mix(t.graph_bg, color, 0.32),
+                    t.surface(theme::mix(t.graph_bg, color, 0.32)),
                 );
             }
             ui.painter().text(
@@ -872,7 +898,7 @@ pub fn inventory_status(
             status_rect,
             status,
             FontId::monospace(10.0),
-            color,
+            t.ink(color),
             Align::Max,
         );
         paint_text(

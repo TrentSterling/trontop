@@ -101,6 +101,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   labels. Final audit must include selected/disabled/focused states and extreme
   custom gradients, not just default colors. Hover must not move layout or steal
   child input. Primary text and muted labels must remain readable.
+  Alpha.23 adds bounded interaction/band surfaces, independent foreground ink,
+  adaptive action text and six contrast/state regressions (202 ordinary tests
+  pass). Extreme palette renders were reviewed; full inventory/native/final
+  acceptance remain. Evidence: `docs/THEME_CONTRAST.md`.
 - [x] **A17: Display labels must not be highlightable.** Global non-selectable
   labels; only deliberate editable/copy fields select text. Evidence: `src/theme.rs`
   and headless text/control checks. Recheck as part of the final UI audit.

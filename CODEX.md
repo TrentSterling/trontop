@@ -5,6 +5,16 @@ must not modify this repository.
 
 ## Current checkpoint
 
+Alpha.23 is the local custom-theme contrast candidate. It preserves saved RGB
+while separating foreground ink and bounding shared text-bearing surfaces. Real
+egui state tests cover action text, badges, selected-device labels, heat tiles and
+geometry. Final gate: 202 pass, 13 ignored, strict Clippy/format/release PASS;
+79 offscreen PNGs with regular/extreme cases inspected. See
+`docs/THEME_CONTRAST.md` and the newest `docs/CURRENT_STATE.md` for identity.
+No alpha.23 preview was opened. A16 and native drag/close/soak remain unchecked.
+The prior push was rejected by auto-review; explicit upload approval remains
+unanswered. Do not retry via another route. Work below is historical.
+
 Alpha.22 addresses another A22 responsiveness gap: End task, priority, affinity,
 Run task and Reveal in Explorer now dispatch through one non-blocking action
 worker instead of invoking Windows on the UI thread. It retains exact confirmed

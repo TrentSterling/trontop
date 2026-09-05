@@ -381,9 +381,11 @@ impl Studio {
         if let Some((notice, error)) = &self.notice {
             widgets::hover_label(
                 ui,
-                RichText::new(notice)
-                    .size(11.0)
-                    .color(if *error { t.danger } else { t.text }),
+                RichText::new(notice).size(11.0).color(if *error {
+                    t.ink(t.danger)
+                } else {
+                    t.text
+                }),
             );
         }
     }
@@ -593,19 +595,11 @@ fn ramp(
             4.0,
             Stroke::new(
                 if i == *selected { 2.0 } else { 1.0 },
-                if i == *selected { t.text } else { t.border },
+                theme::readable_text(if i == *selected { t.text } else { t.border }, color),
             ),
             egui::StrokeKind::Inside,
         );
-        let ink = if 0.2126 * peg.color[0] as f32
-            + 0.7152 * peg.color[1] as f32
-            + 0.0722 * peg.color[2] as f32
-            > 140.0
-        {
-            Color32::BLACK
-        } else {
-            Color32::WHITE
-        };
+        let ink = theme::readable_text(t.text, color);
         ui.painter().text(
             peg_rect.center(),
             Align2::CENTER_CENTER,
@@ -643,7 +637,7 @@ fn preset_card(
         Stroke::new(
             1.0,
             if selected || response.has_focus() {
-                t.secondary
+                t.ink(t.secondary)
             } else {
                 t.border
             },

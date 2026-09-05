@@ -1921,7 +1921,7 @@ impl TrontopApp {
                                 ui,
                                 RichText::new(format!("{:02}", rank + 1))
                                     .monospace()
-                                    .color(t.accent),
+                                    .color(t.ink(t.accent)),
                             );
                             widgets::hover_label(
                                 ui,
@@ -1950,7 +1950,7 @@ impl TrontopApp {
                                     ui,
                                     RichText::new(format::millis(process.accumulated_cpu_millis))
                                         .monospace()
-                                        .color(t.secondary),
+                                        .color(t.ink(t.secondary)),
                                 );
                             });
                         });
@@ -2182,7 +2182,7 @@ impl TrontopApp {
                 widgets::hover_label(ui,
                     RichText::new("High priority can reduce responsiveness elsewhere on the machine and receives an additional explicit confirmation.")
                         .size(10.0)
-                        .color(t.danger),
+                        .color(t.ink(t.danger)),
                 );
             });
         if let Some(priority) = requested {
@@ -2253,7 +2253,7 @@ impl TrontopApp {
                             ui,
                             RichText::new(format!("{} selected", self.affinity_draft.count_ones()))
                                 .monospace()
-                                .color(t.secondary),
+                                .color(t.ink(t.secondary)),
                         );
                     });
                 });
@@ -2306,7 +2306,7 @@ impl TrontopApp {
                             ui,
                             RichText::new("Select at least one processor.")
                                 .size(10.0)
-                                .color(t.danger),
+                                .color(t.ink(t.danger)),
                         );
                     }
                 });
@@ -2386,7 +2386,7 @@ impl TrontopApp {
                     ))
                     .size(10.0)
                     .monospace()
-                    .color(t.secondary),
+                    .color(t.ink(t.secondary)),
                 );
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {

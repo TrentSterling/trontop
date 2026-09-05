@@ -8,6 +8,7 @@ use eframe::App;
 
 mod actions;
 mod compact_layout;
+mod contrast;
 mod disks;
 mod export;
 mod failure;
@@ -1918,8 +1919,9 @@ fn render_offscreen_visual_pass() {
             &directory.join(format!("{variant}.png")),
         );
     }
+    contrast::render_cases(&mut renderer, &directory);
     println!(
-        "Offscreen visual pass: 73 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 79 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

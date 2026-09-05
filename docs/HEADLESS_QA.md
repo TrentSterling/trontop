@@ -33,6 +33,13 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.23 adds six contrast regressions covering 4,096 RGB samples per mode,
+  reference failures, actual action/icon state ink, hover badges/device labels,
+  stable geometry, installed text-bearing surfaces and heat tiles. Final ordinary
+  suite: 202 pass, 13 ignored; strict Clippy/formatting PASS. The offscreen pass
+  produces 79 PNGs, including six extreme palette fixtures. Read
+  `THEME_CONTRAST.md` for inspected scope and remaining acceptance limits.
+
 - Alpha.22 moves native process/shell actions off the UI thread. Six worker tests
   plus four production-UI tests cover bounded dispatch/drop, exact frozen targets,
   stalled navigation, duplicates, stale confirmations, Enter/recovery gating and

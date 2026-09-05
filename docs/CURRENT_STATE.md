@@ -2,7 +2,37 @@
 
 Last updated: 2026-09-05
 
-## Latest candidate: alpha.22 non-blocking process and shell actions
+## Latest candidate: alpha.23 custom-theme readability
+
+The A16 audit separated raw theme accents from text ink, bounded text-bearing
+hover/selection/banded surfaces, corrected action-button foregrounds per state,
+and kept badges, hints, warnings, numbered pegs, chart lines and meters readable
+under extreme colors. Saved palettes are unchanged. Button border widths are
+stable across states. See `THEME_CONTRAST.md` for implementation and limits.
+
+Final gate: **202 passed, 0 failed, 13 ignored** (26.68 s), strict Clippy PASS
+(4.35 s), formatting PASS and optimized build PASS (48.77 s). Six new contrast
+tests include real egui widget shapes/states and unchanged text bounds. The final
+offscreen pass generated **79 PNGs** (50.46 s); selected regular and extreme
+Processes, History and Theme Studio cases were inspected. The rendered review
+caught an additional nearly invisible yellow sidebar meter, now corrected.
+Mid-pass optimized UI/tessellation p95 was **0.18-1.05 ms** across nine pages at
+500/5,000 fixture processes, before the final meter correction. Not native FPS.
+
+Candidate: **`target/release/trontop.exe`**, version **0.3.0-alpha.23**,
+**13,532,672 bytes**, built **2026-09-05 21:50:47 UTC** from modified f321e07 source.
+SHA-256 **`EE3B3B3086B42F63022D291243B893FEED0361BCB4476FC68BC0CC16C01D4996`**.
+PE imports still list Windows DLLs only, without a dynamic MSVC CRT. Clean-machine
+portability and native drag/close/soak remain unverified. No preview was opened,
+replaced or closed, and no OS input was injected. The exact-build review request
+and isolated-desktop permission remain unanswered.
+
+This checkpoint is local only. The previous source-upload rejection remains in
+effect; no push, CI job, release or tag was attempted. No automatic continuation
+counts as approval to bypass it. A16 remains PARTIAL / REVIEW, not checked off on
+the strength of the selected-widget tests alone.
+
+## Previous candidate: alpha.22 non-blocking process and shell actions
 
 The UI-thread audit found five native action calls still inside rendering callbacks:
 End task, priority, affinity, Run task and Reveal in Explorer. All now use a
@@ -40,6 +70,18 @@ PE import inspection lists Windows DLLs only, not dynamic MSVC CRT or applicatio
 assets. Clean-machine portability is still a separate gate. This replaces the
 alpha.21 target/release artifact; old identities below are historical.
 
+Crash follow-up recheck (September 5, 21:32 UTC): the local failure log and a
+12-hour Application-event query still identify the alpha.19 renderer crash at
+18:29 UTC; no newer Trontop incident was returned. Five older previews (alpha.10,
+alpha.11, two alpha.12 copies and alpha.14) remain running and were left untouched.
+The alpha.22 release EXE still matches the SHA-256 above. Fresh optimized tests
+passed: three offscreen device-loss recoveries restored pixel-identical UI in
+132.71 / 959.70 / 1006.52 ms, with a longest UI-side poll of 0.087 ms. The separate
+injected setup-failure/stall check passed with one retry attempt, 1,000 polls in
+15.3 us and worker drop in 10.2 us. These test-owned offscreen devices do not
+exercise native window dragging/presentation or establish why the original GPU
+upload failed. Competing compilation is not a verified cause of the crash.
+
 No app preview was opened, replaced or closed; no global input/window manipulation,
 driver installation, service command, shortcut hook or public release. Native
 surface recovery, real drag/close and mixed-load soak remain unverified. Permission
@@ -49,8 +91,10 @@ access and remaining ask-ledger gates are not quietly treated as completed.
 Previous exact alpha.21 Windows CI
 [33991747758](https://github.com/TrentSterling/trontop/actions/runs/33991747758)
 for a6dfbe1 completed successfully (checked September 5). Alpha.22 remote gate has
-not run yet; record the push-triggered run in the coordination journal and monitor
-that existing job on continuation. No new release/tag is published.
+not run yet. Source checkpoint f321e07 is local only: auto-review rejected its push,
+and explicit approval to upload it to the private repository was requested but
+has not been received. Do not retry or bypass that block without approval. There
+is no alpha.22 CI job to monitor yet. No new release/tag is published.
 
 ## Previous candidate: alpha.21 compact Processes and inspector
 
