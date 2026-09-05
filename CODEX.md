@@ -5,7 +5,7 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.11 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.12 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
 
 Implemented: Overview and Hardware sensors navigation, About/provider diagnostics
@@ -39,31 +39,42 @@ worker, with same-handle state/PID checks, access errors and bounded worker drop
 Stable status surfaces and Pre-command rows expose uncertain outcomes without
 invented state. Read `docs/SERVICE_CONTROLS.md`: injected command tests and native
 read-only queries passed, but actual native service commands need isolated validation.
-The current command observation is latest-only, not a retained per-service journal.
+Alpha.12 retains state observations and uncertain outcomes per service until newer
+complete inventory resolves them. Its bounded cache never evicts unknown outcomes;
+at capacity, new service targets require a successful refresh. Detailed command
+progress/error text still shows the latest command, not a persistent activity log.
+Startup and Services now each have an independent read-only inventory worker.
+Blocked reads cannot directly hold up the sampler; five-second reporting deadlines
+preserve cached fields without spawning duplicate workers. See `docs/INVENTORY_WORKERS.md`.
 
-Local tests: 101 passed, 0 failed, 6 opt-in tests ignored. Strict Clippy passes.
-Offscreen QA produced 47 PNGs without native windows/input; five final service
-variants were inspected, not all 47 images. The earlier read-only icon probe
+Local tests: 111 passed, 0 failed, 7 opt-in tests ignored. Strict Clippy passes.
+Offscreen QA produced 50 PNGs without native windows/input; the two new timeout
+variants and retained-service-outcomes image were inspected, not all 50 images.
+The read-only inventory-worker probe returned 13 Startup entries and 303 services;
+1,000 snapshot-pair reads took 211.1 microseconds in one short test, not a whole-app
+performance measurement. The earlier read-only icon probe
 extracted this test EXE in 2.4387 ms; 40 repeats left GDI/USER counts at (4, 2).
 The earlier PDH refresh test retained 690 handles with 690/690 valid rates afterward.
-The optimized alpha.11 review EXE is built and dependency-inspected. Native end-to-end close
+The optimized alpha.12 review EXE is built and dependency-inspected. Native end-to-end close
 latency and dragging performance are NOT measured. CPU provider research and the
 slow SSD/HDD probe findings are in `docs/SENSORS_PLAN.md`; no driver install authority.
 
 On explicit launch requests, hash-verified preview copies were opened on 2026-09-05:
 alpha.10 at `target/preview/alpha10/trontop.exe`, PID 259420 at 09:48:31 UTC;
-alpha.11 at `target/preview/alpha11/trontop.exe`, PID 274860 at 10:02:27 UTC.
-Both were observed responding with native window handles immediately afterward.
+alpha.11 at `target/preview/alpha11/trontop.exe`, PID 274860 at 10:02:27 UTC;
+alpha.12 at `target/preview/alpha12/trontop.exe`, PID 263640 at 10:42:33 UTC.
+All were observed responding with native window handles immediately afterward.
 No old instances or other windows were touched. These observations are historical;
 recheck runtime state if needed. The legacy `target/release` copy remains alpha.5.
 Do not automatically restart or replace any preview. See `docs/CURRENT_STATE.md`
 for exact hashes and the earlier alpha.1 backup.
 
 Next: CPU/motherboard coverage, suspend/resume, service validation, export and the
-release gates in `RELEASE_PLAN.md`. Slow startup/service inventory calls still run
-on the sampler; independent workers remain a future reliability improvement.
-Alpha.10 Windows CI run 33958007255 passed; that run does not verify the new alpha.11
-source. No alpha release is published. No new permission to restart
+release gates in `RELEASE_PLAN.md`. Other sysinfo/PDH/NVML/process-control paths still
+need broader stall/overhead measurements; inventory isolation does not prove these.
+Alpha.11 Windows CI run 33960026614 passed for checkpoint 8e343e2; that run does not
+verify the new alpha.12 source, whose remote gate is pending. No alpha release is
+published. No new permission to restart
 the deployed copy, manipulate windows or install a shortcut hook.
 
 ## Previous verified checkpoint

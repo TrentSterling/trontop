@@ -17,7 +17,10 @@ impl TrontopApp {
             "Startup inventory",
             state.label(),
             &format!(
-                "{total} retained entries / {checked} of {sources} sources fully checked. Cached is not current; Observed is from an incomplete read."
+                "{total} retained entries / {checked} of {sources} sources fully checked. Cached is not current; Observed is from an incomplete read.{}",
+                health
+                    .issue
+                    .map_or(String::new(), |issue| format!(" {}", issue.description()))
             ),
             diagnostics::state_color(state, t),
             t,
@@ -114,9 +117,12 @@ impl TrontopApp {
             "Service inventory",
             freshness,
             &format!(
-                "{} entries / Complete {}. {explanation}",
+                "{} entries / Complete {}. {explanation}{}",
                 self.snapshot.services.len(),
-                age(health.last_success, now)
+                age(health.last_success, now),
+                health
+                    .issue
+                    .map_or(String::new(), |issue| format!(" {}", issue.description()))
             ),
             diagnostics::state_color(state, t),
             t,

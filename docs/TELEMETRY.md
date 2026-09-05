@@ -5,15 +5,17 @@
 The sampler owns one long-lived `sysinfo::System`, disk list, network list, user
 list, and GPU PDH query on a dedicated thread. It refreshes live counters every
 second, publishes one immutable snapshot, and requests one UI repaint. Startup and
-service inventory refresh every 30 sampler cycles. Service commands can request
-an earlier inventory refresh on the next cycle. The render thread performs no
+Services use independent fixed workers in alpha.12, with 30-second waits after each
+completed read. Service commands can request an earlier read through the next sampler
+cycle. Neither inventory's native calls execute on the sampler or render thread.
+The render thread performs no telemetry
 operating-system queries.
 
 Alpha.11 service Start/Stop/Restart runs on a separate single-flight command worker,
-not the sampler. Its latest typed observation can override older service inventory;
-failed inventory attempts cannot erase it. `SERVICE_CONTROLS.md` describes the
-timestamps and uncertain-result handling. Slow native inventory still shares the
-sampler; isolating that remaining path is not implemented by the command worker.
+not the sampler. Alpha.12 retains typed observations independently per service;
+failed inventory attempts and commands to other services cannot erase them.
+`SERVICE_CONTROLS.md` describes timestamps, capacity and uncertain-result handling.
+`INVENTORY_WORKERS.md` documents read coalescing, cache retention and slow-call states.
 
 The sampler also publishes a compact CPU/memory/GPU/process-count sample directly to
 the dedicated `trontop-tray` thread. A coalescing slot and native thread message wake

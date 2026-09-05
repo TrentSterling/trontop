@@ -37,11 +37,12 @@ storage. Native reads enforce the same budgets; defensive cache checks downgrade
 over-limit results to incomplete before they can erase old entries. A visible
 retention warning remains until a complete read succeeds.
 
-The sampler builds globally alphabetized source/entry indices only on inventory
+The inventory worker builds globally alphabetized source/entry indices only on inventory
 refresh. UI filtering scans references; table virtualization formats strings only
 for visible rows. This avoids per-frame sorting/full-table formatting, not all
-per-frame work. Startup and service native inventory calls still share the sampler;
-isolating potentially slow registry/folder/SCM calls is future work.
+per-frame work. Alpha.12 isolates native Startup and Services enumeration from the
+live sampler; see `INVENTORY_WORKERS.md` for fixed worker counts, timeout views and
+remaining per-source/provider limits.
 
 ## Services and layout
 

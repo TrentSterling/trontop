@@ -25,6 +25,9 @@ handles keep their samples. It never creates windows or installs input hooks.
 The separately selected `native_executable_icon_read_only_probe` extracts the test
 EXE's own resource and checks GDI/USER counts across 40 repeats, with no windows or
 shell execution. Do not broaden it to arbitrary processes or the native tray test.
+The separately selected `native_inventory_workers_publish_read_only_snapshots`
+probe starts only the read-only Startup and Services workers and measures their
+publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
@@ -99,7 +102,7 @@ shell execution. Do not broaden it to arbitrary processes or the native tray tes
   `SERVICE_CONTROLS.md`, not evidence supplied by this harness.
 
 The explicit offscreen pass creates a GPU texture, not a window/surface. It uses the
-real egui-WGPU renderer and embedded fonts, writes forty-seven PNGs under `target/ui-smoke`,
+real egui-WGPU renderer and embedded fonts, writes fifty PNGs under `target/ui-smoke`,
 and waits for dialog fade-in before capture. Fixtures use alternate presets without
 changing Trent's persisted theme. These are review images, not live-telemetry captures.
 The five GPU-activity additions cover compact Processes, light process tree, Users,
@@ -112,6 +115,11 @@ are not automatically visually reviewed; checkpoint notes identify inspected cas
 Five service-control additions cover normal, light and compact layouts, Restart
 confirmation and command-error/uncertain state. The UI fixtures have no sampler;
 Refresh list is intentionally disabled there, not evidence of a broken runtime control.
+Three alpha.12 additions show retained results for multiple services and cached
+Startup/Services after timeouts. Three new UI tests require per-service freshness,
+disabled actions when tracking is full, retained rows and fixed headers after timeout.
+Five injected inventory-worker tests never call native enumeration and check stalled
+providers, coalesced refreshes, cached recovery, publication contention and shutdown.
 
 ## Limits
 

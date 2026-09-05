@@ -6,6 +6,8 @@ use std::sync::{
 };
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+mod observations;
+pub use observations::Observations;
 
 #[cfg(windows)]
 mod native;

@@ -1,11 +1,11 @@
-use crate::diagnostics::{Diagnostics, Health, Issue, Provider, State};
+use crate::diagnostics::{Diagnostics, Issue, Provider, State};
 use crate::gpu_sensors::SensorSampler;
 use crate::model::{
     CpuInfo, DiskRow, NetworkRow, ProcessControlInfo, ProcessRow, SystemSnapshot, UserSummary,
 };
 use crate::platform;
 use crate::tray::{TraySample, TraySink};
-use crate::windows_metrics::{self, GpuSampler};
+use crate::windows_metrics::GpuSampler;
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -15,7 +15,6 @@ use std::time::{Duration, Instant};
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System, Users};
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
-const INVENTORY_INTERVAL: u64 = 30;
 const GPU_INVENTORY_INTERVAL: u64 = 30;
 const CONTROL_REFRESH_INTERVAL: u64 = 5;
 
@@ -90,6 +89,9 @@ fn sample_loop(
     ctx: egui::Context,
     tray: Option<TraySink>,
 ) {
+    // These workers start without waiting for either native inventory. Their
+    // immutable snapshots can be read even while a provider call is stuck.
+    let mut inventories = crate::inventory::Inventories::spawn();
     let mut system = System::new_all();
     let mut disks = Disks::new_with_refreshed_list();
     let mut networks = Networks::new_with_refreshed_list();
@@ -102,14 +104,6 @@ fn sample_loop(
     let mut sequence = 0_u64;
     let mut previous_sample = Instant::now();
     let mut diagnostics = Diagnostics::default();
-    let mut startup = Arc::new(crate::startup::Snapshot::default());
-    let mut services = Arc::new(Vec::new());
-    collect_startup(&mut startup, diagnostics.get_mut(Provider::Startup));
-    collect_inventory(
-        &mut services,
-        diagnostics.get_mut(Provider::Services),
-        windows_metrics::enumerate_services,
-    );
     let mut process_controls = HashMap::<(u32, u64), ProcessControlInfo>::new();
 
     system.refresh_cpu_frequency();
@@ -212,18 +206,13 @@ fn sample_loop(
             Some((gpu.valid_counters, gpu.total_counters)),
             matches!(gpu_state, State::Partial | State::Unavailable).then_some(Issue::GpuCounters),
         );
-        if sequence > 0 && sequence.is_multiple_of(INVENTORY_INTERVAL) {
-            collect_startup(&mut startup, diagnostics.get_mut(Provider::Startup));
+        if service_refresh.swap(false, Ordering::AcqRel) {
+            inventories.request_services();
         }
-        if service_refresh.swap(false, Ordering::AcqRel)
-            || (sequence > 0 && sequence.is_multiple_of(INVENTORY_INTERVAL))
-        {
-            collect_inventory(
-                &mut services,
-                diagnostics.get_mut(Provider::Services),
-                windows_metrics::enumerate_services,
-            );
-        }
+        let (startup, startup_health) = inventories.startup();
+        let (services, service_health) = inventories.services();
+        *diagnostics.get_mut(Provider::Startup) = startup_health;
+        *diagnostics.get_mut(Provider::Services) = service_health;
 
         sequence += 1;
         let logical_cpu_count = system.cpus().len().max(1) as f32;
@@ -414,54 +403,6 @@ fn sample_loop(
     }
 }
 
-fn collect_startup(cache: &mut Arc<crate::startup::Snapshot>, health: &mut Health) {
-    let at = Instant::now();
-    let inventory = windows_metrics::enumerate_startup();
-    let cached = Arc::make_mut(cache);
-    cached.apply(inventory.sources, at);
-    let (resolved, total) = cached.coverage();
-    let state = if resolved == total {
-        State::Live
-    } else if resolved > 0
-        || cached
-            .sources
-            .iter()
-            .any(|s| s.entries.iter().any(|entry| entry.observed_in_attempt))
-    {
-        State::Partial
-    } else {
-        State::Unavailable
-    };
-    health.record(
-        at,
-        at.elapsed(),
-        state,
-        Some((resolved, total)),
-        (resolved < total).then_some(Issue::StartupSources),
-    );
-}
-
-fn collect_inventory<T>(
-    cache: &mut Arc<Vec<T>>,
-    health: &mut Health,
-    query: impl FnOnce() -> Result<Vec<T>, String>,
-) {
-    let at = Instant::now();
-    match query() {
-        Ok(rows) => {
-            *cache = Arc::new(rows);
-            health.record(at, at.elapsed(), State::Live, None, None);
-        }
-        Err(_) => health.record(
-            at,
-            at.elapsed(),
-            State::Unavailable,
-            None,
-            Some(Issue::ServiceQuery),
-        ),
-    }
-}
-
 fn aggregate_users(processes: &[ProcessRow]) -> Vec<UserSummary> {
     let mut users = HashMap::<String, UserSummary>::new();
     for process in processes {
@@ -523,29 +464,5 @@ mod tests {
         assert_eq!(usage("a"), Usage::Partial(7.0));
         assert_eq!(usage("b"), Usage::Measured(0.0));
         assert_eq!(usage("c"), Usage::Unreported);
-    }
-    #[test]
-    fn inventory_failure_retains_cache_and_last_success_until_recovery() {
-        let mut cache = Arc::new(Vec::new());
-        let mut health = Health::default();
-        collect_inventory(&mut cache, &mut health, || Ok(vec![41_u32]));
-        let first = health.last_success;
-        collect_inventory(&mut cache, &mut health, || {
-            Err("Fixture secret path C:/private".into())
-        });
-        assert_eq!(cache.as_slice(), &[41]);
-        assert_eq!(health.last_success, first);
-        assert_eq!(
-            health.state(Provider::Services, Instant::now()),
-            State::Stale
-        );
-        assert_eq!(health.issue, Some(Issue::ServiceQuery));
-        collect_inventory(&mut cache, &mut health, || Ok(vec![42]));
-        assert_eq!(cache.as_slice(), &[42]);
-        assert_eq!(
-            health.state(Provider::Services, Instant::now()),
-            State::Live
-        );
-        assert!(health.issue.is_none());
     }
 }

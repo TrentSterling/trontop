@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.11 confirmed service controls, stable inventories and sensors
+## Current: alpha.12 independent inventories and retained service state
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -28,7 +28,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 101 tests pass, strict Clippy clean, 47 offscreen review PNGs
+  geometry coverage: 111 tests pass, strict Clippy clean, 50 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -54,12 +54,20 @@ This is the durable resume board. Keep it honest and update it when a slice land
   Services controls, expiring confirmation and five new inspected review PNGs
 - [x] Separate optimized alpha.11 EXE, Windows-only import scan; hash-verified preview
   opened on explicit request as PID 274860 (10:02:27 UTC), older previews untouched
-- [ ] Verify alpha.11 in remote Windows CI; no alpha release is published
+- [x] Alpha.11 Windows CI 33960026614 passed formatting/tests/Clippy/release/artifact
 - [ ] Validate real service commands in an explicitly authorized isolated Windows
   fixture, including denied/dependent/pending/failure cases: `docs/SERVICE_CONTROLS.md`
-- [ ] Retain per-service command observations/uncertainty across subsequent commands
-  to other services; current override covers only the latest command
-- [ ] Isolate potentially slow startup/service inventory calls from the sampler
+- [x] Retain per-service command observations/uncertainty across commands to other
+  services; bounded cache, no unknown-outcome eviction, refresh-before-new-target guard
+- [x] Isolate Startup and Services reads on two fixed workers, coalesce refreshes,
+  retain cached fields on timeout and avoid blocking joins or duplicate workers
+- [x] Read-only native worker probe: 13 Startup entries, 303 services; 1,000 paired
+  snapshot reads in 211.1 microseconds. This is not a whole-app benchmark
+- [x] Timeout/worker-failure cached-row geometry and cross-service retention tests;
+  three new final state screenshots inspected in the 50-image offscreen pass
+- [x] Optimized alpha.12 preview opened on explicit request as PID 263640 at
+  10:42:33 UTC; responding with a native HWND, older previews untouched
+- [ ] Verify alpha.12 in remote Windows CI; no alpha release is published
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance

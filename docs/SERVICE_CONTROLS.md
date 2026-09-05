@@ -1,4 +1,4 @@
-# Confirmed service controls (alpha.11)
+# Confirmed service controls (alpha.11, retention updated in alpha.12)
 
 Services now offers Start, Stop and Restart on a selected Windows application
 service. These are real SCM operations, not process termination or startup-setting
@@ -58,19 +58,33 @@ identity. [Microsoft QueryServiceStatusEx](https://learn.microsoft.com/en-us/win
 - No automatic elevation, service installation/deletion, driver installation,
   permission changes, force-kill fallback or configuration writes are performed.
 
-The latest command's observed state can override older inventory for up to 75
+Each service's observed state can override older inventory for up to 75
 seconds. A failed inventory attempt cannot replace this with an older cached row;
 only a newer complete read can. If a command may have run after the last observation,
 the prior row is retained as Pre-command and retry is disabled until a newer read.
 The overall inventory banner describes the list's last complete read, not proof of
-every row's current state. The override/uncertainty record currently covers only
-the latest command, not a persistent per-service command journal; submitting a
-different command replaces it. Native state/PID preflight still applies to every
-subsequent request. Per-service retained outcomes are follow-up reliability work.
+every row's current state. Alpha.12 retains state/uncertainty independently by service
+name, so acting on another service does not erase an unresolved outcome. The latest
+command's full progress/error message remains in the shared status surface; this is
+not a persistent activity log. Native state/PID preflight still applies to every
+subsequent request.
 
-Refresh list schedules collection on the next sampler cycle. Existing startup and
-service inventory calls still share that sampler, so isolating slow inventory is
-separate work. The new command worker does not solve all provider stalls.
+The state cache is capped at 256 services. A newer complete inventory read reconciles
+older entries; time alone never evicts unresolved outcomes. A full cache refuses
+commands to additional services and explains the need to refresh, rather than
+discarding unknown results. A defensive overflow path disables command tracking
+until a newer complete inventory arrives. Initial checking/queued events cannot
+erase a previous command barrier; newer native observations can resolve it.
+
+Keys normalize case: SCM service names are case-insensitive. The implementation
+uses Rust lowercase normalization, not a general Windows Unicode-collation service;
+the normal path uses the same SCM-enumerated name for inventory and commands.
+[Microsoft OpenServiceW](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nf-winsvc-openservicew)
+
+Refresh list schedules an early read on the independent inventory worker through
+the next sampler cycle. Startup and Services enumeration moved off the sampler in
+alpha.12. Slow reads retain cached fields and never spawn duplicate workers;
+see `INVENTORY_WORKERS.md`. Other providers can still delay the sampler.
 
 ## Verification and remaining release gate
 
@@ -97,3 +111,7 @@ VM. Verify start/stop/restart, pending/failure/dependent-service behavior, norma
 access denial, explicit administrator operation, handle cleanup and close during a
 pending command. No existing service on Trent's working machine may be used for
 that test. Installing the fixture and changing privileges require fresh authority.
+
+Alpha.12 adds three pure per-service retention/capacity/order tests and three
+headless UI checks for retained results, capacity explanations and timeout/cache
+geometry. Actual service commands are still not exercised by those tests.

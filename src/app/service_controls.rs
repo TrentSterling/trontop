@@ -1,6 +1,6 @@
 use super::*;
 use crate::service_control::{Action, Request, Status};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 impl TrontopApp {
     pub(super) fn service_status(&self, row: &crate::model::ServiceRow) -> (Status, bool) {
@@ -9,12 +9,9 @@ impl TrontopApp {
             .diagnostics
             .get(crate::diagnostics::Provider::Services)
             .last_success;
-        if let Some(event) = &self.service_event
-            && event.name == row.name
-            && let Some((at, status)) = event.observed
-            && event.command_at.is_none_or(|command_at| at >= command_at)
-            && at.elapsed() <= Duration::from_secs(75)
-            && inventory_at.is_none_or(|inventory_at| at >= inventory_at)
+        if let Some(status) =
+            self.service_observations
+                .status(&row.name, inventory_at, Instant::now())
         {
             return (status, true);
         }
@@ -27,12 +24,7 @@ impl TrontopApp {
             .diagnostics
             .get(crate::diagnostics::Provider::Services)
             .last_success;
-        if let Some(event) = &self.service_event
-            && event.name == row.name
-            && let Some(command_at) = event.command_at
-            && inventory_at.is_none_or(|at| at <= command_at)
-            && event.observed.is_none_or(|(at, _)| at < command_at)
-        {
+        if self.service_observations.uncertain(&row.name, inventory_at) {
             return false; // A pre-command inventory cannot resolve an unknown outcome.
         }
         self.service_status(row).1
@@ -57,7 +49,7 @@ impl TrontopApp {
         let title = row
             .as_ref()
             .map_or("Select a service", |row| row.display_name.as_str());
-        let detail = row.as_ref().map_or_else(
+        let mut detail = row.as_ref().map_or_else(
             || "Commands use current Windows permissions; no automatic elevation.".into(),
             |row| {
                 let (status, command_read) = self.service_status(row);
@@ -76,6 +68,12 @@ impl TrontopApp {
                 )
             },
         );
+        if row
+            .as_ref()
+            .is_some_and(|row| !self.service_observations.can_track(&row.name))
+        {
+            detail = "Command history is full or incomplete. Refresh list before another command to this service.".into();
+        }
         widgets::inventory_status(ui, title, "Service control", &detail, t.text, t, true);
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -83,8 +81,9 @@ impl TrontopApp {
                 let refusal = row
                     .as_ref()
                     .and_then(|row| action.refusal(self.service_status(row).0));
-                let enabled = row.as_ref().is_some_and(|row| self.service_is_fresh(row))
-                    && refusal.is_none()
+                let enabled = row.as_ref().is_some_and(|row| {
+                    self.service_is_fresh(row) && self.service_observations.can_track(&row.name)
+                }) && refusal.is_none()
                     && !self.service_controller.busy()
                     && self.service_controller.available();
                 let icon = match action {
@@ -152,7 +151,14 @@ impl TrontopApp {
     }
 
     pub(super) fn poll_service_command(&mut self) {
+        self.service_observations.reconcile(
+            self.snapshot
+                .diagnostics
+                .get(crate::diagnostics::Provider::Services)
+                .last_success,
+        );
         if let Some(event) = self.service_controller.poll() {
+            self.service_observations.record(&event);
             if event.done
                 && let Some(sampler) = &self.sampler
             {
@@ -179,6 +185,7 @@ impl TrontopApp {
                     && status.pid == request.expected.pid
             });
         let valid = same
+            && self.service_observations.can_track(&request.name)
             && request.validate().is_ok()
             && self.service_controller.available()
             && !self.service_controller.busy();
@@ -197,6 +204,8 @@ impl TrontopApp {
                 }).color(t.text));
                 widgets::hover_label(ui, RichText::new(if valid {
                     "Current state and host PID are rechecked on the service handle. Confirmation expires in 30 seconds."
+                } else if !self.service_observations.can_track(&request.name) {
+                    "Command history is full or incomplete. Cancel and refresh the service list."
                 } else { "The confirmation expired or the service changed/is unavailable. Cancel and select again." }).size(11.0).color(t.text));
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {

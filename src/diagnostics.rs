@@ -77,6 +77,8 @@ pub enum Issue {
     PartialSensors,
     ServiceQuery,
     StartupSources,
+    InventoryTimeout,
+    InventoryWorker,
     ProcessAccess,
     StorageSensors,
 }
@@ -90,6 +92,10 @@ impl Issue {
             Self::PartialSensors => "Some sensor fields are unsupported or unavailable.",
             Self::ServiceQuery => "Service inventory could not refresh; cached rows may remain.",
             Self::StartupSources => "Some startup sources could not be read completely.",
+            Self::InventoryTimeout => {
+                "Inventory read exceeded five seconds; prior fields remain cached. No duplicate worker was started."
+            }
+            Self::InventoryWorker => "Inventory worker is unavailable; prior fields remain cached.",
             Self::ProcessAccess => "Some process identities or scheduler fields are inaccessible.",
             Self::StorageSensors => {
                 "Some drive temperatures are unavailable, cached, timed out or beyond the worker limit."

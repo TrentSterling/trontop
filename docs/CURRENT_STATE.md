@@ -2,7 +2,72 @@
 
 Last updated: 2026-09-05
 
-## Latest source: alpha.11 confirmed service controls
+## Latest source: alpha.12 independent inventories and retained service state
+
+Branch `feat/provider-diagnostics`. Startup and Services each have one independent
+read-only inventory worker. They no longer enumerate on the live system sampler.
+Refresh requests coalesce; a five-second reporting timeout keeps cached fields and
+does not spawn another worker. Immutable snapshots use nonblocking publication reads.
+Workers have bounded shutdown waiting, not forced native-call cancellation. Other
+sysinfo/PDH/NVML/process-control paths can still delay sampling. Full architecture,
+cadence, source cache behavior and limitations: `INVENTORY_WORKERS.md`.
+
+Service state observations and unresolved outcomes now survive subsequent commands
+to other services. The bounded 256-service cache never silently evicts an unknown
+outcome; new targets require a successful refresh when capacity is exhausted.
+Only newer complete inventory resolves those uncertainty records. Detailed progress
+and error text remains latest-command-only, not a persistent activity journal.
+See `SERVICE_CONTROLS.md` for age rules and native-command validation limits.
+
+The redesign skill's state/alignment audit guided timeout and retained-result
+surfaces while preserving Trent's gradients, rounded controls and zebra bands.
+Regression tests require retained rows and unchanged table-header geometry across
+timeout and worker-failure states in light/dark modes. The three final reviewed
+PNGs are `startup-timeout`, `services-timeout-light`, and `service-outcomes`.
+The last of these distinguishes Command read from Pre-command rows after three
+different service commands. These are synthetic fixtures, not live service actions.
+
+Final local rerun on 2026-09-05: formatting PASS; **111 passed, 0 failed, 7 opt-in
+tests ignored** (26.03 s); strict Clippy PASS (1.27 s); optimized release PASS
+(30.51 s). The specifically selected offscreen pass produced **50 PNGs** in 31.44 s
+without native windows or OS input. Three new final images were inspected, not all
+50. The read-only inventory-worker probe returned 13 Startup entries and 303 services:
+0.7659 ms Startup collection, 1.6804 ms Services collection, 211.1 microseconds for
+1,000 snapshot-pair reads. This is a short provider check, not a whole-app benchmark.
+
+Final rebuilt review EXE: `target/review-build/release/trontop.exe`, **13,109,248
+bytes**, PE version **0.3.0-alpha.12**, built from modified 8e343e2 source before
+checkpoint. SHA-256:
+`A11F950774733466C09D08DEC7594E418E71BE91164C43A282F9CE2ADE2D6678`.
+Dependency inspection shows Windows-only imports, no dynamic MSVC runtime or
+required vendor DLL/assets directory. The clean-machine release gate remains open.
+
+### Alpha.12 preview launch (explicitly requested)
+
+Trent requested the latest available build without touching old instances. A
+hash-verified independent copy was opened at **10:42:33 UTC** on 2026-09-05:
+`target/preview/alpha12/trontop.exe`, **PID 263640**. A subsequent read-only check
+found Responding=true and native window handle 5976312. Its size is 13,109,248 bytes;
+its SHA-256 is `47A7D048003B2CB133651864433F5D156CD020D2D1D60A1244C96F021E8BE3F3`.
+This preview predates the final rebuild above and has a distinct binary hash.
+It was not replaced or restarted after that rebuild. No old instance was closed,
+and no focus, global input, move, minimize or restore commands were executed.
+These are timestamped observations, not current liveness guarantees. Do not
+automatically replace/restart any preview. The legacy `target/release` is alpha.5.
+
+Alpha.11 private Windows CI
+[33960026614](https://github.com/TrentSterling/trontop/actions/runs/33960026614)
+passed formatting/tests/Clippy/release/artifact for
+8e343e2d98f0e192f2b31da1153f9a736752aa9b at 10:32:13 UTC on 2026-09-05.
+Alpha.12's remote gate is pending; that older success does not verify alpha.12.
+No tag or alpha release is published.
+
+Still open: CPU/motherboard and broader vendor sensors, suspend/resume, startup
+enable/disable, export, native service-command validation, real close/drag timing,
+soak/clean-machine and other release gates. Ctrl+Shift+Esc is proposal-only. No
+driver/hook installation or desktop-test authority is implied. Not Task Manager parity.
+
+## Previous: alpha.11 confirmed service controls
 
 Branch `feat/provider-diagnostics`. Services now has selectable zebra rows,
 Start/Stop/Restart actions, a named expiring confirmation, stable command-status

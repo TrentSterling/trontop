@@ -7,6 +7,7 @@ use crate::model::{
 use eframe::App;
 
 mod offscreen;
+mod service_retention;
 
 fn fixture() -> SystemSnapshot {
     let processes: Vec<_> = (0..64)
@@ -1367,6 +1368,8 @@ fn failed_inventory_cannot_replace_newer_command_observation_but_complete_read_c
         done: true,
         error: None,
     });
+    app.service_observations
+        .record(app.service_event.as_ref().unwrap());
     app.snapshot.diagnostics.get_mut(Provider::Services).record(
         at + Duration::from_millis(1),
         Duration::ZERO,
@@ -1515,6 +1518,9 @@ fn service_action_states_keep_table_headers_fixed_and_unknown_outcome_disables_r
                     state: if state == 1 { State::Stopping } else { State::Running },
                     ..app.snapshot.services[0].status
                 })), done: state != 1, error: (state >= 3).then(|| "Fixture Windows access/query failure. Outcome unknown; refresh before retrying.".into()) });
+            if let Some(event) = &app.service_event {
+                app.service_observations.record(event);
+            }
             let mut output = frame(&ctx, &mut app, size, vec![]);
             for _ in 0..2 {
                 output = frame(&ctx, &mut app, size, vec![]);
@@ -1664,6 +1670,9 @@ fn render_offscreen_visual_pass() {
         "service-controls-compact",
         "service-confirmation",
         "service-control-error",
+        "service-outcomes",
+        "startup-timeout",
+        "services-timeout-light",
     ] {
         let ctx = egui::Context::default();
         let settings = ThemeSettings {
@@ -1705,9 +1714,13 @@ fn render_offscreen_visual_pass() {
                     observed: None, done: true,
                     error: Some("Fixture access denied by Windows. No automatic elevation or recursive dependent-service stop.".into()),
                 });
+                app.service_observations
+                    .record(app.service_event.as_ref().unwrap());
             }
         }
-        if variant.starts_with("startup-") || variant.starts_with("services-") {
+        if (variant.starts_with("startup-") || variant.starts_with("services-"))
+            && !variant.contains("timeout")
+        {
             let state = if variant.contains("partial") {
                 1
             } else if variant.contains("cached") {
@@ -1723,6 +1736,28 @@ fn render_offscreen_visual_pass() {
                 Page::Services
             };
             inventory_state_fixture(&mut app, page, state);
+        }
+        if variant == "service-outcomes" {
+            fixture_service_controls(&mut app, &ctx);
+            service_retention::retained_fixture(&mut app);
+        }
+        if variant.contains("timeout") {
+            let provider = if variant.starts_with("startup-") {
+                crate::diagnostics::Provider::Startup
+            } else {
+                crate::diagnostics::Provider::Services
+            };
+            let page = if provider == crate::diagnostics::Provider::Startup {
+                Page::Startup
+            } else {
+                Page::Services
+            };
+            inventory_state_fixture(&mut app, page, 2);
+            assert!(app.snapshot.startup.rows().count() > 0);
+            assert!(!app.snapshot.services.is_empty());
+            let health = app.snapshot.diagnostics.get_mut(provider);
+            health.issue = Some(crate::diagnostics::Issue::InventoryTimeout);
+            health.query_millis = None;
         }
         if variant.starts_with("process-icons") {
             gpu_activity_fixture(&mut app);
@@ -1796,7 +1831,7 @@ fn render_offscreen_visual_pass() {
         );
     }
     println!(
-        "Offscreen visual pass: 47 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 50 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

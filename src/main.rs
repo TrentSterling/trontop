@@ -6,6 +6,7 @@ mod format;
 mod gpu_activity;
 mod gpu_sensors;
 mod icons;
+mod inventory;
 mod model;
 mod platform;
 mod process_icons;

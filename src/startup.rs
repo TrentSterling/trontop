@@ -228,7 +228,7 @@ impl Snapshot {
             });
             source.apply(read, at);
         }
-        // Rebuild only on the sampler's inventory refresh, not every UI frame.
+        // Rebuild only when inventory/cache state changes, not every UI frame.
         self.order = self
             .sources
             .iter()

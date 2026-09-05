@@ -16,9 +16,13 @@ Version 0.3 alpha provides:
 - optional NVIDIA temperature, board power, clocks, fan target, and VRAM sensors with
   two-minute temperature/power histories; missing sensors stay explicitly unavailable
 - History, Startup, Users, Details, and Services pages backed by native data
+- independent Startup/Services inventory workers, stable cached rows during slow
+  or failed reads, and explicit source freshness instead of disappearing fields
 - confirmed service Start/Stop/Restart on an independent worker, with state/PID
   preflight and explicit permission/uncertain-outcome errors; native command
   end-to-end validation remains a release gate in `docs/SERVICE_CONTROLS.md`
+- per-service command-state retention across selections and subsequent commands;
+  unresolved outcomes stay labeled until a newer read resolves them
 - a frameless Tront shell and persistent live gradient Theme Studio
 - alternating row and gradient column bands, padded cells, and high-contrast selection
 - a live full-width CPU tray meter with scrolling history and a resource tooltip,
