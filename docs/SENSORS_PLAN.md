@@ -57,6 +57,49 @@ graphics clock 802 MHz, memory clock 405 MHz, fan 0%, and 6976 / 16303 MiB VRAM.
 These are a single instantaneous observation, not expected values or test assertions.
 The query changed no clocks, power limits, fan settings, driver settings, or processes.
 
+## Storage capability probe (September 5, not integrated)
+
+A separate one-shot metadata probe used the documented temperature property query
+on the three disks identified by read-only Windows inventory. `CreateFileW` used
+access 0, shared access and `OPEN_EXISTING`; the only IOCTL was
+`IOCTL_STORAGE_QUERY_PROPERTY` (0x002D1400), with property 51/52 and standard query.
+No sector reads/writes, threshold changes, privilege enabling or driver installs.
+The sandbox denied WMI inventory, so this diagnostic ran outside that sandbox.
+A follow-up token-role check in the same tool context returned administrator=False.
+This is evidence on one non-elevated machine context, not a clean-profile permission
+matrix across controllers and Windows configurations.
+
+Observed results, not an app feature or universal device-support claim:
+
+| Device | Temperature query result | Elapsed for both properties |
+| --- | --- | --- |
+| TEAM TM8FP6002T (disk 1) | Both returned sensors 0/1/2 at 44/44/41 C; warning 90 C, critical 95 C | 14.756 ms |
+| WDC WD60EZAX-00C8VB0 (disk 0) | Adapter error 1117; device error 1 | 4251.274 ms |
+| WD My Passport 2626 USB (disk 2) | Both returned error 87 | 0.078 ms |
+
+Only one pass ran. Sensor indices are not package/core labels; index 0 may be a
+composite reading. Driver thresholds are not Trontop's recommended operating values.
+The signed 16-bit sentinel 0x8000 means not reported, not an actual temperature.
+The parser checked returned lengths, descriptor version/size and sensor count before
+reading variable-length records. The local diagnostic is saved, untracked, at
+`target/diagnostics/read-storage-temperature.ps1`; it is not shipped in the EXE.
+
+Implementation inference from the 4.25-second HDD query: do not put storage queries
+on the existing one-second system sampler. Use a dedicated, bounded worker/cache,
+slow cadence, failure backoff and stale/error timestamps. A timeout must not spawn
+unbounded replacement threads or leave abandoned I/O buffers. Research cancellable
+I/O and shutdown semantics before integration. Deduplicate adapter/device readings
+with verified physical-device identity; do not assume disk number or mount letter
+is stable, and do not count the two returned copies as six sensors.
+
+Primary references:
+
+- [Windows NVMe temperature queries](https://learn.microsoft.com/en-us/windows/win32/fileio/working-with-nvme-devices)
+- [Temperature descriptor layout](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_temperature_data_descriptor)
+- [Sensor indices and Celsius units](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_temperature_info)
+- [Metadata-only device handles](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
+- Local Windows SDK 10.0.26100.0 `winioctl.h`: property IDs, IOCTL and unavailable sentinel.
+
 ## Remaining implementation order
 
 1. Broader vendor/legacy-driver coverage, stronger per-field error explanations and
@@ -64,7 +107,8 @@ The query changed no clocks, power limits, fan settings, driver settings, or pro
 2. Optional temperature in the tray tooltip, per-adapter alert thresholds and export.
    No fabricated CPU temperatures and no claim that missing fan data means a stopped fan.
 3. Storage temperature, wear, power-on hours and error counters through Windows
-   storage reliability APIs where the device/controller/permissions expose them.
+   storage APIs where the device/controller/permissions expose them. The probe above
+   proves temperature-query support on this SSD, not production integration.
 4. Investigate CPU package/core temperature and power separately. Do not label ACPI
    thermal zones as CPU package temperature. A driver-based provider changes security,
    privilege, distribution and portability requirements; do not silently install one.

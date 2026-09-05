@@ -23,7 +23,11 @@ for End Task/priority/affinity, Windows-critical-process refusals, and stale-con
 protection. Read `docs/PROCESS_ACTION_SAFETY.md`. Local gate: 35 tests passed, strict
 Clippy and optimized build pass. The shared action-button helper also fixes the
 confirmation baseline offset, verified by geometry tests and offscreen images.
-The larger alpha release gates are still incomplete.
+The larger alpha release gates are still incomplete. Code checkpoint `f2f725c` is
+pushed privately and Windows CI run `33946298909` passed all its gates. Read
+`docs/CI_ALPHA4.md` for the CI artifact/hash and `docs/DIAGNOSTICS_PLAN.md` for the
+next bounded slice. Storage temperature probing succeeded on the TEAM SSD but is
+not integrated; HDD queries were slow, so do not put them on the system sampler.
 
 ## Earlier checkpoint (historical)
 

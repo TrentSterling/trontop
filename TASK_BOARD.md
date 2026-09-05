@@ -69,11 +69,12 @@ This is the durable resume board. Keep it honest and update it when a slice land
 
 - [x] Define private-alpha, release-candidate, public-preview, and rollback gates in `RELEASE_PLAN.md`
 - [x] Create and push the private `TrentSterling/trontop` GitHub repository; first Windows CI passed
-- [ ] Push the local UI/tray/sensors/action-safety checkpoint and run CI for that exact code commit
+- [x] Push UI/tray/sensors/action-safety checkpoint `f2f725c`; Windows CI `33946298909` passed and its private artifact was inspected: `docs/CI_ALPHA4.md`
 - [ ] Complete the remaining alpha gates in `RELEASE_PLAN.md`, then publish the private alpha
 - [x] Embed version metadata and a generated multi-resolution Trontop application icon in the PE
 - [x] Add a Windows GitHub Actions gate that uploads the portable review executable
-- [ ] Add an About panel with build hash and provider health
+- [ ] Update deprecated workflow action runtimes and add a correctly keyed Rust dependency cache; preserve cold-build and test gates
+- [ ] Add an About panel with build hash, provider health/freshness and privacy-safe support report: `docs/DIAGNOSTICS_PLAN.md`
 - [ ] Add snapshot export to JSON/CSV
 - [x] Add a HEADLESS fixture harness for all seven pages, compact layouts, themes, search, selection and text bounds, plus offscreen PNG output: `docs/HEADLESS_QA.md`
 - [ ] Sign the portable executable when the Tront signing pipeline is available

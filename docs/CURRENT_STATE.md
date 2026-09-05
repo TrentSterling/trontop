@@ -25,12 +25,22 @@ Review EXE remains `target/review-build/release/trontop.exe`; 12,784,128 bytes,
 PE version 0.3.0-alpha.4; SHA-256:
 `D4FCD918DBC411A2967A3088F53023F3418F8FA808CFFEC205D1FAB91A34CCC3`.
 `dumpbin /dependents` shows only Windows imports, no NVML or dynamic MSVC runtime.
-It has not been launched. GitHub's existing successful baseline still only covers
-`ca46008`; the newer checkpoint needs a new CI run. No release/tag is published.
+It has not been launched. Code checkpoint `f2f725c` is pushed to the private repo and
+passed Windows CI run `33946298909`: formatting, 35 tests, strict Clippy, optimized
+build and artifact upload. See `CI_ALPHA4.md` for the separate CI EXE, checksum and
+scope. Neither review EXE was launched. No release/tag is published.
+
+The native NVML probe passed again after this checkpoint: 0.327-0.354 ms warm query
+times in a short five-sample run. A separate read-only storage capability probe
+returned three temperatures from the TEAM SSD, but the HDD attempt took 4.25 seconds.
+Storage sensors are NOT integrated; a dedicated slow worker is needed. Exact evidence,
+permission context and remaining work are in `SENSORS_PLAN.md`.
 
 The release audit found substantive alpha gates still open: suspend/resume, service
 actions, About/provider diagnostics, JSON/CSV export, crash logs, administrator paths,
 and the mixed-load soak. Do not weaken those gates or call the product complete.
+The next bounded About/provider-health slice has code-audit findings and a privacy-safe
+support-report plan in `DIAGNOSTICS_PLAN.md`.
 
 ## Earlier: alpha.3 GPU sensors
 
