@@ -33,6 +33,14 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.24 adds seven compact-control regressions: six dialog types across two
+  sizes/four UI scales, stable name/action geometry, full-name hover, affinity
+  scrolling/high-bit/zero-mask/review behavior, numeric History alignment and
+  maximum PID/counter text, plus CPU range formatting. All use synthetic data and
+  local egui input only. Final ordinary gate: 209 pass, 13 ignored. Fourteen new
+  dark/light compact images bring the offscreen matrix to 93 PNGs; all 14 new
+  views were reviewed across the pass. See `COMPACT_CONTROLS.md` for exact limits.
+
 - Alpha.23 adds six contrast regressions covering 4,096 RGB samples per mode,
   reference failures, actual action/icon state ink, hover badges/device labels,
   stable geometry, installed text-bearing surfaces and heat tiles. Final ordinary

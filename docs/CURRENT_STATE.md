@@ -2,7 +2,36 @@
 
 Last updated: 2026-09-05
 
-## Latest candidate: alpha.23 custom-theme readability
+## Latest candidate: alpha.24 compact controls and History
+
+Long dialog names no longer move action buttons. Fixed-height identity cards
+retain full names on hover; PID/service identities have their own lines. History
+reserves numeric tracks and uses compact alternating rows. Affinity has responsive
+CPU tiles with a capped scroll area and a persistent review/cancel footer; final
+confirmation shows the requested CPU ranges and count. Native action guards and
+the alpha.20 recovery path are unchanged. See `COMPACT_CONTROLS.md`.
+
+Final ordinary gate: **209 passed, 0 failed, 13 ignored** (30.06 s), strict Clippy
+PASS (2.07 s), format PASS, optimized build PASS (47.59 s). Seven new regressions;
+**93 offscreen PNGs** generated (62.99 s), all 14 new compact cases reviewed across
+the pass. The two final affinity confirmations were reviewed after adding the
+CPU-set summary. This is not native dragging, DPI-transition or close evidence.
+The final optimized CPU-only UI/tessellation probe reports p95 **0.23-0.98 ms**
+across nine pages with 500/5,000 fixture processes. Not an A/B speedup or native
+frame/present/soak measurement; see `COMPACT_CONTROLS.md` for scope.
+
+Candidate: **`target/release/trontop.exe`**, **0.3.0-alpha.24**,
+**13,537,792 bytes**, built **2026-09-05 22:23:54 UTC** from modified e86c06e source.
+SHA-256 **`0591BBD15332B9D56CF194CEC5FECDD076C4F977FBDCA4773891AD3EB50319C2`**.
+Windows-only import inspection passes; clean-machine testing remains open.
+
+Local only. No preview was launched/replaced/closed and no desktop input was sent.
+The prior five older previews were left alone. The explicit relaunch question and
+isolated-desktop permission are unanswered; automatic continuation is not consent.
+The source-upload rejection also remains in effect; no push/tag/release/CI request
+was attempted. A14/A15/A16 and the broader goal remain incomplete.
+
+## Previous candidate: alpha.23 custom-theme readability
 
 The A16 audit separated raw theme accents from text ink, bounded text-bearing
 hover/selection/banded surfaces, corrected action-button foregrounds per state,

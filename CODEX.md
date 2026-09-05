@@ -5,6 +5,18 @@ must not modify this repository.
 
 ## Current checkpoint
 
+Alpha.24 is the local compact-control candidate: fixed-height dialog identity
+cards, aligned History numeric tracks, bounded responsive affinity tiles and an
+explicit requested-CPU summary on confirmation. Seven new regressions; final gate
+209 passed, 13 ignored, strict Clippy/format/release PASS. All 14 new compact
+dark/light cases reviewed among 93 generated PNGs. Read `docs/COMPACT_CONTROLS.md`
+and the latest `docs/CURRENT_STATE.md` for exact identity and limitations.
+No preview opened/closed/replaced; no upload. Relaunch, isolated-desktop and upload
+approval are still unanswered. The persistent fix/fast/snappy/polish objective
+remains active; do not mark A14/A15/A16 or native drag/close/soak complete.
+
+The alpha.23 and older checkpoints below are historical.
+
 Alpha.23 is the local custom-theme contrast candidate. It preserves saved RGB
 while separating foreground ink and bounding shared text-bearing surfaces. Real
 egui state tests cover action text, badges, selected-device labels, heat tiles and

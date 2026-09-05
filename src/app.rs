@@ -1913,49 +1913,10 @@ impl TrontopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 widgets::section_label(ui, "HEAVIEST LIFETIME CPU CONSUMERS", t);
+                ui.spacing_mut().item_spacing.y = 4.0;
                 for (rank, &index) in self.history_processes.iter().enumerate() {
                     let process = &self.snapshot.processes[index];
-                    widgets::hover_frame(ui, widgets::surface(ui, t, rank % 2 == 1), |ui| {
-                        ui.horizontal(|ui| {
-                            widgets::hover_label(
-                                ui,
-                                RichText::new(format!("{:02}", rank + 1))
-                                    .monospace()
-                                    .color(t.ink(t.accent)),
-                            );
-                            widgets::hover_label(
-                                ui,
-                                RichText::new(&process.name).strong().color(t.text),
-                            );
-                            widgets::hover_label(
-                                ui,
-                                RichText::new(format!("PID {}", process.pid))
-                                    .monospace()
-                                    .size(10.0)
-                                    .color(t.text_muted),
-                            );
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                widgets::hover_label(
-                                    ui,
-                                    RichText::new(format!(
-                                        "{} I/O",
-                                        format::bytes(
-                                            process.total_read_bytes + process.total_write_bytes
-                                        )
-                                    ))
-                                    .monospace()
-                                    .color(t.text_muted),
-                                );
-                                widgets::hover_label(
-                                    ui,
-                                    RichText::new(format::millis(process.accumulated_cpu_millis))
-                                        .monospace()
-                                        .color(t.ink(t.secondary)),
-                                );
-                            });
-                        });
-                    });
-                    ui.add_space(4.0);
+                    widgets::history_row(ui, rank, process, t);
                 }
             });
     }
@@ -2117,7 +2078,8 @@ impl TrontopApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.set_width(390.0);
-                widgets::hover_label(ui, RichText::new(format!("End {name}?")).size(18.0).strong().color(t.text));
+                widgets::hover_label(ui, RichText::new("End this process?").size(18.0).strong().color(t.text));
+                widgets::identity_card(ui, &name, &format!("PID {pid}"), t);
                 widgets::hover_label(ui, RichText::new(format!("PID {pid} will be terminated immediately. Unsaved data in that process will be lost.")).color(t.text_muted));
                 widgets::hover_label(ui, RichText::new(if still_listed {
                     "The native process creation time is rechecked when you confirm."
@@ -2154,12 +2116,7 @@ impl TrontopApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.set_width(410.0);
-                widgets::hover_label(ui,
-                    RichText::new(format!("{} | PID {}", process.name, process.pid))
-                        .size(17.0)
-                        .strong()
-                        .color(t.text),
-                );
+                widgets::identity_card(ui, &process.name, &format!("PID {}", process.pid), t);
                 widgets::hover_label(ui,
                     RichText::new("Choose a Windows scheduler priority class. Realtime is deliberately unavailable as an action.")
                         .color(t.text_muted),
@@ -2226,13 +2183,7 @@ impl TrontopApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.set_width(520.0);
-                widgets::hover_label(
-                    ui,
-                    RichText::new(format!("{} | PID {}", process.name, process.pid))
-                        .size(17.0)
-                        .strong()
-                        .color(t.text),
-                );
+                widgets::identity_card(ui, &process.name, &format!("PID {}", process.pid), t);
                 widgets::hover_label(
                     ui,
                     RichText::new(
@@ -2258,32 +2209,47 @@ impl TrontopApp {
                     });
                 });
                 ui.add_space(8.0);
-                egui::Grid::new("affinity_processor_grid")
-                    .num_columns(4)
-                    .spacing([18.0, 7.0])
+                // Keep review/cancel outside the scrolling processor grid.
+                egui::ScrollArea::vertical()
+                    .id_salt("affinity_processors")
+                    .max_height((ctx.content_rect().height() - 310.0).clamp(100.0, 340.0))
+                    .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        let mut shown = 0;
-                        for processor in 0..usize::BITS {
-                            let bit = 1_usize << processor;
-                            if system_mask & bit == 0 {
-                                continue;
-                            }
-                            let mut enabled = self.affinity_draft & bit != 0;
-                            if ui
-                                .checkbox(&mut enabled, format!("CPU {processor:02}"))
-                                .changed()
-                            {
-                                if enabled {
-                                    self.affinity_draft |= bit;
-                                } else {
-                                    self.affinity_draft &= !bit;
+                        let columns =
+                            (ui.available_width() / 76.0).floor().clamp(1.0, 8.0) as usize;
+                        let cell_width =
+                            (ui.available_width() - (columns - 1) as f32 * 6.0) / columns as f32;
+                        egui::Grid::new("affinity_processor_grid")
+                            .num_columns(columns)
+                            .spacing([6.0, 6.0])
+                            .show(ui, |ui| {
+                                let mut shown = 0;
+                                for processor in 0..usize::BITS {
+                                    let bit = 1_usize << processor;
+                                    if system_mask & bit == 0 {
+                                        continue;
+                                    }
+                                    let enabled = self.affinity_draft & bit != 0;
+                                    if ui
+                                        .add_sized(
+                                            [cell_width, 28.0],
+                                            egui::Button::new(format!("CPU {processor:02}"))
+                                                .selected(enabled),
+                                        )
+                                        .clicked()
+                                    {
+                                        if enabled {
+                                            self.affinity_draft &= !bit;
+                                        } else {
+                                            self.affinity_draft |= bit;
+                                        }
+                                    }
+                                    shown += 1;
+                                    if shown % columns == 0 {
+                                        ui.end_row();
+                                    }
                                 }
-                            }
-                            shown += 1;
-                            if shown % 4 == 0 {
-                                ui.end_row();
-                            }
-                        }
+                            });
                     });
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
@@ -2351,7 +2317,7 @@ impl TrontopApp {
             .unwrap_or("Unknown process");
         let (title, description, button, dangerous) = match action {
             PendingControlAction::Priority { priority, .. } => (
-                format!("Set {name} to {} priority?", priority.label()),
+                format!("Set {} priority?", priority.label()),
                 if priority == PriorityClass::High {
                     "High priority can starve other applications and reduce system responsiveness. Trontop will not offer Realtime priority."
                 } else {
@@ -2361,7 +2327,7 @@ impl TrontopApp {
                 priority == PriorityClass::High,
             ),
             PendingControlAction::Affinity { affinity_mask, .. } => (
-                format!("Limit {name} CPU affinity?"),
+                "Change CPU affinity?".to_owned(),
                 "This changes which logical processors may run the process until it exits or another tool changes it.",
                 "Apply affinity",
                 affinity_mask.count_ones()
@@ -2378,6 +2344,16 @@ impl TrontopApp {
             .show(ctx, |ui| {
                 ui.set_width(420.0);
                 widgets::hover_label(ui, RichText::new(title).size(18.0).strong().color(t.text));
+                widgets::identity_card(ui, name, &format!("PID {pid}"), t);
+                if let PendingControlAction::Affinity { affinity_mask, .. } = action {
+                    widgets::detail_row(ui, "Requested CPUs", &format::cpu_set(affinity_mask), t);
+                    widgets::detail_row(
+                        ui,
+                        "Processor count",
+                        &format!("{} selected in this group", affinity_mask.count_ones()),
+                        t,
+                    );
+                }
                 widgets::hover_label(ui, RichText::new(description).color(t.text_muted));
                 widgets::hover_label(
                     ui,

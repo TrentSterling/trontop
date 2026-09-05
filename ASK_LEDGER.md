@@ -96,6 +96,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   empty/hidden inspector width, reflows compact metric cards and stabilizes long
   inspector identities; four new headless regressions pass. Native DPI/full-page
   coverage and final review remain. See `docs/UI_POLISH_BRIEF.md`.
+  Alpha.24 fixes displaced dialog actions and hidden History values from long
+  names, bounds the affinity grid, and shows the requested CPU set on review.
+  Seven new tests pass; 14 new compact dark/light views reviewed. See
+  `docs/COMPACT_CONTROLS.md`. Full-page/native/final acceptance remains open.
 - [ ] **A16: Readable text and complete hover/focus states. PARTIAL / REVIEW.**
   Shared hover backgrounds exist for controls, rows, cards, badges, charts and
   labels. Final audit must include selected/disabled/focused states and extreme

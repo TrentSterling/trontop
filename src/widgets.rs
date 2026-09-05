@@ -1,6 +1,6 @@
 use crate::format;
 use crate::icons::Icon;
-use crate::model::{SortColumn, SortDirection};
+use crate::model::{ProcessRow, SortColumn, SortDirection};
 use crate::theme::{self, ThemeSettings, Tokens};
 use eframe::egui;
 use egui::{Align, Color32, FontId, Layout, RichText, Sense, Stroke, Vec2};
@@ -390,6 +390,113 @@ pub fn detail_row(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
     })
     .response
     .on_hover_text(format!("{label}: {value}"));
+}
+
+/// Keep the full target on hover without allowing an OS-supplied name to move
+/// confirmation controls. The separate identity line never shares name width.
+pub fn identity_card(ui: &mut egui::Ui, name: &str, identity: &str, t: Tokens) {
+    hover_frame(ui, surface(ui, t, false), |ui| {
+        ui.set_min_width(ui.available_width());
+        ui.add(egui::Label::new(RichText::new(name).size(17.0).strong().color(t.text)).truncate())
+            .on_hover_text(name);
+        ui.add(
+            egui::Label::new(
+                RichText::new(identity)
+                    .monospace()
+                    .size(11.0)
+                    .color(t.text_muted),
+            )
+            .truncate(),
+        )
+        .on_hover_text(identity);
+    });
+}
+
+/// Fixed numeric tracks keep names from consuming the PID and lifetime totals.
+/// Only the name track flexes; every field uses one vertically centered line.
+pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Tokens) {
+    let ordinal = format!("{:02}", rank + 1);
+    let pid = format!("PID {}", process.pid);
+    let cpu = format::millis(process.accumulated_cpu_millis);
+    let io = format!(
+        "{} I/O",
+        format::bytes(
+            process
+                .total_read_bytes
+                .saturating_add(process.total_write_bytes)
+        )
+    );
+    hover_frame(
+        ui,
+        surface(ui, t, rank % 2 == 1).inner_margin(egui::Margin::symmetric(10, 5)),
+        |ui| {
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
+            let io_left = rect.right() - 110.0;
+            let cpu_left = io_left - 10.0 - 134.0;
+            let pid_left = cpu_left - 10.0 - 94.0;
+            let name_left = rect.left() + 32.0;
+            for (text, left, right, font, color, align) in [
+                (
+                    ordinal.as_str(),
+                    rect.left(),
+                    name_left - 8.0,
+                    FontId::monospace(11.0),
+                    t.ink(t.accent),
+                    Align::Min,
+                ),
+                (
+                    process.name.as_str(),
+                    name_left,
+                    pid_left - 10.0,
+                    FontId::proportional(13.0),
+                    t.text,
+                    Align::Min,
+                ),
+                (
+                    pid.as_str(),
+                    pid_left,
+                    cpu_left - 10.0,
+                    FontId::monospace(10.0),
+                    t.text_muted,
+                    Align::Max,
+                ),
+                (
+                    cpu.as_str(),
+                    cpu_left,
+                    io_left - 10.0,
+                    FontId::monospace(11.0),
+                    t.ink(t.secondary),
+                    Align::Max,
+                ),
+                (
+                    io.as_str(),
+                    io_left,
+                    rect.right(),
+                    FontId::monospace(11.0),
+                    t.text_muted,
+                    Align::Max,
+                ),
+            ] {
+                paint_text(
+                    ui,
+                    egui::Rect::from_min_max(
+                        egui::pos2(left, rect.top()),
+                        egui::pos2(right, rect.bottom()),
+                    ),
+                    text,
+                    font,
+                    color,
+                    align,
+                );
+            }
+        },
+    )
+    .response
+    .on_hover_text(format!(
+        "{}\n{pid}\nLifetime CPU: {cpu}\nTotal: {io}",
+        process.name
+    ));
 }
 
 fn paint_text(

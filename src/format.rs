@@ -60,6 +60,33 @@ pub fn millis(value: u64) -> String {
     format!("{hours:02}:{minutes:02}:{seconds:02}")
 }
 
+/// Logical processor indices within one Windows processor-group mask.
+pub fn cpu_set(mask: usize) -> String {
+    let mut ranges = Vec::new();
+    let mut bit = 0;
+    while bit < usize::BITS {
+        if mask & (1_usize << bit) == 0 {
+            bit += 1;
+            continue;
+        }
+        let first = bit;
+        while bit + 1 < usize::BITS && mask & (1_usize << (bit + 1)) != 0 {
+            bit += 1;
+        }
+        ranges.push(if first == bit {
+            first.to_string()
+        } else {
+            format!("{first}-{bit}")
+        });
+        bit += 1;
+    }
+    if ranges.is_empty() {
+        "None".into()
+    } else {
+        ranges.join(", ")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +102,17 @@ mod tests {
     fn formats_uptime() {
         assert_eq!(duration(90), "00h 01m");
         assert_eq!(duration(90_000), "1d 01h 00m");
+    }
+
+    #[test]
+    fn formats_affinity_ranges_without_losing_sparse_or_high_bits() {
+        assert_eq!(cpu_set(0), "None");
+        assert_eq!(cpu_set(1), "0");
+        assert_eq!(cpu_set(0b101110), "1-3, 5");
+        assert_eq!(cpu_set(usize::MAX), format!("0-{}", usize::BITS - 1));
+        assert_eq!(
+            cpu_set(1 | (1_usize << (usize::BITS - 1))),
+            format!("0, {}", usize::BITS - 1)
+        );
     }
 }

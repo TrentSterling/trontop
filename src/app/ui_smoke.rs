@@ -847,7 +847,7 @@ fn end_confirmation_keeps_original_identity_and_selection_expires_on_pid_reuse()
     assert!(
         texts
             .iter()
-            .any(|(text, _)| text.galley.job.text == format!("End {}?", original.name))
+            .any(|(text, _)| text.galley.job.text == original.name)
     );
     assert!(texts.iter().any(|(text, _)| text.galley.job.text
         == "The original process exited or changed. Cancel and select again."));
@@ -1920,8 +1920,9 @@ fn render_offscreen_visual_pass() {
         );
     }
     contrast::render_cases(&mut renderer, &directory);
+    compact_layout::render_cases(&mut renderer, &directory);
     println!(
-        "Offscreen visual pass: 79 PNGs in {}; no native window or OS input",
+        "Offscreen visual pass: 93 PNGs in {}; no native window or OS input",
         directory.display()
     );
 }

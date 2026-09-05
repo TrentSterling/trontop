@@ -194,8 +194,8 @@ impl TrontopApp {
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).collapsible(false).resizable(false)
             .show(ctx, |ui| {
                 ui.set_width(430.0);
-                widgets::hover_label(ui, RichText::new(format!("{} {}?", request.action.label(), request.display_name)).size(18.0).strong().color(t.text));
-                widgets::detail_row(ui, "Service name", &request.name, t);
+                widgets::hover_label(ui, RichText::new(format!("{} this service?", request.action.label())).size(18.0).strong().color(t.text));
+                widgets::identity_card(ui, &request.display_name, &request.name, t);
                 widgets::detail_row(ui, "Reported state", request.expected.state.label(), t);
                 widgets::hover_label(ui, RichText::new(match request.action {
                     Action::Start => "Windows may start required dependencies. Disabled startup settings are not changed.",
