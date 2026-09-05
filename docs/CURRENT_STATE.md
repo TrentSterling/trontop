@@ -15,13 +15,15 @@ original copper theme are included as presets. The UI should carry Trent's actua
 identity: high-performance Unity and VR work, multiplayer systems, procedural tools,
 and practical utilities built for demanding machines.
 
-## Version 0.2 checkpoint
+## Version 0.3 alpha checkpoint
 
 Implemented:
 
 - custom frameless window with branded drag region and window controls
 - Processes, Performance, History, Startup, Users, Details, and Services pages
 - process search by name, user, PID, path, and command line
+- real process-tree ordering with expand/collapse, automatic ancestor context during
+  search, descendant counts, and clearly labeled subtree CPU/GPU/memory/I/O totals
 - live process CPU, GPU, memory, disk rates, cumulative I/O, state, user, parent,
   executable, command line, working directory, start time, and accumulated CPU time
 - exact Windows GPU Engine PDH enumeration with machine, engine, and PID aggregation
@@ -29,13 +31,21 @@ Implemented:
 - Windows Service Control Manager inventory
 - HKCU/HKLM Run key and Startup folder inventory
 - guarded End task flow and Run task launcher
+- current priority class and CPU affinity sampled outside the UI thread every five
+  seconds; guarded priority and affinity editors validate PID start identity and require
+  explicit confirmation before applying a change
 - live Theme Studio with dark/light modes, primary and secondary colors, gradients,
   frost, corner control, presets, and persistence
+- theme-derived zebra rows across dense grids, stronger two-signal hover/selection
+  states, and a branded process-inspector empty state
 - globally non-selectable display labels; explicit paths and command lines remain
   selectable for copying
 - live tray icon whose meter and color track CPU load, plus a CPU/memory/GPU/process
   tooltip and Show/Quit actions
+- generated multi-resolution Trontop PE icon and embedded Windows company, product,
+  description, filename, and prerelease version metadata
 - one-second background snapshots; no OS query runs on the egui render thread
+- checked-in Windows GitHub Actions verification and portable-executable artifact upload
 
 ## Verification baseline
 
@@ -48,14 +58,23 @@ cargo clippy --all-targets -- -D warnings
 cargo build --release
 ```
 
-The v0.2 visual validation used a real Windows 11 machine with an RTX 5070 Ti. PDH
+The v0.3 alpha visual validation used a real Windows 11 machine with an RTX 5070 Ti. PDH
 reported real machine and per-process GPU utilization. Visual captures live under
 `C:/trontstack/tmp/` during the active session and are not repository assets.
+
+The process-control integration test launches a hidden disposable child, reads its
+native priority and affinity, changes both, verifies the new values, restores them, and
+terminates the child. No production workload is modified by that test.
 
 The final release runtime sample was responsive at 0.3125% whole-machine CPU over
 10 seconds and 210.6 MiB working set while sampling roughly 450 processes. The main
 window opened centered at 1280 by 760 and the native tray host was present. Treat
 these numbers as a comparison baseline, not a machine-independent budget.
+
+The final 0.3.0-alpha.1 process-tree build was responsive at 0.1947% whole-machine
+CPU over 10 seconds, 211.7 MiB working set, 1,181 handles, and 47 threads while
+sampling roughly 445 processes. Its portable executable is 12,623,872 bytes with
+SHA-256 `04A2C7C478AD506F33E7A5ACA524D12E2DF5DCFF32B63EB1652818CA053402CD`.
 
 ## Architecture map
 
@@ -68,5 +87,5 @@ these numbers as a comparison baseline, not a machine-independent budget.
 - `src/tray.rs`: native live tray icon and tray actions
 - `src/platform.rs`: guarded process and shell actions
 
-Read `docs/TELEMETRY.md` before changing providers. Read `TASK_BOARD.md` before
-choosing the next slice.
+Read `docs/TELEMETRY.md` before changing providers. Read `TASK_BOARD.md` and
+`RELEASE_PLAN.md` before choosing the next slice.

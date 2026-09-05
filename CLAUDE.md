@@ -9,7 +9,8 @@ Rust with eframe/egui.
 - Keep the UI event-driven. A new system sample may request one repaint.
 - Never terminate a process without an explicit confirmation step.
 - Do not report fake or estimated GPU values. Use Windows GPU Engine PDH counters.
-- Preserve the dense charcoal and copper visual language.
+- Preserve the dense charcoal Tront visual language, high text contrast, and editable
+  purple/teal gradient defaults. Copper remains a supported preset.
 - Keep the release executable portable and free of runtime asset dependencies.
 
 ## Verification
@@ -22,4 +23,3 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 cargo build --release
 ```
-

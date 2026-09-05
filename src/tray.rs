@@ -27,7 +27,12 @@ fn icon_pixels(cpu_percent: f32) -> Vec<u8> {
             let corner_x = 7_u32.saturating_sub(x).max(x.saturating_sub(24));
             let corner_y = 7_u32.saturating_sub(y).max(y.saturating_sub(24));
             if corner_x * corner_x + corner_y * corner_y <= 25 {
-                put(&mut rgba, x, y, [18, 17, 27, 255]);
+                let signal = mix(
+                    [79, 35, 132],
+                    [14, 102, 99],
+                    (x + y).saturating_sub(4) as f32 / 56.0,
+                );
+                put(&mut rgba, x, y, [signal[0], signal[1], signal[2], 255]);
             }
         }
     }

@@ -7,6 +7,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Frameless Trontop chrome and native window controls
 - [x] High-contrast TrontStack purple/teal visual system
 - [x] Persistent gradient Theme Studio and branded presets
+- [x] Theme-derived zebra tables with dual-signal hover and selection states
 - [x] Non-selectable application labels with deliberate copy surfaces
 - [x] Exact Windows GPU Engine PDH totals and per-process GPU values
 - [x] CPU, memory, disk, network, and GPU performance drill-downs
@@ -20,9 +21,9 @@ This is the durable resume board. Keep it honest and update it when a slice land
 
 ## Next high-value slice
 
-- [ ] True process tree ordering, expand/collapse, and child resource aggregation
-- [ ] Priority class editor with explicit confirmation and current-priority display
-- [ ] CPU affinity editor with topology-aware logical processor labels
+- [x] True process tree ordering, expand/collapse, search context, and child resource aggregation
+- [x] Priority class editor with explicit confirmation and current-priority display
+- [x] CPU affinity editor with processor-group-aware logical processor labels
 - [ ] Suspend and resume controls with unmistakable state feedback
 - [ ] Start, stop, and restart service actions with confirmations and access errors
 - [ ] Startup enable/disable support with a reversible disabled-entry store
@@ -45,7 +46,10 @@ This is the durable resume board. Keep it honest and update it when a slice land
 
 ## Release work
 
-- [ ] Embed version metadata and a stable Trontop application icon in the PE
+- [x] Define private-alpha, release-candidate, public-preview, and rollback gates in `RELEASE_PLAN.md`
+- [ ] Create and push the private `TrentSterling/trontop` GitHub repository (waiting on GitHub CLI reauthentication)
+- [x] Embed version metadata and a generated multi-resolution Trontop application icon in the PE
+- [x] Add a Windows GitHub Actions gate that uploads the portable review executable
 - [ ] Add an About panel with build hash and provider health
 - [ ] Add snapshot export to JSON/CSV
 - [ ] Add a deterministic telemetry replay harness for UI screenshots and regressions

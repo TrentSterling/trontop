@@ -1,7 +1,10 @@
-use crate::model::{CpuInfo, DiskRow, NetworkRow, ProcessRow, SystemSnapshot, UserSummary};
+use crate::model::{
+    CpuInfo, DiskRow, NetworkRow, ProcessControlInfo, ProcessRow, SystemSnapshot, UserSummary,
+};
+use crate::platform;
 use crate::windows_metrics::{self, GpuSampler};
 use eframe::egui;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle};
@@ -11,6 +14,7 @@ use sysinfo::{Disks, Networks, ProcessesToUpdate, System, Users};
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const INVENTORY_INTERVAL: u64 = 30;
 const GPU_REBUILD_INTERVAL: u64 = 30;
+const CONTROL_REFRESH_INTERVAL: u64 = 5;
 
 pub struct Sampler {
     latest: Arc<RwLock<SystemSnapshot>>,
@@ -73,6 +77,7 @@ fn sample_loop(
     let mut previous_sample = Instant::now();
     let mut startup = Arc::new(windows_metrics::enumerate_startup());
     let mut services = Arc::new(windows_metrics::enumerate_services().unwrap_or_default());
+    let mut process_controls = HashMap::<(u32, u64), ProcessControlInfo>::new();
 
     system.refresh_cpu_frequency();
 
@@ -90,6 +95,21 @@ fn sample_loop(
         system.refresh_processes(ProcessesToUpdate::All, true);
         disks.refresh(true);
         networks.refresh(true);
+
+        let active_process_keys = system
+            .processes()
+            .values()
+            .map(|process| (process.pid().as_u32(), process.start_time()))
+            .collect::<HashSet<_>>();
+        if sequence.is_multiple_of(CONTROL_REFRESH_INTERVAL) {
+            process_controls.retain(|key, _| active_process_keys.contains(key));
+            for &(pid, started_at) in &active_process_keys {
+                process_controls.insert(
+                    (pid, started_at),
+                    platform::query_process_control(pid).unwrap_or_default(),
+                );
+            }
+        }
 
         if sequence > 0 && sequence.is_multiple_of(GPU_REBUILD_INTERVAL) {
             gpu_sampler.rebuild();
@@ -141,6 +161,10 @@ fn sample_loop(
                         .collect::<Vec<_>>()
                         .join(" "),
                     cwd: process.cwd().map(ToOwned::to_owned),
+                    control: process_controls
+                        .get(&(process.pid().as_u32(), process.start_time()))
+                        .copied()
+                        .unwrap_or_default(),
                 }
             })
             .collect::<Vec<_>>();

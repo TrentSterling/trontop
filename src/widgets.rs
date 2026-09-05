@@ -34,7 +34,7 @@ pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) {
         .corner_radius(20.0)
         .inner_margin(egui::Margin::symmetric(8, 3))
         .show(ui, |ui| {
-            ui.label(RichText::new(label).size(9.0).strong().color(color));
+            ui.label(RichText::new(label).size(10.0).strong().color(color));
         });
 }
 
@@ -65,7 +65,7 @@ pub fn nav_button(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str, t:
 
 pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: f32, color: Color32, t: Tokens) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(label).size(9.0).color(t.text_muted));
+        ui.label(RichText::new(label).size(10.0).color(t.text_muted));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(
                 RichText::new(format::percent(value))
@@ -101,7 +101,7 @@ pub fn stat_card(
         .show(ui, |ui| {
             ui.set_min_height(68.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new(label).size(9.0).strong().color(t.text_muted));
+                ui.label(RichText::new(label).size(10.0).strong().color(t.text_muted));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(6.0), Sense::hover());
                     ui.painter().circle_filled(rect.center(), 3.0, color);
@@ -109,7 +109,7 @@ pub fn stat_card(
             });
             ui.label(RichText::new(value).size(19.0).monospace().color(t.text));
             ui.add(
-                egui::Label::new(RichText::new(detail).size(9.0).color(t.text_muted)).truncate(),
+                egui::Label::new(RichText::new(detail).size(10.0).color(t.text_muted)).truncate(),
             );
         });
 }
@@ -148,7 +148,7 @@ pub fn table_header(
             .add(
                 egui::Label::new(
                     RichText::new(format!("{label}{arrow}"))
-                        .size(9.0)
+                        .size(10.0)
                         .strong()
                         .color(t.text_muted),
                 )
@@ -349,7 +349,7 @@ pub fn device_button(
 }
 
 pub fn metric(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
-    ui.label(RichText::new(label).size(9.0).strong().color(t.text_muted));
+    ui.label(RichText::new(label).size(10.0).strong().color(t.text_muted));
     ui.label(RichText::new(value).size(17.0).monospace().color(t.text));
 }
 
@@ -422,7 +422,12 @@ pub fn inventory_table(
                 .spacing([18.0, 9.0])
                 .show(ui, |ui| {
                     for header in headers {
-                        ui.label(RichText::new(header).size(9.0).strong().color(t.text_muted));
+                        ui.label(
+                            RichText::new(header)
+                                .size(10.0)
+                                .strong()
+                                .color(t.text_muted),
+                        );
                     }
                     ui.end_row();
                     for row in rows {
