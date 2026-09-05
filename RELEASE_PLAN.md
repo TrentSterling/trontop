@@ -38,7 +38,9 @@ an action will do.
   copyable support report.
 - JSON and CSV snapshot export.
 - Stable icon and Windows PE version metadata.
-- Panic/crash logging beside user settings, with no telemetry upload.
+- Panic/crash logging beside user settings, with no telemetry upload. Alpha.17
+  records bounded Rust-panic/native-runner metadata; direct native crashes/hangs
+  and forced termination are not covered: `docs/FAILURE_REPORTS.md`.
 - Private GitHub repository at `TrentSterling/trontop`; protected `main`, short-lived
   feature branches, tagged alpha builds, and GitHub Actions verification.
 

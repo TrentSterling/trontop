@@ -33,6 +33,11 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.17 adds allowlisted bounded failure-log checks and owned hidden child panic
+  probes (no GUI, tray or sampler). About geometry/explicit-location-copy checks
+  run at 1040x640 and 1280x900 in both themes; commands never reach the OS clipboard.
+  About dark/light/compact PNGs were inspected. See `FAILURE_REPORTS.md` for exact
+  panic coverage and limits; this is not a native crash/drag/close smoke test.
 - Alpha.16 adds nine ordinary tests for displayed group sorting, GPU missing/partial
   order, identity-retained expansion and page-switch sort visibility. Local egui
   header/Tree/List/search interactions inspect the actual displayed row order.

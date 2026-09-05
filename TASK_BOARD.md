@@ -2,7 +2,7 @@
 
 This is the durable resume board. Keep it honest and update it when a slice lands.
 
-## Current: alpha.16 displayed sorting and retained tree state
+## Current: alpha.17 bounded local failure reports
 
 - [x] Provider-health model, safe report formatter and background sampler metadata
 - [x] Native read-only startup inventory with distinct missing/failed source results
@@ -28,7 +28,7 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [x] Complete GPU unavailable/warming/unreported/zero/partial presentation, sorting,
   tree/account totals and stable inspector status; partial graphs remain gaps
 - [x] Failure/recovery, report-copy, disabled vector controls and missing sensor
-  geometry coverage: 143 tests pass, strict Clippy clean, 57 offscreen review PNGs
+  geometry coverage: 153 tests pass, strict Clippy clean, 57 offscreen review PNGs
 - [x] Isolated native drive temperature provider; bounded workers, timeouts, slow
   retry, honest cached data, hotplug duplicate prevention and stable zebra rows
 - [x] Native read-only runtime probe limited to TEAM SSD: 45/45/43 C in 7.2355 ms;
@@ -99,7 +99,12 @@ This is the durable resume board. Keep it honest and update it when a slice land
   and reset invisible sort keys after Processes/Details switches
 - [x] Nine new model/state/headless UI tests and two grouped-sort visual fixtures;
   optimized alpha.16 preview explicitly opened as PID 272352 at 12:51:50 UTC
-- [ ] Verify alpha.16 in remote Windows CI
+- [x] Alpha.16 Windows CI 33967714299 passed for df7e3fb
+- [x] Bounded local panic/native-runner failure records, with private payloads excluded,
+  non-waiting OS lock, retention/error tests and safe hidden child panic probes
+- [x] About failure-log location/limits and explicit copy, compact light/dark geometry
+  checks and three inspected offscreen layouts: `docs/FAILURE_REPORTS.md`
+- [ ] Verify alpha.17 in remote Windows CI
 - [ ] Integrate CPU/motherboard providers and broader storage-controller coverage.
   Existing GPU/SSD readings are real; CPU fields remain unconnected, not simulated.
 - [ ] Measure real close latency only with a freshly authorized isolated app instance
@@ -189,6 +194,8 @@ This is the durable resume board. Keep it honest and update it when a slice land
 - [ ] Update deprecated workflow action runtimes and add a correctly keyed Rust dependency cache; preserve cold-build and test gates
 - [x] Add an About panel with build hash, provider health/freshness and privacy-safe support report: `docs/DIAGNOSTICS_PLAN.md`
 - [x] Add snapshot export to JSON/CSV; native picker validation remains open above
+- [x] Add bounded local Rust-panic/native-runner logs beside settings; direct native
+  crashes, hangs, forced termination and power-loss durability are not covered
 - [x] Add a HEADLESS fixture harness for all nine pages, compact layouts, themes, search, selection and text bounds, plus offscreen PNG output: `docs/HEADLESS_QA.md`
 - [ ] Sign the portable executable when the Tront signing pipeline is available
 

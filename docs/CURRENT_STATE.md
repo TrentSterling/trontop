@@ -15,7 +15,33 @@ Older instances and other windows were untouched. Do not automatically replace,
 restart or manipulate this preview. This observation is not an ongoing liveness
 guarantee or a native performance test.
 
-## Latest source: alpha.16 displayed sorting and retained tree state
+## Latest source: alpha.17 bounded local failure reporting
+
+Rust panics and errors returned by the native runner now leave best-effort local
+metadata beside settings. The JSONL log keeps the latest 32 records and excludes
+raw messages, process details, absolute source paths and dumps. Non-waiting OS
+locking coordinates instances; malformed/oversized/readonly logs are preserved.
+About exposes the location and limits, with explicit copy only. Its compact
+opening height now keeps the added controls visible. `FAILURE_REPORTS.md` documents
+data, retention, failure coverage and the safe child-process verification.
+
+Local gate: **153 passed, 0 failed, 9 opt-in ignored** (25.43 s), formatting/strict
+Clippy PASS, optimized review build PASS (32.47 s). Ten new tests include the hidden
+panic child entry point; real hook-before-unwind/abort tests never touch the running
+GUI. Offscreen pass produced **57 PNGs**; About dark/light/compact were reviewed.
+No live user failure log was generated. No native drag/close/soak claim is made.
+
+Review EXE: `target/review-build/release/trontop.exe`, **13,270,016 bytes**, version
+**0.3.0-alpha.17**, built at **13:25:26 UTC** from modified df7e3fb source.
+SHA-256 `0E9F89C8B983A0CDD2C24C8D4197AB2A0FDD85B21EE5F92A2A87BE0AB46CD9A6`.
+No alpha.17 preview was launched or existing instance replaced. Alpha.16 above
+remains the latest explicitly opened preview.
+
+Alpha.16 Windows CI [33967714299](https://github.com/TrentSterling/trontop/actions/runs/33967714299)
+passed for df7e3fbc4aea6f2a1ae49b65ac83156dd4fc8c4e. Alpha.17 remote verification is
+pending. There is still no published release or full Task Manager parity.
+
+## Previous: alpha.16 displayed sorting and retained tree state
 
 Tree CPU/GPU/memory/read/write ordering now follows the full subtree totals shown
 in each row, including hidden descendants. Partial GPU values sort numerically;

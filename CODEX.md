@@ -5,8 +5,21 @@ must not modify this repository.
 
 ## Current checkpoint
 
-Working branch: `feat/provider-diagnostics`, alpha.16 source. Read the newest
+Working branch: `feat/provider-diagnostics`, alpha.17 source. Read the newest
 `docs/CURRENT_STATE.md` entry for verification and review-EXE identity.
+
+Alpha.17 adds best-effort bounded local Rust-panic/native-runner failure metadata,
+an allowlisted JSONL format, non-waiting file locking and About discoverability.
+See `docs/FAILURE_REPORTS.md`: this is not a native crash dump/hang handler.
+Local gate: 153 passed, 0 failed, 9 ignored; formatting/strict Clippy/release PASS.
+57 offscreen PNGs produced; About dark/light/compact inspected. Actual panic probes
+used only owned hidden test children and fixture files, not the running GUI.
+Alpha.16 CI 33967714299 passed for df7e3fb; alpha.17 remote gate pending.
+No alpha.17 preview launched; alpha.16 below remains the last explicitly opened app.
+Next major gaps: suspend/resume, CPU/motherboard sensors, startup controls, native
+isolated service/export and close/drag/soak verification. Do not restart the demo.
+
+The alpha.16 implementation details below are historical.
 
 Alpha.16 sorts tree resources by displayed subtree totals, retains expansion using
 observed process identity, and prevents invisible sort keys after page switches.

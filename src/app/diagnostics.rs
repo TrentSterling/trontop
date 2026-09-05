@@ -13,6 +13,7 @@ impl TrontopApp {
             .open(&mut open)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .default_width(620.0)
+            .default_height((ctx.content_rect().height() - 120.0).max(240.0))
             .max_height((ctx.content_rect().height() - 100.0).max(240.0))
             .vscroll(true).resizable(false)
             .show(ctx, |ui| {
@@ -34,6 +35,18 @@ impl TrontopApp {
                     self.message = Some(("Support report copied. Nothing uploaded.".into(), false));
                 }
                 widgets::hover_label(ui, RichText::new("Build and provider status only. No process names, commands, paths, account/host names, GPU IDs or addresses.").size(11.0).color(t.text_muted));
+                ui.add_space(12.0);
+                widgets::section_label(ui, "Local failure log", t);
+                widgets::hover_frame(ui, widgets::surface(ui, t, true), |ui| {
+                    ui.set_min_width(ui.available_width());
+                    widgets::hover_label(ui, RichText::new("Keeps up to 32 local failure records. Nothing uploaded.").size(12.0).strong());
+                    widgets::hover_label(ui, RichText::new(crate::failure::LOCATION_HINT).monospace().size(11.0));
+                    if ui.button("Copy log location").clicked() {
+                        ctx.copy_text(crate::failure::LOCATION_HINT.into());
+                        self.message = Some(("Log location copied. Paste into Explorer; the file exists only after a recorded failure.".into(), false));
+                    }
+                    widgets::hover_label(ui, RichText::new("Rust panics and native-runner errors only; no raw messages or memory dumps. Forced exits, hangs and native crashes may leave no record. File access failures can also prevent logging.").size(11.0).color(t.text_muted));
+                });
                 ui.add_space(12.0);
                 widgets::section_label(ui, "Provider health", t);
                 let now = Instant::now();

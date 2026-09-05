@@ -7,7 +7,7 @@ Version 0.3 alpha provides:
 
 - live process CPU, GPU, memory, state, user, command, path, and disk I/O telemetry
 - searchable process-tree and flat-list views with subtree resource totals,
-  iterative deep-tree handling and creation-time-aware parent links
+  displayed-total sorting, iterative deep-tree handling and creation-time-aware links
 - snapshot-indexed process tables and cached History ordering, avoiding full-record
   copies on repaint; synthetic before/after timings: `docs/PROCESS_VIEW_PERFORMANCE.md`
 - a persistent process inspector
@@ -34,6 +34,8 @@ Version 0.3 alpha provides:
 - a live full-width CPU tray meter with scrolling history and a resource tooltip,
   updated on its own native thread even when the main window is hidden
 - an embedded multi-resolution Trontop icon and Windows version metadata
+- bounded local Rust-panic/native-runner failure records, with raw/private payloads
+  excluded and no upload; coverage and limits: `docs/FAILURE_REPORTS.md`
 - an event-driven egui UI that does not poll the operating system on the render thread
 
 ## Run

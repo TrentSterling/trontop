@@ -192,6 +192,12 @@ pub fn support_report(diagnostics: &Diagnostics, now: Instant) -> String {
         }
     );
     report.push_str("Local-only diagnostics; no automatic upload.\n\n");
+    let _ = writeln!(
+        report,
+        "Local failure log (when available): {}",
+        crate::failure::LOCATION_HINT
+    );
+    report.push_str("Rust panic/native-runner categories only; no panic/error payloads or dumps. Up to 32 local records; not included in this report.\n\n");
     for provider in Provider::ALL {
         let health = diagnostics.get(provider);
         let _ = writeln!(

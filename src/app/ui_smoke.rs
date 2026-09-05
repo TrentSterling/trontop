@@ -7,6 +7,7 @@ use crate::model::{
 use eframe::App;
 
 mod export;
+mod failure;
 mod offscreen;
 mod process_perf;
 mod process_sort;
