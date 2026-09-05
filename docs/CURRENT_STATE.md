@@ -25,6 +25,13 @@ tray rewrite was made; the wait remains documented. Do not continue a cosmetic
 or speculative optimization loop while awaiting review. The goal/ledger remain
 incomplete; isolated native-test and upload permissions remain unresolved.
 
+A subsequent single passive check at 23:43 UTC observed 31/31 responding samples
+over 31.39 s, 0.326% whole-machine CPU, 59 threads and 1173-1178 handles. Working
+set rose from 250.4 to 306.4 MiB; this short unclassified workload is not sufficient
+to attribute that growth or verify a memory budget. See `../REVIEW.md` for exact
+scope/counters. The actual main HWND was 8653022, after initial startup HWND 8192130.
+No window/input manipulation or further rebuild occurred during this check.
+
 ## Latest candidate: alpha.26 non-blocking settings
 
 Settings no longer use eframe's synchronous startup read or unbounded save-thread

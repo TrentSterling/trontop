@@ -32,6 +32,21 @@ clean b79708f, not application source. Exact evidence: `docs/CURRENT_STATE.md`.
 
 ## Still open
 
+### One passive runtime check
+
+At **23:43:02.624 to 23:43:34.021 UTC**, 31 read-only samples of that exact
+PID/path/start-time identity found **31/31 responding**, HWND **8653022** throughout,
+and **0.326% whole-machine CPU** on 24 logical processors. Process CPU time advanced
+from 26.984375 to 29.437500 s over 31.394595 s. No test input or build ran during
+this check; current user interactions/workload were not classified.
+
+Working set increased from **250.4 to 306.4 MiB** (peak **307.4 MiB**); private bytes
+from **516.4 to 572.5 MiB** (peak **573.4 MiB**). Threads stayed at **59**; handles
+ranged **1173-1178**, ending at the initial **1175**. The memory increase is recorded,
+not explained away as caching and not diagnosed as a leak from a 31-second sample.
+This is neither a 60-minute soak nor a drag/frame-time/close measurement. No extra
+implementation or repeated monitoring cycle was started from these observations.
+
 Native drag/close timing and crash-free mixed-load use are not yet verified. CPU
 and motherboard sensors, suspend/resume, Startup enable/disable and several Task
 Manager data fields remain incomplete. This is a review candidate, not a parity
