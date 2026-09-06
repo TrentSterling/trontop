@@ -1,0 +1,221 @@
+use super::*;
+use crate::diagnostics::{Provider, State};
+use history::Id;
+
+fn sample(at: Instant) -> SystemSnapshot {
+    let mut s = SystemSnapshot {
+        memory_total_bytes: 64 << 30,
+        memory_used_bytes: 32 << 30,
+        cpu_percent: 24.0,
+        ..Default::default()
+    };
+    s.diagnostics
+        .get_mut(Provider::System)
+        .record(at, Duration::ZERO, State::Live, None, None);
+    s.diagnostics.get_mut(Provider::GpuActivity).record(
+        at,
+        Duration::ZERO,
+        State::Live,
+        None,
+        None,
+    );
+    s.gpu = crate::model::GpuSnapshot {
+        available: true,
+        total_counters: 2,
+        valid_counters: 2,
+        utilization_percent: 20.0,
+        ..Default::default()
+    };
+    s.gpu_sensors.last_success = Some(at);
+    s.gpu_sensors.sampled_at = Some(at);
+    s.gpu_sensors
+        .adapters
+        .push(crate::gpu_sensors::AdapterSensors {
+            uuid: Some("test-gpu".into()),
+            name: "test adapter".into(),
+            temperature_c: Some(40),
+            power_w: Some(70.0),
+            fan_percent: Some(0),
+            ..Default::default()
+        });
+    s
+}
+
+#[test]
+fn timestamps_deduplicate_cached_values_and_leave_real_gaps() {
+    let now = Instant::now();
+    let mut history = History::default();
+    let mut s = sample(now);
+    history.sample(&s, now);
+    history.sample(&s, now + Duration::from_secs(1));
+    s.gpu_sensors.using_cached = true;
+    s.gpu_sensors.sampled_at = Some(now + Duration::from_secs(2));
+    history.sample(&s, now + Duration::from_secs(2));
+    let chart = history
+        .charts
+        .iter()
+        .find(|c| c.id == Id::Gpu("test-gpu".into(), 0))
+        .unwrap();
+    assert_eq!(chart.points.len(), 2);
+    assert_eq!(chart.points[0].value, Some(40.0));
+    assert_eq!(chart.points[1].value, None);
+    assert_eq!(chart.current, Some(40.0));
+    assert_eq!(chart.measured_at, Some(now));
+    assert_eq!(chart.state(now + Duration::from_secs(2)), "Cached");
+}
+
+#[test]
+fn missing_gpu_value_retains_readout_but_never_plots_cached_value() {
+    let now = Instant::now();
+    let mut history = History::default();
+    history.sample(&sample(now), now);
+    let later = now + Duration::from_secs(1);
+    let mut s = sample(later);
+    s.gpu_sensors.adapters[0].temperature_c = None;
+    history.sample(&s, later);
+    let chart = history
+        .charts
+        .iter()
+        .find(|c| c.id == Id::Gpu("test-gpu".into(), 0))
+        .unwrap();
+    assert_eq!(chart.current, Some(40.0));
+    assert_eq!(chart.points.back().unwrap().value, None);
+    assert_eq!(chart.state(later), "Cached");
+}
+
+#[test]
+fn partial_activity_is_labelled_lower_bound_and_not_graphed_as_exact() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.gpu.valid_counters = 1;
+    let mut history = History::default();
+    history.sample(&s, now);
+    let chart = history
+        .charts
+        .iter()
+        .find(|c| c.id == Id::Activity("GPU activity".into()))
+        .unwrap();
+    assert_eq!(chart.value_label(), ">=20.0%");
+    assert_eq!(chart.points[0].value, None);
+}
+
+#[test]
+fn gpu_uuid_prevents_reordered_devices_from_merging_and_missing_uuid_has_no_history() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    let mut second = s.gpu_sensors.adapters[0].clone();
+    second.uuid = Some("other-gpu".into());
+    second.temperature_c = Some(75);
+    s.gpu_sensors.adapters.push(second);
+    let mut history = History::default();
+    history.sample(&s, now);
+    s.gpu_sensors.adapters.reverse();
+    s.gpu_sensors.sampled_at = Some(now + Duration::from_secs(1));
+    history.sample(&s, now + Duration::from_secs(1));
+    for chart in &history.charts {
+        if let Id::Gpu(id, 0) = &chart.id {
+            assert!(
+                chart
+                    .points
+                    .iter()
+                    .all(|p| p.value == Some(if id == "test-gpu" { 40.0 } else { 75.0 }))
+            );
+        }
+    }
+    s.gpu_sensors.adapters[0].uuid = None;
+    history.sample(&s, now + Duration::from_secs(2));
+    assert!(
+        history
+            .charts
+            .iter()
+            .filter(|c| matches!(&c.id, Id::Gpu(id, _) if id.starts_with("unidentified:")))
+            .all(|c| c.points.is_empty())
+    );
+}
+
+#[test]
+fn drive_zero_and_negative_temperatures_are_valid_and_sampler_cadence_is_preserved() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.storage_sensors = std::sync::Arc::new(crate::storage_sensors::Snapshot {
+        drives: vec![crate::storage_sensors::DriveReading {
+            device: crate::storage_sensors::Device {
+                id: "test-drive".into(),
+                name: "test".into(),
+            },
+            temperatures: crate::storage_sensors::Temperatures {
+                sensors: vec![crate::storage_sensors::Temperature {
+                    index: 0,
+                    celsius: Some(-5),
+                    over_threshold: None,
+                    under_threshold: None,
+                    event: false,
+                }],
+                ..Default::default()
+            },
+            last_attempt: Some(now),
+            last_success: Some(now),
+            present: true,
+            error: None,
+            query_millis: None,
+        }],
+        ..Default::default()
+    });
+    let mut history = History::default();
+    for seconds in 0..5 {
+        history.sample(&s, now + Duration::from_secs(seconds));
+    }
+    let chart = history
+        .charts
+        .iter()
+        .find(|c| matches!(c.id, Id::Temperature(_, 0)))
+        .unwrap();
+    assert_eq!(chart.points.len(), 1);
+    assert_eq!(chart.range(now).0, -5.0);
+    assert_eq!(chart.cadence, Duration::from_secs(5));
+    let fan = history
+        .charts
+        .iter()
+        .find(|c| c.id == Id::Gpu("test-gpu".into(), 4))
+        .unwrap();
+    assert_eq!(fan.points[0].value, Some(0.0));
+}
+
+#[test]
+fn history_is_bounded_and_removed_devices_expire() {
+    let now = Instant::now();
+    let mut history = History::default();
+    for index in 0..300 {
+        let at = now + Duration::from_secs(index);
+        history.sample(&sample(at), at);
+    }
+    assert!(history.charts.iter().all(|c| c.points.len() <= 121));
+    history.sample(&SystemSnapshot::default(), now + Duration::from_secs(421));
+    assert!(!history.charts.iter().any(|c| matches!(c.id, Id::Gpu(_, _))));
+    let mut s = sample(now + Duration::from_secs(422));
+    s.networks = (0..600)
+        .map(|i| crate::model::NetworkRow {
+            name: format!("fixture {i}"),
+            ..Default::default()
+        })
+        .collect();
+    history.sample(&s, now + Duration::from_secs(422));
+    assert_eq!(history.charts.len(), 512);
+    assert!(history.omitted > 0);
+}
+
+#[test]
+fn empty_snapshot_never_becomes_zero_cpu_and_responsive_columns_are_bounded() {
+    let now = Instant::now();
+    let mut history = History::default();
+    history.sample(&SystemSnapshot::default(), now);
+    assert!(
+        history
+            .charts
+            .iter()
+            .all(|c| c.current.is_none() && c.points.is_empty())
+    );
+    for (width, expected) in [(180.0, 1), (600.0, 2), (900.0, 3), (1600.0, 4)] {
+        assert_eq!(columns(width), expected);
+    }
+}

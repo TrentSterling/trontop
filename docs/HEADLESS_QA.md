@@ -11,6 +11,7 @@ Fixtures are synthetic TEST DATA and must never become a runtime telemetry fallb
 cargo test app::ui_smoke -- --nocapture
 cargo test shared_surfaces -- --nocapture
 cargo test render_offscreen_visual_pass -- --ignored --nocapture
+cargo test render_graph_wall_visual_pass -- --ignored --nocapture
 cargo test --release process_view_timing_probe -- --ignored --nocapture --test-threads=1
 cargo test --release process_tree_timing_probe -- --ignored --nocapture --test-threads=1
 ```

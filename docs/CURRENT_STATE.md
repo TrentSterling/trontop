@@ -2,7 +2,33 @@
 
 Last updated: 2026-09-05
 
-## Latest requested preview: clean alpha.26
+## Latest built candidate: alpha.27 graph wall (A32)
+
+Trent explicitly requested one mostly-graphs page after reviewing alpha.26.
+Added Graphs (Ctrl+9): continuous 1-4 column grid, Lines/Bars, category filters,
+CPU/memory/GPU usage, temperature/power, clocks/fan/VRAM, individual drive
+temperature channels, physical-disk metrics and per-interface receive/send.
+Overview is preserved. Histories use provider timestamps and leave cache/partial
+gaps; current values remain labelled. No new provider or CPU temperature claim.
+
+Candidate: `target/review/alpha27-graphs/trontop.exe`, **0.3.0-alpha.27**,
+13,639,168 bytes, built at **2026-09-06 00:11:45.802 UTC** from modified afc6818.
+SHA-256: `B6ACDA8C1F9B4D3B9B4AFA6C6D165E25C884CDE6F4C0F565930B1C243D16DA10`.
+**Built, not launched.** No current user windows or desktop input were touched.
+
+Verification: **233 passed, 0 failed, 14 ignored**, 480 page-matrix cases;
+strict Clippy, formatting and release build passed. Six new offscreen graph PNGs
+generated and reviewed (dark/light, Bars, thermal filter, compact and empty).
+Details and limitations: `docs/GRAPH_WALL.md`. Source remains local only.
+
+His additional slow-close question received a bounded source diagnosis: viewport
+close waits for the asynchronous settings save; sampler has zero shutdown wait,
+tray has a 100 ms budget. Build pressure may exacerbate this, but no native timing
+was collected and no close fix is claimed. A21 and CPU-temperature A10/D01 remain
+open. Stop at this focused review candidate instead of resuming the general
+optimization/bug hunt.
+
+## Last launched preview: clean alpha.26 (historical build)
 
 Trent called out diminishing returns, authorized stopping old Trontop windows,
 and explicitly requested a fresh build and launch. Rebuilt clean **b79708f** in

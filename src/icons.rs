@@ -4,6 +4,7 @@ use eframe::egui::{self, Color32, Painter, Rect, Shape, Stroke};
 #[derive(Clone, Copy, Debug)]
 pub enum Icon {
     Overview,
+    Graphs,
     Processes,
     Performance,
     History,
@@ -50,6 +51,12 @@ impl Icon {
             painter.circle_stroke(point(x, y), radius * scale, stroke);
         };
         match self {
+            Self::Graphs => {
+                line(&[[3.0, 3.0], [3.0, 21.0], [22.0, 21.0]]);
+                box_at(7.0, 12.0, 3.0, 6.0, 0.5);
+                box_at(12.0, 5.0, 3.0, 13.0, 0.5);
+                box_at(17.0, 8.0, 3.0, 10.0, 0.5);
+            }
             Self::Export => {
                 line(&[[12.0, 3.0], [12.0, 15.0]]);
                 line(&[[7.0, 10.0], [12.0, 15.0], [17.0, 10.0]]);

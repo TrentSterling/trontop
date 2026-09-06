@@ -12,6 +12,7 @@ mod contrast;
 mod disks;
 mod export;
 mod failure;
+mod graphs;
 mod offscreen;
 mod preferences;
 mod process_perf;
@@ -524,7 +525,7 @@ fn all_pages_render_headlessly_across_sizes_themes_and_empty_data() {
             }
         }
     }
-    assert_eq!(cases, 432);
+    assert_eq!(cases, 48 * Page::ALL.len());
     println!("UI smoke: {cases} page/size/theme/data cases passed; no native windows or OS input");
 }
 

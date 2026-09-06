@@ -1,0 +1,492 @@
+//! Bounded, timestamped chart data. No OS calls and no synthetic runtime samples.
+use super::*;
+use crate::diagnostics::{Provider, State};
+
+const MAX_SERIES: usize = 512;
+const MAX_POINTS: usize = 128;
+pub(super) const WINDOW: Duration = Duration::from_secs(120);
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(super) enum Id {
+    System(u8),
+    Activity(String),
+    Gpu(String, u8),
+    Temperature(String, u16),
+    Disk(String, usize),
+    Network(String, u8),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Group {
+    System,
+    Thermal,
+    Gpu,
+    Storage,
+    Network,
+}
+impl Group {
+    pub(super) const ALL: [Self; 5] = [
+        Self::System,
+        Self::Thermal,
+        Self::Gpu,
+        Self::Storage,
+        Self::Network,
+    ];
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::System => "Load",
+            Self::Thermal => "Temperatures & power",
+            Self::Gpu => "GPU",
+            Self::Storage => "Disks",
+            Self::Network => "Network",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Unit {
+    Percent,
+    Celsius,
+    Watts,
+    Mhz,
+    Gib,
+    Rate,
+    Millis,
+    Count,
+}
+impl Unit {
+    pub(super) fn format(self, value: f32) -> String {
+        match self {
+            Self::Percent => format!("{value:.1}%"),
+            Self::Celsius => format!("{value:.0} °C"),
+            Self::Watts => format!("{value:.1} W"),
+            Self::Mhz => format!("{value:.0} MHz"),
+            Self::Gib => format!("{value:.2} GiB"),
+            Self::Rate => crate::format::rate(value as f64),
+            Self::Millis => format!("{value:.2} ms"),
+            Self::Count => format!("{value:.1}"),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct Point {
+    pub at: Instant,
+    pub value: Option<f32>,
+}
+
+pub(super) struct Chart {
+    pub id: Id,
+    pub title: String,
+    pub detail: String,
+    pub group: Group,
+    pub unit: Unit,
+    pub points: VecDeque<Point>,
+    pub maximum: Option<f32>,
+    pub current: Option<f32>,
+    pub state: &'static str,
+    pub measured_at: Option<Instant>,
+    pub last_seen: Instant,
+    pub cadence: Duration,
+    pub partial: bool,
+}
+
+impl Chart {
+    pub(super) fn state(&self, now: Instant) -> &'static str {
+        if self.last_seen < now && now.duration_since(self.last_seen) > Duration::from_secs(3) {
+            return "Cached / not reporting";
+        }
+        if self.state == "Live"
+            && self
+                .measured_at
+                .is_some_and(|at| now.saturating_duration_since(at) > self.cadence * 3)
+        {
+            "Cached"
+        } else {
+            self.state
+        }
+    }
+    pub(super) fn value_label(&self) -> String {
+        self.current.map_or_else(
+            || "Unavailable".into(),
+            |v| {
+                format!(
+                    "{}{}",
+                    if self.partial { ">=" } else { "" },
+                    self.unit.format(v)
+                )
+            },
+        )
+    }
+    pub(super) fn range(&self, now: Instant) -> (f32, f32) {
+        let mut low = 0.0_f32;
+        let mut high = 1.0_f32;
+        for value in self
+            .points
+            .iter()
+            .filter(|p| now.saturating_duration_since(p.at) <= WINDOW)
+            .filter_map(|p| p.value)
+        {
+            low = low.min(value);
+            high = high.max(value);
+        }
+        (low.min(0.0), self.maximum.unwrap_or(high * 1.15).max(high))
+    }
+}
+
+#[derive(Default)]
+pub(super) struct History {
+    pub charts: Vec<Chart>,
+    pub omitted: usize,
+    index: HashMap<Id, usize>,
+}
+
+struct Field<'a> {
+    id: Id,
+    title: &'a str,
+    detail: &'a str,
+    group: Group,
+    unit: Unit,
+    value: Option<f32>,
+    at: Option<Instant>,
+    state: &'static str,
+    maximum: Option<f32>,
+    cadence: Duration,
+    partial: bool,
+}
+
+impl History {
+    fn field(&mut self, field: Field<'_>, now: Instant) {
+        let index = if let Some(&index) = self.index.get(&field.id) {
+            index
+        } else {
+            if self.charts.len() >= MAX_SERIES {
+                self.omitted += 1;
+                return;
+            }
+            let index = self.charts.len();
+            self.index.insert(field.id.clone(), index);
+            self.charts.push(Chart {
+                id: field.id,
+                title: field.title.into(),
+                detail: field.detail.into(),
+                group: field.group,
+                unit: field.unit,
+                points: VecDeque::new(),
+                maximum: field.maximum,
+                current: None,
+                state: field.state,
+                measured_at: None,
+                last_seen: now,
+                cadence: field.cadence,
+                partial: false,
+            });
+            index
+        };
+        let chart = &mut self.charts[index];
+        chart.last_seen = now;
+        chart.title = field.title.into();
+        chart.detail = field.detail.into();
+        chart.maximum = field.maximum;
+        chart.state = field.state;
+        let measured = field.value.filter(|v| v.is_finite());
+        if measured.is_some() {
+            chart.partial = field.partial;
+            chart.current = measured;
+        } else if chart.current.is_some() {
+            chart.state = "Cached";
+        }
+        let at = field.at.filter(|at| *at <= now);
+        if field.state == "Live" && measured.is_some() {
+            chart.measured_at = at;
+        }
+        if let Some(at) = at
+            && chart.points.back().is_none_or(|last| at > last.at)
+        {
+            chart.points.push_back(Point {
+                at,
+                value: (field.state == "Live" && !field.partial)
+                    .then_some(measured)
+                    .flatten(),
+            });
+        }
+        while chart.points.len() > MAX_POINTS
+            || chart
+                .points
+                .front()
+                .is_some_and(|p| now.saturating_duration_since(p.at) > WINDOW)
+        {
+            chart.points.pop_front();
+        }
+    }
+
+    pub(super) fn sample(&mut self, s: &SystemSnapshot, now: Instant) {
+        self.charts
+            .retain(|chart| now.saturating_duration_since(chart.last_seen) <= WINDOW);
+        self.index.clear();
+        for (index, chart) in self.charts.iter().enumerate() {
+            self.index.insert(chart.id.clone(), index);
+        }
+        self.omitted = 0;
+        let system = s.diagnostics.get(Provider::System);
+        let system_live = matches!(
+            system.state(Provider::System, now),
+            State::Live | State::Partial
+        );
+        let system_state = if system_live {
+            "Live"
+        } else if system.last_success.is_some() {
+            "Cached"
+        } else {
+            "Starting"
+        };
+        let system_values = [
+            (
+                "CPU usage",
+                "Whole-machine CPU load",
+                Unit::Percent,
+                Some(s.cpu_percent),
+                Some(100.0),
+            ),
+            (
+                "Memory usage",
+                "Physical memory used",
+                Unit::Percent,
+                (s.memory_total_bytes > 0)
+                    .then(|| s.memory_used_bytes as f32 / s.memory_total_bytes as f32 * 100.0),
+                Some(100.0),
+            ),
+            (
+                "Page file used",
+                "Windows swap usage; not total committed memory",
+                Unit::Gib,
+                Some(s.swap_used_bytes as f32 / 1_073_741_824.0),
+                Some((s.swap_total_bytes as f32 / 1_073_741_824.0).max(1.0)),
+            ),
+        ];
+        for (index, (title, detail, unit, value, maximum)) in system_values.into_iter().enumerate()
+        {
+            self.field(
+                Field {
+                    id: Id::System(index as u8),
+                    title,
+                    detail,
+                    group: Group::System,
+                    unit,
+                    value: system.last_success.and(value),
+                    at: system.last_success,
+                    state: system_state,
+                    maximum,
+                    cadence: Duration::from_secs(1),
+                    partial: false,
+                },
+                now,
+            );
+        }
+        let activity_health = s.diagnostics.get(Provider::GpuActivity);
+        let activity_live = matches!(
+            activity_health.state(Provider::GpuActivity, now),
+            State::Live | State::Partial
+        );
+        for (name, usage) in std::iter::once(("GPU activity", s.gpu.reading())).chain(
+            s.gpu
+                .engine_utilization
+                .iter()
+                .map(|(name, value)| (name.as_str(), *value)),
+        ) {
+            let partial = usage.value().is_some() && usage.exact().is_none();
+            self.field(Field { id: Id::Activity(name.into()), title: name,
+                detail: "Windows GPU engines across adapters; partial readings are lower bounds, not exact totals",
+                group: if name == "GPU activity" { Group::System } else { Group::Gpu }, unit: Unit::Percent,
+                value: usage.value(), at: activity_health.last_attempt,
+                state: if !activity_live { "Unavailable" } else if partial { "Partial / graph gap" } else if usage.exact().is_some() { "Live" } else { "Unavailable" },
+                maximum: Some(100.0), cadence: Duration::from_secs(1), partial }, now);
+        }
+        let gpu = &s.gpu_sensors;
+        let gpu_live = !gpu.using_cached
+            && gpu
+                .last_success
+                .is_some_and(|at| now.saturating_duration_since(at) <= Duration::from_secs(3));
+        for (index, adapter) in gpu.adapters.iter().enumerate() {
+            let identity = adapter
+                .uuid
+                .clone()
+                .unwrap_or_else(|| format!("unidentified:{index}"));
+            let values = [
+                (
+                    "GPU temperature",
+                    adapter.temperature_c.map(|v| v as f32),
+                    Unit::Celsius,
+                    Group::Thermal,
+                    Some(110.0),
+                ),
+                (
+                    "Board power",
+                    adapter.power_w,
+                    Unit::Watts,
+                    Group::Thermal,
+                    None,
+                ),
+                (
+                    "Graphics clock",
+                    adapter.graphics_clock_mhz.map(|v| v as f32),
+                    Unit::Mhz,
+                    Group::Gpu,
+                    None,
+                ),
+                (
+                    "Memory clock",
+                    adapter.memory_clock_mhz.map(|v| v as f32),
+                    Unit::Mhz,
+                    Group::Gpu,
+                    None,
+                ),
+                (
+                    "Fan target",
+                    adapter.fan_percent.map(|v| v as f32),
+                    Unit::Percent,
+                    Group::Gpu,
+                    Some(100.0),
+                ),
+                (
+                    "VRAM used",
+                    adapter.memory.map(|v| v.0 as f32 / 1_073_741_824.0),
+                    Unit::Gib,
+                    Group::Gpu,
+                    adapter.memory.map(|v| v.1 as f32 / 1_073_741_824.0),
+                ),
+            ];
+            for (metric, (title, value, unit, group, maximum)) in values.into_iter().enumerate() {
+                let detail = format!(
+                    "{}{}",
+                    adapter.name,
+                    match metric {
+                        4 => " / requested fan speed, not measured RPM",
+                        5 if adapter.memory_includes_reserved => " / includes driver reservations",
+                        _ => " / NVIDIA driver telemetry",
+                    }
+                );
+                self.field(
+                    Field {
+                        id: Id::Gpu(identity.clone(), metric as u8),
+                        title,
+                        detail: &detail,
+                        group,
+                        unit,
+                        value,
+                        at: adapter.uuid.as_ref().and(gpu.sampled_at),
+                        state: if adapter.uuid.is_none() {
+                            "No stable sensor identity"
+                        } else if value.is_none() {
+                            "Unavailable"
+                        } else if gpu_live {
+                            "Live"
+                        } else {
+                            "Cached"
+                        },
+                        maximum,
+                        cadence: Duration::from_secs(1),
+                        partial: false,
+                    },
+                    now,
+                );
+            }
+        }
+        for drive in &s.storage_sensors.drives {
+            for sensor in &drive.temperatures.sensors {
+                self.field(
+                    Field {
+                        id: Id::Temperature(drive.device.id.clone(), sensor.index),
+                        title: &format!("Drive temperature / sensor {}", sensor.index),
+                        detail: &drive.device.name,
+                        group: Group::Thermal,
+                        unit: Unit::Celsius,
+                        value: sensor.celsius.map(|v| v as f32),
+                        at: drive.last_attempt,
+                        state: if sensor.celsius.is_none() {
+                            "Unavailable"
+                        } else {
+                            drive.status(now)
+                        },
+                        maximum: Some(100.0),
+                        cadence: Duration::from_secs(5),
+                        partial: false,
+                    },
+                    now,
+                );
+            }
+            if drive.temperatures.sensors.is_empty() {
+                self.field(
+                    Field {
+                        id: Id::Temperature(drive.device.id.clone(), u16::MAX),
+                        title: "Drive temperature",
+                        detail: &drive.device.name,
+                        group: Group::Thermal,
+                        unit: Unit::Celsius,
+                        value: None,
+                        at: drive.last_attempt,
+                        state: drive.status(now),
+                        maximum: Some(100.0),
+                        cadence: Duration::from_secs(5),
+                        partial: false,
+                    },
+                    now,
+                );
+            }
+        }
+        for disk in &s.physical_disks.devices {
+            for metric in crate::disk_activity::Metric::ALL {
+                let index = metric as usize;
+                let reading = disk.readings[index];
+                self.field(
+                    Field {
+                        id: Id::Disk(disk.instance.clone(), index),
+                        title: &format!("Disk {} / {}", disk.number, metric.label()),
+                        detail: metric.explanation(),
+                        group: Group::Storage,
+                        unit: [
+                            Unit::Percent,
+                            Unit::Millis,
+                            Unit::Count,
+                            Unit::Rate,
+                            Unit::Rate,
+                        ][index],
+                        value: reading.value.map(|v| v as f32),
+                        at: s.physical_disks.at,
+                        state: reading.state(&s.physical_disks, now),
+                        maximum: (index == 0).then_some(100.0),
+                        cadence: Duration::from_secs(1),
+                        partial: false,
+                    },
+                    now,
+                );
+            }
+        }
+        for network in &s.networks {
+            for (index, (title, value)) in [
+                ("Receive", network.received_bytes_per_sec),
+                ("Send", network.transmitted_bytes_per_sec),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                self.field(
+                    Field {
+                        id: Id::Network(network.name.clone(), index as u8),
+                        title,
+                        detail: &network.name,
+                        group: Group::Network,
+                        unit: Unit::Rate,
+                        value: system.last_success.map(|_| value as f32),
+                        at: system.last_success,
+                        state: system_state,
+                        maximum: None,
+                        cadence: Duration::from_secs(1),
+                        partial: false,
+                    },
+                    now,
+                );
+            }
+        }
+    }
+}

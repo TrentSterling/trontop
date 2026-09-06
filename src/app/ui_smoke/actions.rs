@@ -62,6 +62,32 @@ fn process_action_confirmation_is_nonblocking_and_keeps_its_original_target() {
         "busy worker cannot accept a duplicate confirmation"
     );
     for (page, _, label) in Page::ALL {
+        // Ten navigation entries plus the pending-action footer legitimately
+        // need scrolling at minimum size. Exercise that real local scroll path.
+        let output = frame(&ctx, &mut app, size, vec![]);
+        if !text_shapes(&output).iter().any(|(text, clip)| {
+            text.galley.job.text == label
+                && text.pos.x < 196.0
+                && clip.contains_rect(text.visual_bounding_rect())
+        }) {
+            frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![
+                    egui::Event::PointerMoved(egui::pos2(90.0, 240.0)),
+                    egui::Event::MouseWheel {
+                        phase: egui::TouchPhase::Move,
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0.0, -200.0),
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            for _ in 0..30 {
+                frame(&ctx, &mut app, size, vec![]);
+            }
+        }
         click_local_text(&ctx, &mut app, size, label);
         assert!(app.page == page, "navigation blocked on {label}");
         assert!(app.process_actions.busy());

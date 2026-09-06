@@ -1,8 +1,27 @@
-# Alpha.26 review
+# Alpha.27 graph-wall review
 
-Review the current app before starting another implementation cycle. Trent called
+Trent's alpha.26 feedback explicitly requested this focused addition (A32).
+The new optimized build is ready, **not launched**; current windows are untouched.
+
+- EXE: `target/review/alpha27-graphs/trontop.exe`, **0.3.0-alpha.27**.
+- New Graphs sidebar entry / Ctrl+9, Lines/Bars and category filters.
+- One continuous grid of usage, temperatures, watts, clocks, fan/VRAM, physical
+  disk activity and network traffic. Overview stays intact; personal themes apply.
+- **233 tests passed**, strict Clippy/formatting/release build passed, six new
+  offscreen graph images generated and reviewed. These are synthetic fixtures,
+  not a native responsiveness or closure measurement.
+- CPU temperature is still missing its provider. Slow close is still unmeasured;
+  source review confirms visible close can wait for the background settings save.
+
+Exact hash, sources, behavior and limits: `docs/GRAPH_WALL.md`.
+Review this graph layout next. No automatic launch, push, tray rewrite or unrelated
+optimization investigation. A32, A21 and A10/D01 remain review/open as documented.
+
+## Previous alpha.26 review (historical)
+
+Trent called
 out the diminishing returns of continued bug hunting on 2026-09-05. No alpha.27
-tray changes were made; that investigation is recorded, not implemented.
+tray changes were made; only the subsequently requested graph wall was implemented.
 
 ## Build opened for Trent
 

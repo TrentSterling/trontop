@@ -5,14 +5,25 @@ must not modify this repository.
 
 ## Current checkpoint
 
-**Review handoff takes precedence.** Trent called out the open-ended bug hunt,
+**Alpha.27 is the explicitly requested Graphs-page slice (A32).** Trent reviewed
+alpha.26 at 18:43 local and asked for one mostly-graphs page with all available
+temperatures, usage and activity. This authorizes this focused implementation,
+not another open-ended bug hunt. Read `docs/GRAPH_WALL.md` for implementation and
+verification. CPU sensor integration is still A10/D01. His new question about
+slow closing is a diagnosis request, not permission for desktop drag/close tests.
+No desktop window was opened or closed during this slice. Source upload remains
+unapproved. The graph-wall candidate needs Trent's review before more expansion.
+
+### Previous alpha.26 review handoff (historical)
+
+Trent called out the open-ended bug hunt,
 then explicitly authorized replacing old Trontop windows and requested a fresh
 build. Clean b79708f was rebuilt and opened from
 `target/review/alpha26-b79708f-clean/trontop.exe` at 23:38:40.145 UTC, PID 242180,
 HWND 8192130; initial responding/input-idle checks passed. Five verified older
 Trontop previews were stopped; other apps were untouched. Read `REVIEW.md` for
-exact identity and short changes. No alpha.27 code exists. Await hands-on review
-before another implementation cycle; do not turn this into endless bug hunting.
+exact identity and short changes. This handoff was followed by the explicit A32
+request above; alpha.27 now exists locally.
 Permission to replace these previews was received and fulfilled. Isolated native
 testing and source-upload approval are still separate and unanswered.
 

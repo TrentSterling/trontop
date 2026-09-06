@@ -21,6 +21,7 @@ const HISTORY_LENGTH: usize = 120;
 mod diagnostics;
 mod disks;
 mod export;
+mod graphs;
 mod inventory;
 mod overview;
 mod preferences;
@@ -35,6 +36,7 @@ mod ui_smoke;
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Page {
     Overview,
+    Graphs,
     Sensors,
     Processes,
     Performance,
@@ -49,6 +51,7 @@ impl Page {
     fn icon(self) -> Icon {
         match self {
             Self::Overview => Icon::Overview,
+            Self::Graphs => Icon::Graphs,
             Self::Sensors => Icon::Sensors,
             Self::Processes => Icon::Processes,
             Self::Performance => Icon::Performance,
@@ -60,8 +63,9 @@ impl Page {
         }
     }
 
-    const ALL: [(Self, &'static str, &'static str); 9] = [
+    const ALL: [(Self, &'static str, &'static str); 10] = [
         (Self::Overview, "00", "Overview"),
+        (Self::Graphs, "09", "Graphs"),
         (Self::Processes, "01", "Processes"),
         (Self::Performance, "02", "Performance"),
         (Self::History, "03", "History"),
@@ -144,6 +148,7 @@ pub struct TrontopApp {
     sensor_history: HashMap<String, SensorHistory>,
     disk_history: HashMap<String, VecDeque<f32>>,
     physical_disk_history: disks::Histories,
+    graphs: graphs::Dashboard,
     selected_physical_disk: Option<String>,
     network_history: HashMap<String, VecDeque<f32>>,
     theme: ThemeSettings,
@@ -237,6 +242,7 @@ impl TrontopApp {
             sensor_history: HashMap::new(),
             disk_history: HashMap::new(),
             physical_disk_history: disks::Histories::default(),
+            graphs: graphs::Dashboard::default(),
             selected_physical_disk: None,
             network_history: HashMap::new(),
             theme: saved_theme,
@@ -282,6 +288,7 @@ impl TrontopApp {
             }
         }
         self.seen_generation = snapshot.sequence;
+        self.graphs.sample(&snapshot, std::time::Instant::now());
         self.physical_disk_history
             .push(&snapshot.physical_disks, std::time::Instant::now());
         if let Some(at) = snapshot.gpu_sensors.sampled_at {
@@ -615,7 +622,7 @@ impl TrontopApp {
                     .id_salt("navigation_scroll")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 5.0;
+                        ui.spacing_mut().item_spacing.y = 3.0;
                         widgets::hover_label(
                             ui,
                             RichText::new("CONTROL")
@@ -623,7 +630,7 @@ impl TrontopApp {
                                 .strong()
                                 .color(t.text_muted),
                         );
-                        ui.add_space(5.0);
+                        ui.add_space(3.0);
                         for (page, _, label) in Page::ALL {
                             if widgets::nav_button(ui, self.page == page, page.icon(), label, t) {
                                 self.page = page;
@@ -649,6 +656,7 @@ impl TrontopApp {
                         ui,
                         RichText::new(match self.page {
                             Page::Overview => "MACHINE OVERVIEW",
+                            Page::Graphs => "LIVE GRAPH WALL",
                             Page::Sensors => "HARDWARE SENSORS",
                             Page::Processes => "PROCESS MATRIX",
                             Page::Performance => "PERFORMANCE ARRAY",
@@ -786,6 +794,7 @@ impl TrontopApp {
     fn keyboard_shortcuts(&mut self, ctx: &egui::Context) {
         let pages = [
             (egui::Key::Num0, Page::Overview),
+            (egui::Key::Num9, Page::Graphs),
             (egui::Key::Num8, Page::Sensors),
             (egui::Key::Num1, Page::Processes),
             (egui::Key::Num2, Page::Performance),
@@ -2627,6 +2636,7 @@ impl eframe::App for TrontopApp {
             )
             .show(ui, |ui| match self.page {
                 Page::Overview => self.overview_page(ui),
+                Page::Graphs => self.graphs_page(ui),
                 Page::Sensors => self.sensors_page(ui),
                 Page::Processes => self.processes_page(ui),
                 Page::Performance => self.performance_page(ui),

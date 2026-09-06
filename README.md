@@ -16,6 +16,9 @@ Version 0.3 alpha provides:
 - native creation-time validation on the same action handle for termination, priority,
   and affinity; reused PIDs and Windows-critical processes are refused
 - CPU, memory, disk, network, and GPU performance drill-downs
+- a graph-first dashboard with Lines/Bars, category filters and a shared two-minute
+  timeline for usage, GPU temperature/power/clocks/fan/VRAM, drive temperatures,
+  physical-disk activity and network traffic; details: `docs/GRAPH_WALL.md`
 - independent physical-disk active time, response latency, queue depth and read/write
   throughput, with explicit cached/missing fields and gap-aware charts; mounted
   volumes stay separate: `docs/PHYSICAL_DISKS.md`

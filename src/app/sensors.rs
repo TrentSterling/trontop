@@ -134,7 +134,7 @@ impl TrontopApp {
                 ui.add_space(18.0);
             });
         }
-        widgets::hover_label(ui, RichText::new("Unavailable means unsupported or inaccessible, not zero. CPU and storage sensors are not connected yet.")
+        widgets::hover_label(ui, RichText::new("Unavailable means unsupported or inaccessible, not zero. Supported drive temperatures appear above; CPU temperature needs a hardware-sensor provider.")
             .size(11.0).color(t.text_muted));
     }
 }

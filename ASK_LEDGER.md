@@ -197,6 +197,15 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   acceptance of A11/A14/A15/A16. Launch/replace only when explicitly requested;
   never accumulate more previews automatically. No new polishing cycle after signoff.
 
+- [ ] **A32: One graph-first page for the whole machine. REVIEW.** Explicitly
+  requested after alpha.26 review on September 5: mostly graphs in one scrollable
+  dashboard, including load, temperatures, watts, storage and network activity.
+  Alpha.27 adds Graphs with Lines/Bars, category filters, a continuous responsive
+  grid, hover readings and timestamped two-minute history. Overview remains.
+  Missing/partial data make gaps; retained values are labelled. CPU temperature
+  remains A10/D01, not a fabricated chart. Acceptance: `docs/GRAPH_WALL.md` and
+  Trent's review of this specific layout.
+
 ## Decisions to resolve, not silently implement or discard
 
 - [ ] **D01: CPU sensor access.** Trent wants every temperature and doubts a new

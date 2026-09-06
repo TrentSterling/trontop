@@ -3280,7 +3280,7 @@ dependencies = [
 
 [[package]]
 name = "trontop"
-version = "0.3.0-alpha.26"
+version = "0.3.0-alpha.27"
 dependencies = [
  "eframe",
  "egui",
