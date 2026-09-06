@@ -2,7 +2,46 @@
 
 Last updated: 2026-09-06
 
-## Latest built candidate: alpha.33 cores, Overview and ColorMagic (A06/A13/A32)
+## Latest built candidate: alpha.34 dynamic CPU clocks (A06/A07/A22/A32)
+
+CPU Performance now uses a Windows performance-state interval average rather than
+the static-looking CurrentMhz field. It also shows fastest/slowest reporting
+processors and a virtualized group-local clock list. Average/fastest histories are
+shared by Graphs and Overview; wide Overview layouts now fit five chart columns.
+Missing/cached data remain explicit and JSON records the source and interval.
+
+Candidate: `target/review/alpha34-cpu-clocks/trontop.exe`, **0.3.0-alpha.34**,
+13,714,432 bytes, built **2026-09-06 11:18:02.048 UTC** from clean source
+**98695cc683e5afe97c069fc72f1e2db88ebfe508**. The later handoff-doc commit is not
+the embedded source identity.
+SHA-256: `ED9237BC721CF93F8286F1F076DAF99861FAC8832869D5F7AACBD3E5714B3B84`.
+The preserved copy matches the optimized release EXE and both PE version strings.
+**Built, not launched.** Existing previews and personal settings were untouched.
+No native window/input, driver/service installation, source upload, tag or release.
+
+Final gate: **273 passed, 0 failed, 23 ignored** (56.45 s), strict Clippy (2.32 s),
+formatting/diff checks and optimized release build (1m 02s) passed. Four final
+offscreen PNGs generated in 4.56 s and inspected: `alpha34-clock-cpu.png`,
+`alpha34-clock-cached.png`, `alpha34-clock-missing.png`,
+`alpha34-clock-overview.png` under `target/ui-smoke/`.
+These are synthetic fixtures, not screenshots of a newly launched preview.
+
+The production collector's separate read-only native probe passed (4.00 s).
+After its baseline, three interval averages were 5165.58, 5147.64 and 5123.62 MHz,
+with 24/24 contributing processors. Query timings: 0.6100 ms initial and
+0.1890 / 0.1421 / 0.1427 ms subsequent. This is a short debug-provider measurement,
+not native UI/drag/close/soak timing. A separate PDH reading supports the
+distinction between performance percent and nominal frequency but is not a
+synchronized cross-monitor parity test.
+
+`docs/CPU_CLOCK.md` documents the pinned System Informer reference, deliberately
+per-processor nominal weighting, private-API bounds, retry/reset behavior and tests.
+The redesign skill guided retained-field alignment, readable status and the wide
+Overview adjustment within the existing egui design. No theme/palette rewrite.
+CPU temperatures, wider Task Manager field parity and the native acceptance gates
+remain open. No brainstorm feature was silently added to the release checklist.
+
+## Previous built candidate: alpha.33 cores, Overview and ColorMagic (A06/A13/A32)
 
 Performance / CPU now defaults to distinct logical-processor graphs with a Total
 CPU switch. Overview uses the same timestamped histories for a dense machine-wide
