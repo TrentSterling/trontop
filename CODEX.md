@@ -9,7 +9,8 @@ must not modify this repository.
 was still laying out all card contents. It now measures one real row and reserves
 offscreen space, with stable IDs, shared row widths and category scroll reset.
 Two regressions compare visible text/geometry through deep scrolling and fractional
-scales; 250 ordinary tests pass, strict Clippy passes. The same-binary CPU probe
+scales. A third regression fixes dropped font-texture updates in visual click
+fixtures; 251 ordinary tests pass, strict Clippy passes. The same-binary CPU probe
 and current build are recorded in `docs/GRAPH_WALL.md` / `docs/CURRENT_STATE.md`.
 No native input/window/tray interaction, preview replacement, user settings or
 upload. Native drag/close/soak and the remaining decisions are still open. This is

@@ -21,7 +21,7 @@ Pinned egui source confirms the allocation/ID rules used here; see its
 [ScrollArea documentation](https://docs.rs/egui/0.35.0/egui/containers/scroll_area/struct.ScrollArea.html)
 and `egui-0.35.0/src/ui.rs` (`scope_dyn`, `allocate_space`, `columns_dyn`).
 
-Two new ordinary regressions compare the optimized wall to a test-only full-layout
+A new ordinary regression compares the optimized wall to a test-only full-layout
 reference at the 512-chart limit. Visible text and bounds match within 0.1 logical
 point through top/middle/bottom/return scrolling, dark/light, and 1/1.5/2 UI scales.
 At most 24 cards are laid out in those cases. A separate local-input test proves
@@ -30,8 +30,8 @@ their first graphs. Initial tests exposed the fractional-width drift; fixing row
 width restored strict geometry comparison. Fixture freshness was frozen to prevent
 elapsed test execution from changing one side's status labels.
 
-Full ordinary suite: **250 passed, 0 failed, 17 ignored**, 62.70 s. Strict Clippy
-passed (7.74 s). Native dragging, presentation, close, GPU submission, live-provider
+Full ordinary suite: **251 passed, 0 failed, 17 ignored**, 55.74 s. Strict Clippy
+passed (1.98 s). Native dragging, presentation, close, GPU submission, live-provider
 acceptance and the 60-minute soak are not covered by these CPU/layout checks.
 
 Optimized same-binary comparison: 20 warm-up and 120 measured hover-changing frames
@@ -54,12 +54,20 @@ p95 respectively. This is one local run, not a promise every frame gets faster:
 the 25-chart wide case's maximum was 1.9275 ms optimized versus 1.1619 ms reference.
 There is no claim this identifies the user's native drag/close delay.
 
-The selected offscreen visual test passed (6.45 s), generating six PNGs with the
-actual egui-WGPU renderer on RTX 5070 Ti/Vulkan. All six were inspected: dark,
-compact, light, Bars, thermal filter and unavailable/empty histories. Text alignment,
-rounded zebra surfaces, chart fills and dense spacing are retained. No native
-window, input, tray or personal settings were touched. Exact executable identity
-is recorded in `CURRENT_STATE.md`; no source upload or release was performed.
+The offscreen visual pass exposed missing scale glyphs after a category click.
+The screenshot helper discarded intermediate click frames and their font-texture
+updates. Both graph and memory visual passes now retain those deltas. A third new
+ordinary regression reconstructs the font atlas from captured updates and matches
+it pixel-for-pixel to egui's atlas; discarding the click frames fails that comparison.
+The regenerated thermal PNG has the full numeric scale and W unit. This is a
+test-harness repair, not a production renderer change.
+
+Graph and memory offscreen tests generate twelve PNGs with the actual egui-WGPU
+renderer on RTX 5070 Ti/Vulkan. All six graph views plus both filtered memory
+graphs were inspected: dark, compact, light, Bars, thermal, empty and cached.
+Text alignment, rounded zebra surfaces, chart fills and dense spacing are retained.
+No native window, input, tray or personal settings were touched. Exact executable
+identity is recorded in `CURRENT_STATE.md`; no source upload or release occurred.
 
 ```powershell
 cargo test --offline graph_wall_ -- --nocapture --test-threads=1

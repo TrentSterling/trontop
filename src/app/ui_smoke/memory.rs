@@ -172,7 +172,7 @@ fn render_memory_counters_visual_pass() {
             output.append(frame(&ctx, &mut app, size, vec![]));
         }
         if graph {
-            click_local_text(&ctx, &mut app, size, "Memory");
+            output.append(click_local_text_output(&ctx, &mut app, size, "Memory"));
         }
         for _ in 0..3 {
             output.append(frame(&ctx, &mut app, size, vec![]));

@@ -39,7 +39,10 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
   and three UI scales. Another regression verifies category changes return to the
   first graph. The opt-in `graph_wall_cpu_timing_probe` compares the two paths in
   one optimized test binary, including CPU tessellation but not GPU/native work.
-  Ordinary suite: 250 pass, 17 ignored; strict Clippy passes. `GRAPH_WALL.md` records
+  Graph/memory visual clicks retain intermediate texture updates; a third new
+  regression reconstructs and exactly compares the resulting font atlas, detecting
+  the previous missing-glyph failure. Ordinary suite: 251 pass, 17 ignored; Clippy
+  passes. `GRAPH_WALL.md` records
   the bounded layout fix, measurements and native limitations.
 
 - Alpha.30 adds five memory-counter regressions for page-to-byte conversion,

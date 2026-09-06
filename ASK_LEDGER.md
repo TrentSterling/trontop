@@ -185,6 +185,8 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   matrix, geometry/state/input tests, opt-in offscreen PNG renderer and read-only
   provider probes exist. Baseline alpha.18: 166 tests pass, 60 PNGs generated.
   Scope and limitations: `docs/HEADLESS_QA.md`. A25 covers the final build.
+  Alpha.31 also fixes discarded click-frame font updates in graph/memory visual
+  captures; an exact atlas regression reproduces the old missing-glyph failure.
 - [ ] **A25: Final integrated verification. OPEN.** Exact candidate passes fmt,
   all ordinary tests, strict Clippy, release build, Windows CI, relevant reviewed
   PNGs, isolated process/service/export/tray/close tests and the mixed-load soak.

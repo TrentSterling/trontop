@@ -309,6 +309,63 @@ fn graph_wall_filter_returns_to_first_row_after_deep_scroll() {
 }
 
 #[test]
+fn graph_visual_click_preserves_complete_font_texture_updates() {
+    fn replay(output: &egui::FullOutput) -> egui::ColorImage {
+        let mut atlas: Option<egui::ColorImage> = None;
+        for (id, delta) in &output.textures_delta.set {
+            if *id != egui::TextureId::default() {
+                continue;
+            }
+            let egui::ImageData::Color(image) = &delta.image;
+            if let Some([x, y]) = delta.pos {
+                let atlas = atlas
+                    .as_mut()
+                    .expect("partial atlas update before allocation");
+                for row in 0..image.height() {
+                    let start = (y + row) * atlas.width() + x;
+                    atlas.pixels[start..start + image.width()].copy_from_slice(
+                        &image.pixels[row * image.width()..(row + 1) * image.width()],
+                    );
+                }
+            } else {
+                atlas = Some((**image).clone());
+            }
+        }
+        atlas.expect("missing font atlas")
+    }
+    let ctx = egui::Context::default();
+    let mut app = populated(ThemeSettings::default());
+    theme::install(&ctx, app.theme);
+    let size = Vec2::new(1280.0, 900.0);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..3 {
+        output.append(frame(&ctx, &mut app, size, vec![]));
+    }
+    let mut lost_click_frames = output.clone();
+    output.append(click_local_text_output(
+        &ctx,
+        &mut app,
+        size,
+        "Temperatures & power",
+    ));
+    for _ in 0..3 {
+        let next = frame(&ctx, &mut app, size, vec![]);
+        lost_click_frames.append(next.clone());
+        output.append(next);
+    }
+    let expected = ctx.fonts(|fonts| fonts.image());
+    let complete = replay(&output);
+    assert_eq!(complete.size, expected.size);
+    assert_eq!(
+        complete.pixels, expected.pixels,
+        "some font texture deltas were dropped"
+    );
+    // Reproduce the previous harness bug rather than assuming the click caused
+    // a new glyph. The old path visibly lost the graph scale's '6' and 'W'.
+    assert_ne!(replay(&lost_click_frames).pixels, expected.pixels);
+}
+
+#[test]
 #[ignore = "offscreen GPU graph-wall QA; only test PNG files, no native window or input"]
 fn render_graph_wall_visual_pass() {
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-smoke");
@@ -381,10 +438,15 @@ fn render_graph_wall_visual_pass() {
             output.append(frame(&ctx, &mut app, size, vec![]));
         }
         if bars {
-            click_local_text(&ctx, &mut app, size, "Bars");
+            output.append(click_local_text_output(&ctx, &mut app, size, "Bars"));
         }
         if thermal {
-            click_local_text(&ctx, &mut app, size, "Temperatures & power");
+            output.append(click_local_text_output(
+                &ctx,
+                &mut app,
+                size,
+                "Temperatures & power",
+            ));
         }
         for _ in 0..3 {
             output.append(frame(&ctx, &mut app, size, vec![]));

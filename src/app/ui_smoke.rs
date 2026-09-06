@@ -1416,9 +1416,20 @@ fn failed_inventory_cannot_replace_newer_command_observation_but_complete_read_c
 }
 
 fn click_local_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label: &str) {
+    click_local_text_output(ctx, app, size, label);
+}
+
+// Visual passes must retain texture deltas from every simulated event frame,
+// including frames whose shapes will be replaced before the final screenshot.
+fn click_local_text_output(
+    ctx: &egui::Context,
+    app: &mut TrontopApp,
+    size: Vec2,
+    label: &str,
+) -> egui::FullOutput {
     let mut output = frame(ctx, app, size, vec![]);
     for _ in 0..20 {
-        output = frame(ctx, app, size, vec![]);
+        output.append(frame(ctx, app, size, vec![]));
     }
     let position = text_shapes(&output)
         .iter()
@@ -1430,7 +1441,7 @@ fn click_local_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label
         .visual_bounding_rect()
         .center();
     for pressed in [true, false] {
-        frame(
+        output.append(frame(
             ctx,
             app,
             size,
@@ -1443,8 +1454,9 @@ fn click_local_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label
                     modifiers: egui::Modifiers::NONE,
                 },
             ],
-        );
+        ));
     }
+    output
 }
 
 #[test]
