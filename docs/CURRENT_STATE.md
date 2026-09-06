@@ -2,7 +2,31 @@
 
 Last updated: 2026-09-05
 
-## Latest built candidate: alpha.27 graph wall (A32)
+## Latest built candidate: alpha.28 settings close path (A21/A22)
+
+Focused continuation of the responsiveness objective after the slow-close report.
+Two regressions failed on alpha.27: dispatch/Retry deep-cloned captured egui memory,
+and an unchanged snapshot failed on another instance's file lock. Alpha.28 shares
+the immutable capture and skips filesystem operations for byte-identical local
+state. Actual changes retain the conflict guard and safe-save close gate.
+
+Candidate: `target/review/alpha28-close/trontop.exe`, **0.3.0-alpha.28**,
+13,638,656 bytes, built at **2026-09-06 00:30:31.254 UTC** from modified 4419f7e.
+SHA-256: `219CE12FC71F18A94031FC8E1DFD9C66AB4632711B583CDA4072C24E905B738D`.
+**Built, not launched.** The review copy matches the optimized release build.
+Existing windows and user settings were untouched; no upload.
+
+Verification: **236 passed, 0 failed, 14 ignored** (29.22 s); strict Clippy
+(5.03 s), formatting and release build (49.05 s) passed. Three new regressions
+cover zero extra dispatch clones, unchanged snapshots under file contention with
+preserved external edits, and the app-to-worker-to-file headless close gate.
+The latter took 1.3972 ms in one debug fixture run, not native teardown timing.
+No UI design changed; no new visual screenshots were needed or claimed.
+See `docs/SETTINGS_PERSISTENCE.md`. A21 remains open. This does not establish that
+Unity caused the observed delay or guarantee instant close when settings are dirty.
+Stop this bounded follow-up at the build/review handoff.
+
+## Previous built candidate: alpha.27 graph wall (A32)
 
 Trent explicitly requested one mostly-graphs page after reviewing alpha.26.
 Added Graphs (Ctrl+9): continuous 1-4 column grid, Lines/Bars, category filters,

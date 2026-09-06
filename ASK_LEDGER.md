@@ -141,6 +141,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   storage offer Keep open, Retry and explicitly lossy Close anyway. Blocked-worker
   and synthetic OS-close tests pass. This is not native teardown timing or proof
   that settings caused Trent's reported slow close. See `docs/SETTINGS_PERSISTENCE.md`.
+  Alpha.28 removes duplicate UI-memory clones during save dispatch/Retry and
+  skips filesystem work for byte-identical local state. Three new regressions
+  cover clone count, busy files/external conflicts and the headless close gate.
+  Dirty saves still gate close; native close timing remains unmeasured.
 - [ ] **A22: Low overhead and stable responsiveness. PARTIAL.** Indexed process views,
   iterative trees and isolated workers have real improvements and synthetic timing
   evidence. Final release needs visible/hidden/tray/mixed-load CPU, memory, handles,

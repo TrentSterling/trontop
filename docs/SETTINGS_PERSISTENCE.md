@@ -1,4 +1,35 @@
-# Non-blocking settings (alpha.26)
+# Non-blocking settings (alpha.28)
+
+## Focused slow-close follow-up (alpha.28, A21/A22)
+
+The continuing responsiveness objective and Trent's slow-close report led to two
+reproduced costs in the existing settings path. A clone-counting egui memory entry
+observed two extra deep clones across dispatch plus Retry. A byte-identical local
+snapshot failed on another instance's settings lock even though it needed no write.
+Both regressions were run against alpha.27 and failed before changing production
+code. Alpha.28 shares the immutable capture with the worker using `Arc`, and returns
+from an unchanged save before any directory, lock or destination-file access.
+
+No-op means identical serialized bytes to this instance's last loaded/saved state.
+It is not a reload, a fresh disk verification, or permission to revert another
+instance's subsequent edits. Actual changes still require the lock and exact
+expected-file comparison. Cancellation and validation still run. Changes to
+serialized UI memory still require a save, even if the theme did not change.
+
+The focused settings suite passes 15 tests. New checks verify zero extra memory
+clones on dispatch/Retry, no-op success with both the lock held and destination
+opened exclusively, preserved external edits, and continued conflict rejection
+for actual local changes. The app-to-worker-to-fixture-file close gate also passes
+under these file restrictions (one debug run: 1.3972 ms). That number is a headless
+fixture measurement, not native window/tray/GPU teardown latency or a guarantee.
+
+This is a bounded settings-path improvement, not a diagnosis that Unity caused
+the observed delay. Dirty settings still wait asynchronously for their durable
+save before permitting close. No current preview, personal preferences, native
+desktop input or other application was touched. A21 remains open pending native
+measurement; do not report a universally instant close.
+
+## Original alpha.26 change
 
 Scope: A13/A21/A22 in `../ASK_LEDGER.md`. The pinned eframe 0.35 file store
 joined save threads during autosave and destruction, loaded synchronously before
@@ -13,10 +44,11 @@ runtime component is involved. `cargo tree -e features -i eframe` confirms that
 the blocking file store is not included. App-owned settings use one background
 worker for reading, parsing, serialization and filesystem operations.
 
-The main thread captures theme/library values and clones egui memory when needed.
+The main thread captures theme/library values and clones egui memory once when needed.
 Those are CPU operations, not free or hard-real-time work. The worker has bounded
 request/result channels, one operation in flight, and a single latest desired
-snapshot on the controller. Edits coalesce for 250 ms; close forces the latest
+snapshot on the controller, shared with the writer without another deep clone.
+Edits coalesce for 250 ms; close forces the latest
 snapshot immediately. UI memory is captured on the existing 30-second cadence
 when the app receives updates, on theme/library changes and on close. Idle frames
 do not encode the theme library or serialize memory. Polling uses `try_recv` and

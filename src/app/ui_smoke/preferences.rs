@@ -21,7 +21,7 @@ impl Backend for Store {
             ..Default::default()
         })
     }
-    fn save(&mut self, _: Snapshot, _: &AtomicBool) -> Result<(), String> {
+    fn save(&mut self, _: &Snapshot, _: &AtomicBool) -> Result<(), String> {
         let _ = self.entered.send(());
         if let Some(wait) = self.save_wait.take() {
             let _ = wait.recv();
@@ -380,5 +380,73 @@ fn preferences_app_roundtrip_preserves_latest_theme_named_palette_and_ui_memory(
     assert_eq!(app.theme_studio.encode_library(), library);
     assert_eq!(ctx.zoom_factor(), 1.25);
     assert!(!app.preferences.pending());
+    drop(app);
+}
+
+#[test]
+fn preferences_unchanged_close_finishes_even_when_settings_files_are_busy() {
+    let fixture = crate::preferences::tests::Fixture::new();
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    app.preferences = crate::preferences::Controller::native(Some(fixture.0.clone()), ctx.clone());
+    let wait = |app: &mut TrontopApp, loaded: bool| {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            app.poll_preferences(&ctx);
+            assert!(
+                app.preferences.error().is_none(),
+                "{:?}",
+                app.preferences.error()
+            );
+            if if loaded {
+                app.preferences.can_edit()
+            } else {
+                !app.preferences.pending()
+            } {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "owned preferences worker timed out"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    };
+    wait(&mut app, true);
+    app.capture_preferences(&ctx);
+    app.preferences.dispatch(true);
+    wait(&mut app, false);
+    let saved = std::fs::read(fixture.0.join(crate::preferences::FILE_NAME)).unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(fixture.0.join("settings-v3.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    #[cfg(windows)]
+    let deny_read = {
+        use std::os::windows::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(fixture.0.join(crate::preferences::FILE_NAME))
+            .unwrap()
+    };
+    let start = Instant::now();
+    app.request_close(&ctx);
+    wait(&mut app, false);
+    app.preferences_logic(&ctx);
+    assert!(app.close_authorized);
+    println!(
+        "Unchanged headless close gate under file contention: {:?}; no native window involved",
+        start.elapsed()
+    );
+    #[cfg(windows)]
+    drop(deny_read);
+    drop(lock);
+    assert_eq!(
+        std::fs::read(fixture.0.join(crate::preferences::FILE_NAME)).unwrap(),
+        saved
+    );
     drop(app);
 }

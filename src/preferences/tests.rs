@@ -80,9 +80,7 @@ fn preference_files_migrate_without_changing_legacy_and_restore_theme_library_me
     assert_eq!(loaded.library.as_deref(), Some(original.library.as_str()));
     assert_eq!(loaded.memory.unwrap().options.zoom_factor, 1.25);
     assert!(!fixture.0.join(FILE_NAME).exists()); // Reading never writes migration.
-    store
-        .save(original.clone(), &AtomicBool::new(false))
-        .unwrap();
+    store.save(&original, &AtomicBool::new(false)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), legacy);
     let mut fresh = file::Store::new(fixture.0.clone());
     let loaded = fresh.load().unwrap();
@@ -122,7 +120,7 @@ fn preference_files_preserve_invalid_oversized_newer_readonly_and_conflicting_da
         fs::write(&target, &bytes).unwrap();
         let mut store = file::Store::new(fixture.0.clone());
         assert!(store.load().is_err());
-        assert!(store.save(snapshot(40), &AtomicBool::new(false)).is_err());
+        assert!(store.save(&snapshot(40), &AtomicBool::new(false)).is_err());
         assert_eq!(fs::read(&target).unwrap(), bytes);
     }
     fs::remove_file(&target).unwrap();
@@ -130,11 +128,11 @@ fn preference_files_preserve_invalid_oversized_newer_readonly_and_conflicting_da
     let mut second = file::Store::new(fixture.0.clone());
     first.load().unwrap();
     second.load().unwrap();
-    first.save(snapshot(10), &AtomicBool::new(false)).unwrap();
+    first.save(&snapshot(10), &AtomicBool::new(false)).unwrap();
     let saved = fs::read(&target).unwrap();
     assert!(
         second
-            .save(snapshot(20), &AtomicBool::new(false))
+            .save(&snapshot(20), &AtomicBool::new(false))
             .unwrap_err()
             .contains("another instance")
     );
@@ -147,13 +145,13 @@ fn preference_files_preserve_invalid_oversized_newer_readonly_and_conflicting_da
     lock.try_lock().unwrap();
     assert!(
         first
-            .save(snapshot(30), &AtomicBool::new(false))
+            .save(&snapshot(30), &AtomicBool::new(false))
             .unwrap_err()
             .contains("Another Trontop")
     );
     drop(lock);
     assert_eq!(fs::read(&target).unwrap(), saved);
-    assert!(first.save(snapshot(30), &AtomicBool::new(true)).is_err());
+    assert!(first.save(&snapshot(30), &AtomicBool::new(true)).is_err());
     assert_eq!(fs::read(&target).unwrap(), saved);
     #[cfg(windows)]
     {
@@ -161,12 +159,12 @@ fn preference_files_preserve_invalid_oversized_newer_readonly_and_conflicting_da
         let mut readonly = original.clone();
         readonly.set_readonly(true);
         fs::set_permissions(&target, readonly).unwrap();
-        let result = first.save(snapshot(31), &AtomicBool::new(false));
+        let result = first.save(&snapshot(31), &AtomicBool::new(false));
         fs::set_permissions(&target, original).unwrap();
         assert!(result.is_err());
         assert_eq!(fs::read(&target).unwrap(), saved);
     }
-    first.save(snapshot(32), &AtomicBool::new(false)).unwrap();
+    first.save(&snapshot(32), &AtomicBool::new(false)).unwrap();
     assert_eq!(
         file::Store::new(fixture.0.clone())
             .load()
@@ -190,12 +188,12 @@ fn preference_files_reject_unreadable_output_and_preserve_existing_data() {
     let path = fixture.0.join(FILE_NAME);
     let mut store = file::Store::new(fixture.0.clone());
     store.load().unwrap();
-    store.save(snapshot(1), &AtomicBool::new(false)).unwrap();
+    store.save(&snapshot(1), &AtomicBool::new(false)).unwrap();
     let original = fs::read(&path).unwrap();
     for scale in [0.0, -1.0, f32::INFINITY, f32::NAN, 11.0] {
         let mut invalid = snapshot(2);
         invalid.memory.options.zoom_factor = scale;
-        assert!(store.save(invalid, &AtomicBool::new(false)).is_err());
+        assert!(store.save(&invalid, &AtomicBool::new(false)).is_err());
         assert_eq!(fs::read(&path).unwrap(), original);
     }
     let values: BTreeMap<_, _> = (0..64).map(|i| (format!("preserve-{i}"), "yes")).collect();
@@ -206,7 +204,7 @@ fn preference_files_reject_unreadable_output_and_preserve_existing_data() {
     fs::write(&path, &bytes).unwrap();
     let mut store = file::Store::new(fixture.0.clone());
     store.load().unwrap();
-    assert!(store.save(snapshot(2), &AtomicBool::new(false)).is_err());
+    assert!(store.save(&snapshot(2), &AtomicBool::new(false)).is_err());
     assert_eq!(fs::read(&path).unwrap(), bytes);
 }
 
@@ -224,8 +222,8 @@ impl Backend for Fake {
         }
         Ok(Loaded::default())
     }
-    fn save(&mut self, snapshot: Snapshot, _: &AtomicBool) -> Result<(), String> {
-        self.saved.send(snapshot.theme).unwrap();
+    fn save(&mut self, snapshot: &Snapshot, _: &AtomicBool) -> Result<(), String> {
+        self.saved.send(snapshot.theme.clone()).unwrap();
         if let Some(release) = self.save_release.take() {
             let _ = release.recv();
         }
@@ -371,4 +369,97 @@ fn preferences_disabled_mode_has_no_worker_no_poll_timer_and_no_pending_save() {
     assert!(!controller.pending());
     assert!(controller.poll().is_none());
     assert!(controller.commands.is_none());
+}
+
+#[test]
+fn preferences_dispatch_and_retry_do_not_clone_captured_ui_memory() {
+    struct CountClones(Arc<AtomicU64>);
+    impl Clone for CountClones {
+        fn clone(&self) -> Self {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Self(Arc::clone(&self.0))
+        }
+    }
+    let (saved, calls) = mpsc::sync_channel(2);
+    let (finished, done) = mpsc::sync_channel(1);
+    let mut controller = Controller::with_backend(
+        Fake {
+            load_release: None,
+            save_release: None,
+            saved,
+            finished: Some(finished),
+            fail: true,
+        },
+        egui::Context::default(),
+    );
+    until(|| controller.poll().is_some());
+    let clones = Arc::new(AtomicU64::new(0));
+    let mut captured = snapshot(1);
+    captured.memory.data.insert_temp(
+        egui::Id::new("clone-counter"),
+        CountClones(Arc::clone(&clones)),
+    );
+    controller.update(captured);
+    controller.dispatch(true);
+    calls.recv_timeout(Duration::from_secs(3)).unwrap();
+    until(|| {
+        controller.poll();
+        controller.error().is_some()
+    });
+    controller.retry();
+    calls.recv_timeout(Duration::from_secs(3)).unwrap();
+    until(|| {
+        controller.poll();
+        !controller.pending()
+    });
+    drop(controller);
+    done.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert_eq!(clones.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn preferences_unchanged_save_skips_storage_contention_but_changed_save_still_conflicts() {
+    let fixture = Fixture::new();
+    let mut store = file::Store::new(fixture.0.clone());
+    store.load().unwrap();
+    let original = snapshot(1);
+    store.save(&original, &AtomicBool::new(false)).unwrap();
+    let mut other = file::Store::new(fixture.0.clone());
+    other.load().unwrap();
+    other.save(&snapshot(2), &AtomicBool::new(false)).unwrap();
+    let external = fs::read(fixture.0.join(FILE_NAME)).unwrap();
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(fixture.0.join("settings-v3.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    // Nothing changed locally: no disk access or permission to undo the other save.
+    #[cfg(windows)]
+    let deny_read = {
+        use std::os::windows::fs::OpenOptionsExt;
+        fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(fixture.0.join(FILE_NAME))
+            .unwrap()
+    };
+    let unchanged = store.save(&original, &AtomicBool::new(false));
+    #[cfg(windows)]
+    drop(deny_read);
+    drop(lock);
+    assert!(unchanged.is_ok(), "{unchanged:?}");
+    assert!(
+        store
+            .save(&original, &AtomicBool::new(true))
+            .unwrap_err()
+            .contains("cancelled")
+    );
+    assert!(
+        store
+            .save(&snapshot(3), &AtomicBool::new(false))
+            .unwrap_err()
+            .contains("another instance")
+    );
+    assert_eq!(fs::read(fixture.0.join(FILE_NAME)).unwrap(), external);
 }

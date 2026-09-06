@@ -33,12 +33,12 @@ pub struct Loaded {
 
 pub(crate) trait Backend: Send + 'static {
     fn load(&mut self) -> Result<Loaded, String>;
-    fn save(&mut self, snapshot: Snapshot, stop: &AtomicBool) -> Result<(), String>;
+    fn save(&mut self, snapshot: &Snapshot, stop: &AtomicBool) -> Result<(), String>;
 }
 
 enum Command {
     Load,
-    Save(u64, Box<Snapshot>),
+    Save(u64, Arc<Snapshot>),
 }
 enum Event {
     Loaded(Result<Box<Loaded>, String>),
@@ -54,7 +54,7 @@ pub struct Controller {
     ready: bool,
     busy: bool,
     revision: u64,
-    desired: Option<Snapshot>,
+    desired: Option<Arc<Snapshot>>,
     changed: Option<Instant>,
     started: Option<Instant>,
     error: Option<String>,
@@ -98,7 +98,7 @@ impl Controller {
                     let event = match command {
                         Command::Load => Event::Loaded(backend.load().map(Box::new)),
                         Command::Save(revision, snapshot) => {
-                            Event::Saved(revision, backend.save(*snapshot, &worker_stop))
+                            Event::Saved(revision, backend.save(&snapshot, &worker_stop))
                         }
                     };
                     if output.send(event).is_err() {
@@ -169,7 +169,7 @@ impl Controller {
             .revision
             .checked_add(1)
             .expect("settings revision overflow");
-        self.desired = Some(snapshot);
+        self.desired = Some(Arc::new(snapshot));
         self.changed = Some(Instant::now());
     }
 
@@ -224,9 +224,12 @@ impl Controller {
         let Some(snapshot) = &self.desired else {
             return;
         };
-        let result = self.commands.as_ref().map(|sender| {
-            sender.try_send(Command::Save(self.revision, Box::new(snapshot.clone())))
-        });
+        // Capture memory once. Dispatch/retry shares that immutable capture with
+        // the writer instead of deep-cloning every egui entry on the UI thread.
+        let result = self
+            .commands
+            .as_ref()
+            .map(|sender| sender.try_send(Command::Save(self.revision, Arc::clone(snapshot))));
         if matches!(result, Some(Ok(()))) {
             self.busy = true;
             self.started = Some(Instant::now());

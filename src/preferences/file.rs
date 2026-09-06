@@ -129,13 +129,16 @@ impl Backend for Store {
         Ok(loaded)
     }
 
-    fn save(&mut self, snapshot: Snapshot, stop: &AtomicBool) -> Result<(), String> {
+    fn save(&mut self, snapshot: &Snapshot, stop: &AtomicBool) -> Result<(), String> {
         if !self.loaded {
             return Err("Settings have not loaded; existing files preserved.".into());
         }
         let mut values = self.values.clone();
-        values.insert(crate::theme::STORAGE_KEY.into(), snapshot.theme);
-        values.insert(crate::theme_studio::LIBRARY_KEY.into(), snapshot.library);
+        values.insert(crate::theme::STORAGE_KEY.into(), snapshot.theme.clone());
+        values.insert(
+            crate::theme_studio::LIBRARY_KEY.into(),
+            snapshot.library.clone(),
+        );
         values.insert(
             "egui".into(),
             ron::to_string(&snapshot.memory).map_err(|_| "Cannot encode UI settings.")?,
@@ -154,6 +157,12 @@ impl Backend for Store {
         if stop.load(Ordering::Acquire) {
             return Err("Settings save cancelled before writing.".into());
         }
+        // No local changes since load/acknowledged save: no filesystem work.
+        // This does not reload or undo another instance's later preferences.
+        // Actual changes still acquire the lock and check the original bytes.
+        if self.expected.as_deref() == Some(bytes.as_slice()) {
+            return Ok(());
+        }
         fs::create_dir_all(&self.directory).map_err(|_| "Cannot create settings directory.")?;
         let lock = checked_file(&self.directory.join("settings-v3.lock"), true)?;
         lock.try_lock()
@@ -161,9 +170,6 @@ impl Backend for Store {
         let destination = self.directory.join(FILE_NAME);
         if read(&destination)? != self.expected {
             return Err("Settings changed in another instance. Existing file preserved; export your theme before restarting.".into());
-        }
-        if self.expected.as_deref() == Some(bytes.as_slice()) {
-            return Ok(());
         }
         let temp_path = self.directory.join(format!(
             ".settings-{}-{}.tmp",

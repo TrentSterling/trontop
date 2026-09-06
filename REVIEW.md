@@ -1,4 +1,20 @@
-# Alpha.27 graph-wall review
+# Alpha.28 close-path follow-up
+
+Optimized release is ready at `target/review/alpha28-close/trontop.exe`.
+Built, not launched; the existing alpha.26 preview is unchanged.
+
+- Saves share the already-captured UI memory instead of deep-cloning it again.
+- Byte-identical settings skip disk access, including lock contention. Changed
+  settings still save safely and refuse to overwrite another instance's changes.
+- **236 tests passed**, 14 ignored; strict Clippy, formatting and release passed.
+- Three new regressions include a headless close gate with busy fixture files.
+  Native window/tray teardown and the user's reported delay remain unmeasured.
+
+The alpha.27 Graphs page is included. Exact identity and limitations are recorded
+in `docs/CURRENT_STATE.md` and `docs/SETTINGS_PERSISTENCE.md`. No automatic preview
+replacement, desktop test or upload. A21 remains open; this is a focused handoff.
+
+## Previous alpha.27 graph-wall review
 
 Trent's alpha.26 feedback explicitly requested this focused addition (A32).
 The new optimized build is ready, **not launched**; current windows are untouched.

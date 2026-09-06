@@ -5,6 +5,19 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.28 is a bounded A21/A22 settings-path follow-up under the continuing
+responsiveness objective.** Two regressions reproduced redundant egui-memory
+clones and unchanged saves failing on file contention. Share the captured snapshot
+instead of deep-cloning it at dispatch/Retry; skip filesystem work for identical
+local bytes while retaining conflict checks for actual changes. Three new tests
+include the app-owned headless close gate with busy files. See
+`docs/SETTINGS_PERSISTENCE.md`. This is not measured native teardown or proof that
+Unity caused the reported delay. No desktop input, preview changes or user-settings
+access. A21 stays open. Stop this slice after its verification/build handoff;
+do not turn it into a new general audit.
+
+### Previous alpha.27 graph-wall handoff
+
 **Alpha.27 is the explicitly requested Graphs-page slice (A32).** Trent reviewed
 alpha.26 at 18:43 local and asked for one mostly-graphs page with all available
 temperatures, usage and activity. This authorizes this focused implementation,
