@@ -16,6 +16,13 @@ pub(super) struct Dashboard {
     history: History,
     style: Style,
     filter: Option<Group>,
+    // Reference path for geometry and same-binary CPU comparisons only.
+    #[cfg(test)]
+    pub(super) draw_all_rows: bool,
+    #[cfg(test)]
+    pub(super) laid_out_cards: usize,
+    #[cfg(test)]
+    pub(super) fixed_now: Option<Instant>,
 }
 impl Dashboard {
     pub(super) fn sample(&mut self, snapshot: &SystemSnapshot, now: Instant) {
@@ -27,6 +34,8 @@ impl TrontopApp {
     pub(super) fn graphs_page(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         let now = Instant::now();
+        #[cfg(test)]
+        let now = self.graphs.fixed_now.unwrap_or(now);
         if self.graphs.history.charts.is_empty() {
             self.graphs.sample(&self.snapshot, now);
         }
@@ -36,6 +45,7 @@ impl TrontopApp {
             "Your machine, on one timeline. Hover a graph to inspect a reading.",
             false,
         );
+        let previous_filter = self.graphs.filter;
         ui.horizontal_wrapped(|ui| {
             ui.selectable_value(&mut self.graphs.style, Style::Lines, "Lines");
             ui.selectable_value(&mut self.graphs.style, Style::Bars, "Bars");
@@ -53,54 +63,101 @@ impl TrontopApp {
             if ui.small_button("Sensor details").clicked() { self.page = Page::Sensors; }
         });
         ui.add_space(8.0);
-        egui::ScrollArea::vertical()
+        let mut scroll = egui::ScrollArea::vertical()
             .id_salt("graph_wall_scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                let count = columns(ui.available_width());
-                // A continuous wall avoids mostly empty rows at section boundaries.
-                let charts: Vec<_> = Group::ALL
-                    .into_iter()
-                    .filter(|group| self.graphs.filter.is_none_or(|filter| filter == *group))
-                    .flat_map(|group| {
-                        self.graphs
-                            .history
-                            .charts
-                            .iter()
-                            .filter(move |chart| chart.group == group)
-                    })
-                    .collect();
-                if charts.is_empty() {
-                    widgets::hover_label(
-                        ui,
-                        RichText::new(
-                            "No reporting devices in this category. Other graphs keep running.",
-                        )
-                        .size(11.0)
-                        .color(t.text_muted),
-                    );
-                }
-                for (row, chunk) in charts.chunks(count).enumerate() {
-                    ui.columns(count, |columns| {
-                        for (index, (column, chart)) in columns.iter_mut().zip(chunk).enumerate() {
-                            column.push_id(&chart.id, |ui| {
-                                card(ui, chart, now, self.graphs.style, (row + index) % 2 == 1, t);
-                            });
-                        }
+            .auto_shrink([false, false]);
+        if self.graphs.filter != previous_filter {
+            scroll = scroll.vertical_scroll_offset(0.0);
+        }
+        scroll.show(ui, |ui| {
+            let count = columns(ui.available_width());
+            // A continuous wall avoids mostly empty rows at section boundaries.
+            let charts: Vec<_> = Group::ALL
+                .into_iter()
+                .filter(|group| self.graphs.filter.is_none_or(|filter| filter == *group))
+                .flat_map(|group| {
+                    self.graphs
+                        .history
+                        .charts
+                        .iter()
+                        .filter(move |chart| chart.group == group)
+                })
+                .collect();
+            if charts.is_empty() {
+                widgets::hover_label(
+                    ui,
+                    RichText::new(
+                        "No reporting devices in this category. Other graphs keep running.",
+                    )
+                    .size(11.0)
+                    .color(t.text_muted),
+                );
+            }
+            let mut row_height = 0.0;
+            let row_width = ui.available_width();
+            #[cfg(test)]
+            {
+                self.graphs.laid_out_cards = 0;
+            }
+            for (row, chunk) in charts.chunks(count).enumerate() {
+                // All card captions are single-line. Measure one real row
+                // each frame so font scale, theme margins and pixel rounding
+                // remain authoritative, without cached guessed dimensions.
+                let row_size = Vec2::new(row_width, row_height);
+                let visible = row == 0
+                    || ui.is_rect_visible(egui::Rect::from_min_size(
+                        ui.next_widget_position(),
+                        row_size,
+                    ));
+                #[cfg(test)]
+                let visible = visible || self.graphs.draw_all_rows;
+                if visible {
+                    let response = ui.push_id(("graph-row", row), |ui| {
+                        // Do not let pixel rounding in an earlier row grow
+                        // later columns cumulatively at fractional UI scale.
+                        ui.set_width(row_width);
+                        ui.columns(count, |columns| {
+                            for (index, (column, chart)) in
+                                columns.iter_mut().zip(chunk).enumerate()
+                            {
+                                column.push_id(&chart.id, |ui| {
+                                    card(
+                                        ui,
+                                        chart,
+                                        now,
+                                        self.graphs.style,
+                                        (row + index) % 2 == 1,
+                                        t,
+                                    );
+                                });
+                            }
+                        });
                     });
-                    ui.add_space(8.0);
+                    if row == 0 {
+                        row_height = response.response.rect.height();
+                    }
+                    #[cfg(test)]
+                    {
+                        self.graphs.laid_out_cards += chunk.len();
+                    }
+                } else {
+                    // scope/push_id and allocate_space each consume one auto
+                    // ID, keeping later rows' hover IDs and geometry stable.
+                    ui.allocate_space(row_size);
                 }
-                if self.graphs.history.omitted > 0 {
-                    widgets::hover_label(
-                        ui,
-                        RichText::new(format!(
-                            "Dashboard limit: 512 series. {} additional fields are not charted.",
-                            self.graphs.history.omitted
-                        ))
-                        .color(t.text),
-                    );
-                }
-            });
+                ui.add_space(8.0);
+            }
+            if self.graphs.history.omitted > 0 {
+                widgets::hover_label(
+                    ui,
+                    RichText::new(format!(
+                        "Dashboard limit: 512 series. {} additional fields are not charted.",
+                        self.graphs.history.omitted
+                    ))
+                    .color(t.text),
+                );
+            }
+        });
     }
 }
 

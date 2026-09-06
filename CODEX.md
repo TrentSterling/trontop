@@ -5,6 +5,18 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.31 bounds graph-wall layout work (A22/A32).** The supported 512-chart wall
+was still laying out all card contents. It now measures one real row and reserves
+offscreen space, with stable IDs, shared row widths and category scroll reset.
+Two regressions compare visible text/geometry through deep scrolling and fractional
+scales; 250 ordinary tests pass, strict Clippy passes. The same-binary CPU probe
+and current build are recorded in `docs/GRAPH_WALL.md` / `docs/CURRENT_STATE.md`.
+No native input/window/tray interaction, preview replacement, user settings or
+upload. Native drag/close/soak and the remaining decisions are still open. This is
+a measured graph-page improvement, not a claimed explanation of native drag lag.
+
+### Previous alpha.30 memory checkpoint
+
 **Alpha.30 fixes memory data and expands the requested graphs (A06/A07/A32).**
 The old COMMITTED formula and page-file graph used sysinfo's commit-minus-physical
 estimate incorrectly. A background K32GetPerformanceInfo query now supplies actual

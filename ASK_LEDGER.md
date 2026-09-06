@@ -174,6 +174,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   startup/update, late cleanup, bounded samples, failure recovery and UI repaint
   restraint. About reports real lifecycle status. Native gates remain open;
   this is not an assumed cause of the crash. See `docs/TRAY_LIFECYCLE.md`.
+  Alpha.31 bounds graph-card layout to the visible rows plus one measuring row;
+  a 512-chart reference comparison verifies scroll/scale geometry and capped work.
+  CPU-only A/B timing is documented in `docs/GRAPH_WALL.md`, not a native FPS claim.
 - [x] **A23: Safe automation that does not mess with other work.** Headless fixtures
   do not open native windows, inject global input, change focus or execute viewport
   commands. `AGENTS.md` forbids the previous unsafe desktop behavior. Any future
@@ -223,6 +226,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   Alpha.30 adds real commit/pressure/cache/kernel-pool histories and a Memory
   filter, with missing intervals and retained labels. Six memory views and the
   overall dark/compact graph layouts reviewed offscreen; Trent's review remains.
+  Alpha.31 removes offscreen card layout, fixes fractional column-width drift,
+  and returns category selections to their first graph. Histories/metrics are not
+  reduced. Two regressions pass; final layout acceptance still belongs to Trent.
 
 ## Decisions to resolve, not silently implement or discard
 

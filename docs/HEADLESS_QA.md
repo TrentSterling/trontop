@@ -34,6 +34,14 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.31 adds strict visible-text/geometry comparison between visible-row and
+  full-row graph layout at the 512-chart cap, across deep local scrolling, modes
+  and three UI scales. Another regression verifies category changes return to the
+  first graph. The opt-in `graph_wall_cpu_timing_probe` compares the two paths in
+  one optimized test binary, including CPU tessellation but not GPU/native work.
+  Ordinary suite: 250 pass, 17 ignored; strict Clippy passes. `GRAPH_WALL.md` records
+  the bounded layout fix, measurements and native limitations.
+
 - Alpha.30 adds five memory-counter regressions for page-to-byte conversion,
   independent commit values, cached failure/recovery, graph gaps, exported nulls/
   provenance and stable compact dark/light fields. Six additional memory PNGs

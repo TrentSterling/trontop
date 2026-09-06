@@ -1,4 +1,73 @@
-# Graph wall: alpha.27, memory correction in alpha.30
+# Graph wall: alpha.31 layout performance
+
+## Alpha.31: bounded offscreen layout (A22/A32)
+
+The graph wall previously built every card's labels, frames and child UI on every
+paint, even though plot geometry was clipped. Alpha.31 measures one real row per
+frame and reserves space for offscreen rows without building their contents.
+Histories, available metrics, chart precision and sampling frequency are unchanged.
+The first row is intentionally still laid out when scrolled away; its measured
+height accounts for current fonts, scale and theme margins without a guessed cache.
+
+Each row uses a shared width, preventing cumulative fractional-scale rounding
+from shifting later columns. Skipped rows consume the same single parent auto ID
+as a real row scope, preserving child hover identity. Category changes return to
+the first row; switching Lines/Bars preserves the current scroll position.
+
+The existing-app redesign skill guided geometry/hover checks while preserving
+Tront's requested gradient, rounded zebra grid and dense graph layout. No visual
+rebrand, additional telemetry query, worker, runtime asset or dependency was added.
+Pinned egui source confirms the allocation/ID rules used here; see its
+[ScrollArea documentation](https://docs.rs/egui/0.35.0/egui/containers/scroll_area/struct.ScrollArea.html)
+and `egui-0.35.0/src/ui.rs` (`scope_dyn`, `allocate_space`, `columns_dyn`).
+
+Two new ordinary regressions compare the optimized wall to a test-only full-layout
+reference at the 512-chart limit. Visible text and bounds match within 0.1 logical
+point through top/middle/bottom/return scrolling, dark/light, and 1/1.5/2 UI scales.
+At most 24 cards are laid out in those cases. A separate local-input test proves
+deep scrolling reaches the network tail, then Memory and Everything restart at
+their first graphs. Initial tests exposed the fractional-width drift; fixing row
+width restored strict geometry comparison. Fixture freshness was frozen to prevent
+elapsed test execution from changing one side's status labels.
+
+Full ordinary suite: **250 passed, 0 failed, 17 ignored**, 62.70 s. Strict Clippy
+passed (7.74 s). Native dragging, presentation, close, GPU submission, live-provider
+acceptance and the 60-minute soak are not covered by these CPU/layout checks.
+
+Optimized same-binary comparison: 20 warm-up and 120 measured hover-changing frames
+per case, including the production chrome/layout and CPU tessellation. Reference
+uses the same row-width/ID corrections but lays out every card. These are synthetic
+120-second histories, not telemetry collected from the working desktop.
+
+| Charts | Logical window | Reference p95 (ms) | Visible rows p95 (ms) | Cards laid out |
+| --- | --- | --- | --- | --- |
+| 25 | 1040x640 | 0.6550 | 0.4433 | 4 |
+| 25 | 1920x1080 | 0.9745 | 0.9226 | 20 |
+| 153 | 1040x640 | 0.9785 | 0.4251 | 4 |
+| 153 | 1920x1080 | 1.4937 | 0.9248 | 20 |
+| 512 | 1040x640 | 2.4778 | 0.2812 | 4 |
+| 512 | 1920x1080 | 3.1242 | 0.8755 | 20 |
+
+At 512 charts, median CPU time changed from 2.4251 to 0.2157 ms compact and
+2.6935 to 0.5680 ms wide. The earlier unmodified-row baseline was 2.7232/3.0529 ms
+p95 respectively. This is one local run, not a promise every frame gets faster:
+the 25-chart wide case's maximum was 1.9275 ms optimized versus 1.1619 ms reference.
+There is no claim this identifies the user's native drag/close delay.
+
+The selected offscreen visual test passed (6.45 s), generating six PNGs with the
+actual egui-WGPU renderer on RTX 5070 Ti/Vulkan. All six were inspected: dark,
+compact, light, Bars, thermal filter and unavailable/empty histories. Text alignment,
+rounded zebra surfaces, chart fills and dense spacing are retained. No native
+window, input, tray or personal settings were touched. Exact executable identity
+is recorded in `CURRENT_STATE.md`; no source upload or release was performed.
+
+```powershell
+cargo test --offline graph_wall_ -- --nocapture --test-threads=1
+cargo test --offline --release graph_wall_cpu_timing_probe -- --ignored --nocapture --test-threads=1
+cargo test --offline render_graph_wall_visual_pass -- --ignored --nocapture --test-threads=1
+```
+
+## Earlier graph data additions
 
 Alpha.30 replaces the incorrectly labelled page-file graph with real Windows
 commit charge/pressure, system cache and kernel-pool charts, with a Memory filter.

@@ -3,11 +3,25 @@ use super::*;
 use std::time::{Duration, Instant};
 
 pub(super) fn populated(settings: ThemeSettings) -> TrontopApp {
+    populated_with_networks(settings, None)
+}
+
+fn populated_with_networks(settings: ThemeSettings, networks: Option<usize>) -> TrontopApp {
     let mut app = super::app(settings, false);
     let start = Instant::now() - Duration::from_secs(120);
     for index in 0..=120 {
         let at = start + Duration::from_secs(index);
         let mut s = fixture();
+        if let Some(count) = networks {
+            s.networks = (0..count)
+                .map(|i| NetworkRow {
+                    name: format!("Synthetic interface {i:03}"),
+                    received_bytes_per_sec: 512_000.0 + index as f64 * 1_000.0,
+                    transmitted_bytes_per_sec: 128_000.0,
+                    ..Default::default()
+                })
+                .collect();
+        }
         s.sequence = index + 1;
         s.cpu_percent = 30.0 + (index as f32 * 0.2).sin() * 13.0;
         s.memory_used_bytes += ((index as f32 * 0.1).sin().abs() * 2_000_000_000.0) as u64;
@@ -63,6 +77,146 @@ pub(super) fn populated(settings: ThemeSettings) -> TrontopApp {
 }
 
 #[test]
+#[ignore = "CPU-only graph wall timing with synthetic histories; no native window, input or providers"]
+fn graph_wall_cpu_timing_probe() {
+    use std::hint::black_box;
+    for networks in [0, 64, 256] {
+        for size in [Vec2::new(1040.0, 640.0), Vec2::new(1920.0, 1080.0)] {
+            for (label, all) in [("reference", true), ("visible_rows", false)] {
+                let mut app = populated_with_networks(ThemeSettings::default(), Some(networks));
+                app.graphs.draw_all_rows = all;
+                let ctx = egui::Context::default();
+                theme::install(&ctx, app.theme);
+                let mut times = Vec::with_capacity(120);
+                for index in 0..140 {
+                    let start = Instant::now();
+                    let output = frame(
+                        &ctx,
+                        &mut app,
+                        size,
+                        vec![egui::Event::PointerMoved(egui::pos2(
+                            430.0 + (index % 20) as f32 * 5.0,
+                            390.0,
+                        ))],
+                    );
+                    black_box(ctx.tessellate(output.shapes, output.pixels_per_point));
+                    if index >= 20 {
+                        times.push(start.elapsed().as_secs_f64() * 1e6);
+                    }
+                }
+                times.sort_by(f64::total_cmp);
+                println!(
+                    "GRAPH_WALL_CPU mode={label} networks={networks} size={size:?} cards={} median_us={:.1} p95_us={:.1} max_us={:.1}",
+                    app.graphs.laid_out_cards, times[60], times[114], times[119]
+                );
+            }
+        }
+    }
+}
+
+fn visible_text(output: &egui::FullOutput) -> Vec<(String, egui::Rect)> {
+    text_shapes(output)
+        .into_iter()
+        .filter(|(text, clip)| clip.intersects(text.visual_bounding_rect()))
+        .map(|(text, _)| (text.galley.job.text.clone(), text.visual_bounding_rect()))
+        .collect()
+}
+
+#[test]
+fn graph_wall_visible_rows_match_full_layout_through_scroll_and_scale() {
+    for dark in [true, false] {
+        for (size, scale) in [
+            (Vec2::new(1040.0, 640.0), 1.0),
+            (Vec2::new(1280.0, 760.0), 1.5),
+            (Vec2::new(1920.0, 1080.0), 2.0),
+        ] {
+            let settings = ThemeSettings {
+                dark,
+                ..Default::default()
+            };
+            let mut reference = populated_with_networks(settings, Some(256));
+            reference.graphs.draw_all_rows = true;
+            let mut actual = populated_with_networks(settings, Some(256));
+            // Both fixtures are deliberately stale at the same frozen instant;
+            // execution speed must not move just one across a status boundary.
+            let now = Instant::now() + Duration::from_secs(10);
+            reference.graphs.fixed_now = Some(now);
+            actual.graphs.fixed_now = Some(now);
+            let stale = Instant::now() - Duration::from_secs(30);
+            for app in [&mut reference, &mut actual] {
+                app.snapshot
+                    .diagnostics
+                    .get_mut(crate::diagnostics::Provider::System)
+                    .record(
+                        stale,
+                        Duration::ZERO,
+                        crate::diagnostics::State::Live,
+                        None,
+                        None,
+                    );
+            }
+            let reference_ctx = egui::Context::default();
+            let actual_ctx = egui::Context::default();
+            for ctx in [&reference_ctx, &actual_ctx] {
+                theme::install(ctx, settings);
+                ctx.set_pixels_per_point(scale);
+            }
+            for scroll in [0.0, -2400.0, -200_000.0, 200_000.0] {
+                let event = || {
+                    if scroll == 0.0 {
+                        vec![]
+                    } else {
+                        vec![
+                            egui::Event::PointerMoved(egui::pos2(size.x * 0.75, 500.0)),
+                            egui::Event::MouseWheel {
+                                phase: egui::TouchPhase::Move,
+                                unit: egui::MouseWheelUnit::Point,
+                                delta: Vec2::new(0.0, scroll),
+                                modifiers: egui::Modifiers::NONE,
+                            },
+                        ]
+                    }
+                };
+                frame(&reference_ctx, &mut reference, size, event());
+                frame(&actual_ctx, &mut actual, size, event());
+                // Let egui's local scroll animation settle without native input.
+                for _ in 0..24 {
+                    frame(&reference_ctx, &mut reference, size, vec![]);
+                    frame(&actual_ctx, &mut actual, size, vec![]);
+                }
+                let expected = frame(&reference_ctx, &mut reference, size, vec![]);
+                let output = frame(&actual_ctx, &mut actual, size, vec![]);
+                let expected = visible_text(&expected);
+                let output = visible_text(&output);
+                assert_eq!(
+                    output.len(),
+                    expected.len(),
+                    "visible text count: {size:?}/{scale}/{scroll}"
+                );
+                for ((text, rect), (expected_text, expected_rect)) in output.iter().zip(&expected) {
+                    assert_eq!(
+                        text, expected_text,
+                        "visible text: {size:?}/{scale}/{scroll}"
+                    );
+                    let tolerance = 0.1;
+                    assert!(
+                        (rect.min - expected_rect.min).length() <= tolerance
+                            && (rect.max - expected_rect.max).length() <= tolerance,
+                        "{text} moved: {rect:?} vs {expected_rect:?} at {size:?}/{scale}/{scroll}"
+                    );
+                }
+                assert_eq!(reference.graphs.laid_out_cards, 512);
+                assert!(
+                    actual.graphs.laid_out_cards <= 24,
+                    "offscreen cards still laid out: {}",
+                    actual.graphs.laid_out_cards
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn graph_wall_controls_respond_to_local_input_without_native_commands() {
     let ctx = egui::Context::default();
     let mut app = populated(ThemeSettings::default());
@@ -91,6 +245,66 @@ fn graph_wall_controls_respond_to_local_input_without_native_commands() {
         text_shapes(&output)
             .iter()
             .any(|(text, _)| text.galley.job.text == "CPU usage")
+    );
+}
+
+#[test]
+fn graph_wall_filter_returns_to_first_row_after_deep_scroll() {
+    let ctx = egui::Context::default();
+    let mut app = populated_with_networks(ThemeSettings::default(), Some(256));
+    theme::install(&ctx, app.theme);
+    let size = Vec2::new(1040.0, 640.0);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    frame(
+        &ctx,
+        &mut app,
+        size,
+        vec![
+            egui::Event::PointerMoved(egui::pos2(850.0, 500.0)),
+            egui::Event::MouseWheel {
+                phase: egui::TouchPhase::Move,
+                unit: egui::MouseWheelUnit::Point,
+                delta: Vec2::new(0.0, -200_000.0),
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    for _ in 0..24 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = frame(&ctx, &mut app, size, vec![]);
+    assert!(
+        visible_text(&output)
+            .iter()
+            .any(|(text, _)| text.starts_with("Synthetic interface")),
+        "scroll must actually reach the network tail"
+    );
+    click_local_text(&ctx, &mut app, size, "Memory");
+    for _ in 0..4 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = frame(&ctx, &mut app, size, vec![]);
+    assert!(
+        visible_text(&output)
+            .iter()
+            .any(|(text, _)| text == "Commit charge")
+    );
+    assert!(
+        !visible_text(&output)
+            .iter()
+            .any(|(text, _)| text.starts_with("Synthetic interface"))
+    );
+    click_local_text(&ctx, &mut app, size, "Everything");
+    for _ in 0..4 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = frame(&ctx, &mut app, size, vec![]);
+    assert!(
+        visible_text(&output)
+            .iter()
+            .any(|(text, _)| text == "CPU usage")
     );
 }
 
