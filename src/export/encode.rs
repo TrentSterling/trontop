@@ -79,6 +79,8 @@ fn json_snapshot(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::Resu
             json!({
                 "host_name": private.then_some(&s.host_name), "os_name": s.os_name,
                 "cpu": {"brand": s.cpu.brand, "frequency_mhz": s.cpu.frequency_mhz,
+                    "frequency_source": "Windows CurrentMhz / CPU 0 (legacy power clock, not measured boost)",
+                    "clocks": cpu_clocks(s, c.at),
                     "physical_cores": s.cpu.physical_cores, "logical_cores": s.cpu.logical_cores,
                     "percent": s.cpu_percent, "temperature_c": null, "temperature_provider": "not_connected"},
                 "memory_used_bytes": s.memory_used_bytes, "memory_total_bytes": s.memory_total_bytes,
@@ -178,6 +180,21 @@ fn json_snapshot(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::Resu
         "source": "last complete service inventory; command observations not included"
     })), stop)?;
     w.write_all(b"\n}\n")
+}
+
+fn cpu_clocks(s: &crate::model::SystemSnapshot, at: std::time::Instant) -> Value {
+    let h = s.diagnostics.get(Provider::CpuClock);
+    let v = s.cpu.clocks.as_ref();
+    json!({
+        "source": crate::cpu_clock::SOURCE, "semantics": crate::cpu_clock::SEMANTICS,
+        "state": h.state(Provider::CpuClock, at).label(),
+        "last_usable_age_seconds": seconds(h.last_success, at),
+        "average_mhz": v.map(|v| v.average_mhz), "fastest_mhz": v.map(|v| v.fastest_mhz),
+        "slowest_mhz": v.map(|v| v.slowest_mhz), "interval_seconds": v.map(|v| v.interval_seconds),
+        "processors": v.map(|v| v.processors.iter().map(|p| json!({
+            "group": p.group, "number": p.number, "nominal_mhz": p.nominal_mhz, "interval_mhz": p.mhz,
+        })).collect::<Vec<_>>())
+    })
 }
 
 fn memory_counters(s: &crate::model::SystemSnapshot, at: std::time::Instant) -> Value {

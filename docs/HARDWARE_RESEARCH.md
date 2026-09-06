@@ -3,6 +3,16 @@
 Scope: A06, A10, A22. Read-only research and probes; no installed software,
 drivers, services, power-policy changes, stress workload or desktop automation.
 
+## Alpha.34 follow-up
+
+The CPU frequency implementation is now connected through Windows performance-state
+deltas and per-processor nominal clocks. Three measured interval averages changed
+from 5165.58 to 5147.64 to 5123.62 MHz on the reference machine, instead of using
+the static 3700 MHz field. `CPU_CLOCK.md` records the pinned System Informer source,
+formula, private-API limits, group identity, probe timings and retained/gap behavior.
+This advances A06; it does not claim exact Task Manager sampling/aggregation parity
+or supply CPU temperatures. The sections below retain the earlier alpha.33 audit.
+
 ## What the evidence actually says
 
 There is a confirmed measurement-label problem, not evidence of a Rust language
@@ -58,7 +68,7 @@ time, performance relative to nominal, and effective frequency are distinct.
 | [btop4win](https://github.com/aristocratos/btop4win) | Its extended sensor configuration uses LibreHardwareMonitor via LHM-CppExport; the documented build needs additional libraries and elevation. | Switching language does not supply sensors automatically. Do not silently add those runtime requirements to our portable EXE. |
 | [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) | Broad hardware coverage; some sensors need administrator access. | Capability depends on the device and backend. Current absence is not permission to invent zero or an unrelated temperature. |
 | [LHM Intel CPU backend](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LibreHardwareMonitorLib/Hardware/Cpu/IntelCpu.cs) | The inspected implementation uses Intel MSR access through its PawnIO module for low-level CPU sensors. | CPU package/core temperatures are not another ordinary sysinfo property. No LHM/PawnIO code or driver was added. |
-| [System Informer](https://github.com/winsiderss/systeminformer) | Relevant native-monitor reference for deeper process and performance coverage. | Its exact CPU-frequency algorithm was not established in this pass; repository access was incomplete. Do not attribute an unverified formula to it. |
+| [System Informer](https://github.com/winsiderss/systeminformer) | Follow-up source access established performance-distribution hit deltas and nominal-frequency scaling. | Alpha.34 independently implements bounded native parsing and per-processor nominal weighting. See `CPU_CLOCK.md` for the pinned source and differences; no claim of identical aggregate semantics. |
 
 Boxel's owner-authored `crates/boxel/src/color.rs` and `ui/theme_window.rs` were
 also inspected for ColorMagic. The six palette-family bands and HSL conversion

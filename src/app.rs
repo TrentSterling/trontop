@@ -1675,6 +1675,31 @@ impl TrontopApp {
 
     fn cpu_performance(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
+        let clock_health = self
+            .snapshot
+            .diagnostics
+            .get(crate::diagnostics::Provider::CpuClock);
+        let clock_state = clock_health.state(
+            crate::diagnostics::Provider::CpuClock,
+            std::time::Instant::now(),
+        );
+        let clocks = self.snapshot.cpu.clocks.as_ref();
+        let ghz = |value: Option<f64>| {
+            value.map_or_else(
+                || "-- GHz".into(),
+                |v| {
+                    format!(
+                        "{}{:.2} GHz",
+                        if clock_state == crate::diagnostics::State::Live {
+                            ""
+                        } else {
+                            "~"
+                        },
+                        v / 1000.0
+                    )
+                },
+            )
+        };
         widgets::performance_heading(
             ui,
             "CPU",
@@ -1716,12 +1741,8 @@ impl TrontopApp {
             );
             widgets::metric(
                 &mut columns[1],
-                "POWER CLOCK",
-                &if self.snapshot.cpu.frequency_mhz > 0 {
-                    format!("{:.2} GHz", self.snapshot.cpu.frequency_mhz as f32 / 1000.0)
-                } else {
-                    "-- GHz".into()
-                },
+                "AVG CLOCK",
+                &ghz(clocks.map(|v| v.average_mhz)),
                 t,
             );
             widgets::metric(
@@ -1738,6 +1759,50 @@ impl TrontopApp {
             );
         });
         ui.add_space(10.0);
+        ui.horizontal_wrapped(|ui| {
+            widgets::status_pill(
+                ui,
+                &format!("CPU clocks: {}", clock_state.label()),
+                diagnostics::state_color(clock_state, t),
+            );
+            widgets::hover_label(
+                ui,
+                RichText::new("Windows performance-state average / ~ = cached")
+                    .size(11.0)
+                    .color(t.text_muted),
+            )
+            .on_hover_text(crate::cpu_clock::SEMANTICS);
+        });
+        ui.columns(2, |columns| {
+            widgets::metric(
+                &mut columns[0],
+                "FASTEST PROCESSOR",
+                &ghz(clocks.map(|v| v.fastest_mhz)),
+                t,
+            );
+            widgets::metric(
+                &mut columns[1],
+                "SLOWEST REPORTING",
+                &ghz(clocks.map(|v| v.slowest_mhz)),
+                t,
+            );
+        });
+        widgets::detail_row(
+            ui,
+            "Clock contributors",
+            &clocks.map_or_else(
+                || "--".into(),
+                |v| {
+                    format!(
+                        "{} / {} logical processors · {:.2}s interval",
+                        v.contributing(),
+                        v.processors.len(),
+                        v.interval_seconds
+                    )
+                },
+            ),
+            t,
+        );
         widgets::detail_row(
             ui,
             "Physical cores",
@@ -1751,12 +1816,23 @@ impl TrontopApp {
             t,
         );
         widgets::detail_row(ui, "Operating system", &self.snapshot.os_name, t);
-        widgets::hover_label(
-            ui,
-            RichText::new("Power clock is Windows CurrentMhz for CPU 0, not measured boost speed.")
-                .size(11.0)
-                .color(t.text_muted),
-        );
+        egui::CollapsingHeader::new("Clock source and per-processor readings").show(ui, |ui| {
+            widgets::hover_label(ui, RichText::new(crate::cpu_clock::SOURCE).size(11.0).color(t.text_muted));
+            widgets::hover_label(ui, RichText::new(crate::cpu_clock::SEMANTICS).size(11.0).color(t.text_muted));
+            widgets::detail_row(ui, "Legacy CurrentMhz / CPU 0", &if self.snapshot.cpu.frequency_mhz > 0 {
+                format!("{:.2} GHz", self.snapshot.cpu.frequency_mhz as f64 / 1000.0)
+            } else { "-- GHz".into() }, t);
+            widgets::hover_label(ui, RichText::new("Legacy power clock is kept separate, never substituted for a missing interval. No new driver is installed.").size(11.0).color(t.text_muted));
+            if let Some(clocks) = clocks {
+                let row_height = 18.0 + widgets::surface(ui, t, false).total_margin().sum().y;
+                egui::ScrollArea::vertical().id_salt("cpu-clock-processors").max_height(240.0)
+                    .show_rows(ui, row_height, clocks.processors.len(), |ui, rows| {
+                for p in &clocks.processors[rows] {
+                    widgets::detail_row(ui, &format!("Group {} / CPU {} · nominal {:.2} GHz", p.group, p.number, p.nominal_mhz as f64 / 1000.0), &ghz(p.mhz), t);
+                }
+                });
+            }
+        });
     }
 
     fn memory_performance(&self, ui: &mut egui::Ui) {

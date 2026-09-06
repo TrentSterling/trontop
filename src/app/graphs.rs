@@ -126,8 +126,10 @@ impl Dashboard {
     // creates a second copy of history. A clipped row reserves space only.
     pub(super) fn overview_wall(&self, ui: &mut egui::Ui, headline: bool, t: Tokens) {
         let is_headline = |chart: &&Chart| {
-            matches!(chart.id, history::Id::System(_) | history::Id::Activity(_))
-                && chart.group == Group::System
+            matches!(
+                chart.id,
+                history::Id::System(_) | history::Id::Activity(_) | history::Id::CpuClock(_)
+            ) && chart.group == Group::System
                 || matches!(
                     chart.id,
                     history::Id::Gpu(_, 0 | 1) | history::Id::Network(_, _)
@@ -140,7 +142,7 @@ impl Dashboard {
             .filter(|chart| chart.group != Group::Cores)
             .filter(|chart| is_headline(chart) == headline)
             .collect();
-        let cols = ((ui.available_width() / 250.0).floor() as usize).clamp(1, 4);
+        let cols = ((ui.available_width() / 250.0).floor() as usize).clamp(1, 5);
         let width = ui.available_width();
         let mut height = 0.0;
         let now = Instant::now();

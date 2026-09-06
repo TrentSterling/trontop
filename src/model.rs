@@ -171,6 +171,8 @@ pub struct ProcessTreeRow {
 pub struct CpuInfo {
     pub brand: String,
     pub frequency_mhz: u64,
+    /// Dynamic Windows performance-state interval; never a CurrentMhz fallback.
+    pub clocks: Option<crate::cpu_clock::Values>,
     pub physical_cores: usize,
     pub logical_cores: usize,
     /// Per-logical-processor busy time, in sysinfo's Windows processor order.

@@ -150,6 +150,7 @@ fn populated_for(settings: ThemeSettings, networks: Option<usize>, cores: usize)
         let at = start + Duration::from_secs(index);
         let mut s = fixture();
         s.cpu.logical_cores = cores;
+        s.cpu.clocks = Some(super::cpu_clock::values(cores, index as f64 * 0.12));
         if let Some(count) = networks {
             s.networks = (0..count)
                 .map(|i| NetworkRow {

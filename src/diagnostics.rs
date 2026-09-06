@@ -13,10 +13,11 @@ pub enum Provider {
     StorageSensors,
     DiskActivity,
     MemoryCounters,
+    CpuClock,
 }
 
 impl Provider {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::System,
         Self::GpuActivity,
         Self::GpuSensors,
@@ -26,6 +27,7 @@ impl Provider {
         Self::StorageSensors,
         Self::DiskActivity,
         Self::MemoryCounters,
+        Self::CpuClock,
     ];
 
     pub fn name(self) -> &'static str {
@@ -39,6 +41,7 @@ impl Provider {
             Self::StorageSensors => "Drive sensors / Windows storage",
             Self::DiskActivity => "Physical disks / Windows PDH",
             Self::MemoryCounters => "Memory / Windows commit counters",
+            Self::CpuClock => "CPU clocks / Windows performance states",
         }
     }
 
@@ -89,6 +92,7 @@ pub enum Issue {
     StorageSensors,
     DiskCounters,
     MemoryCounters,
+    CpuClock,
 }
 
 impl Issue {
@@ -113,6 +117,9 @@ impl Issue {
             }
             Self::MemoryCounters => {
                 "Windows memory counters could not refresh; prior values remain cached."
+            }
+            Self::CpuClock => {
+                "CPU clock counters are unsupported or failed validation; prior values remain cached."
             }
         }
     }

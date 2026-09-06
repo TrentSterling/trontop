@@ -65,6 +65,51 @@ fn encoded(capture: &Capture) -> Vec<u8> {
 }
 
 #[test]
+fn cpu_clock_export_keeps_nulls_interval_group_identity_and_source() {
+    let mut c = capture(false, Format::Json);
+    c.snapshot.cpu.frequency_mhz = 3700;
+    let missing: serde_json::Value = serde_json::from_slice(&encoded(&c)).unwrap();
+    assert!(missing["system"]["cpu"]["clocks"]["average_mhz"].is_null());
+    c.snapshot.cpu.clocks = Some(crate::cpu_clock::Values {
+        average_mhz: 5125.0,
+        fastest_mhz: 5400.0,
+        slowest_mhz: 4300.0,
+        interval_seconds: 1.2,
+        processors: vec![crate::cpu_clock::Processor {
+            group: 1,
+            number: 2,
+            nominal_mhz: 3200,
+            mhz: None,
+        }],
+    });
+    let h = c.snapshot.diagnostics.get_mut(Provider::CpuClock);
+    h.record(
+        c.at - Duration::from_secs(1),
+        Duration::ZERO,
+        State::Live,
+        None,
+        None,
+    );
+    h.record(c.at, Duration::ZERO, State::Unavailable, None, None);
+    let doc: serde_json::Value = serde_json::from_slice(&encoded(&c)).unwrap();
+    let v = &doc["system"]["cpu"]["clocks"];
+    assert_eq!(v["average_mhz"], 5125.0);
+    assert_eq!(v["interval_seconds"], 1.2);
+    assert_eq!(v["state"], "Stale");
+    assert_eq!(v["last_usable_age_seconds"], 1.0);
+    assert_eq!(v["processors"][0]["group"], 1);
+    assert_eq!(v["processors"][0]["number"], 2);
+    assert!(v["processors"][0]["interval_mhz"].is_null());
+    assert_eq!(v["source"], crate::cpu_clock::SOURCE);
+    assert!(
+        doc["system"]["cpu"]["frequency_source"]
+            .as_str()
+            .unwrap()
+            .contains("legacy power clock")
+    );
+}
+
+#[test]
 fn empty_json_is_valid_and_has_no_invented_system_sample() {
     let capture = Capture::new(SystemSnapshot::default(), Options::default());
     let mut bytes = Vec::new();

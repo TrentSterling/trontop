@@ -3,6 +3,73 @@ use crate::diagnostics::{Provider, State};
 use history::Id;
 
 #[test]
+fn cpu_clock_graphs_keep_provider_timestamps_and_failure_gaps() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.cpu.frequency_mhz = 3700;
+    let mut history = History::default();
+    history.sample(&s, now);
+    assert!(history.chart(&Id::CpuClock(0)).unwrap().current.is_none());
+    s.cpu.clocks = Some(crate::cpu_clock::Values {
+        average_mhz: 5125.0,
+        fastest_mhz: 5400.0,
+        slowest_mhz: 4300.0,
+        interval_seconds: 1.0,
+        processors: vec![],
+    });
+    s.diagnostics
+        .get_mut(Provider::CpuClock)
+        .record(now, Duration::ZERO, State::Live, None, None);
+    history.sample(&s, now);
+    assert_eq!(
+        history.chart(&Id::CpuClock(0)).unwrap().current,
+        Some(5125.0)
+    );
+    assert_eq!(
+        history.chart(&Id::CpuClock(1)).unwrap().current,
+        Some(5400.0)
+    );
+    let later = now + Duration::from_secs(1);
+    s.diagnostics.get_mut(Provider::CpuClock).record(
+        later,
+        Duration::ZERO,
+        State::Unavailable,
+        None,
+        None,
+    );
+    history.sample(&s, later);
+    for id in [Id::CpuClock(0), Id::CpuClock(1)] {
+        let c = history.chart(&id).unwrap();
+        assert_eq!(c.state(later), "Cached");
+        assert_eq!(c.points.len(), 2);
+        assert_eq!(c.points.back().unwrap().value, None);
+        assert_eq!(c.measured_at, Some(now));
+    }
+    // Provider backoff cannot produce duplicated points on UI repaints.
+    history.sample(&s, later + Duration::from_secs(1));
+    assert_eq!(history.chart(&Id::CpuClock(0)).unwrap().points.len(), 2);
+    s.diagnostics.get_mut(Provider::CpuClock).record(
+        later + Duration::from_secs(2),
+        Duration::ZERO,
+        State::Live,
+        None,
+        None,
+    );
+    s.cpu.clocks.as_mut().unwrap().average_mhz = 4900.0;
+    history.sample(&s, later + Duration::from_secs(2));
+    assert_eq!(
+        history
+            .chart(&Id::CpuClock(0))
+            .unwrap()
+            .points
+            .back()
+            .unwrap()
+            .value,
+        Some(4900.0)
+    );
+}
+
+#[test]
 fn logical_cpu_histories_are_distinct_and_missing_samples_leave_gaps() {
     let now = Instant::now();
     let mut s = sample(now);

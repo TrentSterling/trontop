@@ -51,6 +51,9 @@ impl TrontopApp {
                 egui::CollapsingHeader::new("Renderer license (egui-wgpu / MIT)").show(ui, |ui| {
                     ui.label(include_str!("../../vendor/egui-wgpu/LICENSE-MIT"));
                 });
+                egui::CollapsingHeader::new("CPU ABI reference (System Informer / MIT)").show(ui, |ui| {
+                    ui.label(include_str!("../../docs/SYSTEM_INFORMER_NOTICE.txt"));
+                });
                 ui.add_space(12.0);
                 widgets::section_label(ui, "Provider health", t);
                 let now = Instant::now();

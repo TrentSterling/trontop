@@ -26,6 +26,7 @@ fn cpu_info(system: &System, physical_cores: usize) -> CpuInfo {
             .map(|cpu| cpu.brand().trim().to_string())
             .unwrap_or_default(),
         frequency_mhz: system.cpus().first().map_or(0, sysinfo::Cpu::frequency),
+        clocks: None,
         physical_cores,
         logical_cores: system.cpus().len(),
         logical_usage: system
@@ -155,6 +156,7 @@ fn sample_loop(
     let mut previous_sample = Instant::now();
     let mut diagnostics = Diagnostics::default();
     let mut memory = crate::memory_metrics::Sampler::default();
+    let mut cpu_clock = crate::cpu_clock::Sampler::default();
     let mut process_controls = HashMap::<(u32, u64), ProcessControlInfo>::new();
 
     system.refresh_cpu_frequency();
@@ -179,6 +181,8 @@ fn sample_loop(
         system.refresh_memory_specifics(sysinfo::MemoryRefreshKind::nothing().with_ram());
         memory.refresh();
         *diagnostics.get_mut(Provider::MemoryCounters) = memory.health.clone();
+        cpu_clock.refresh();
+        *diagnostics.get_mut(Provider::CpuClock) = cpu_clock.health.clone();
         system.refresh_processes(ProcessesToUpdate::All, true);
         disks.refresh(true);
         networks.refresh(true);
@@ -344,7 +348,8 @@ fn sample_loop(
             })
             .collect();
         let user_rows = aggregate_users(&processes);
-        let cpu = cpu_info(&system, physical_cores);
+        let mut cpu = cpu_info(&system, physical_cores);
+        cpu.clocks = cpu_clock.values.clone();
 
         let sensors = sensor_sampler.sample();
         if let Some(at) = sensors.attempted_at {

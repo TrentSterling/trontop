@@ -5,6 +5,19 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.34 connects dynamic CPU clocks (A06/A07/A22/A32).** Native performance-state
+deltas are weighted by each processor's nominal MHz, with explicit source and
+interval semantics. Performance shows average/fastest/slowest readings and a
+virtualized per-processor list; Graphs and Overview share average/fastest histories.
+Read `docs/CPU_CLOCK.md` for the pinned reference, native probe and private-API
+limits. CPU temperatures and exact Task Manager frequency aggregation are not
+claimed. Build/test evidence belongs in `docs/CURRENT_STATE.md`. Nothing uploaded
+or launched, and no personal settings/desktop input changed. The brainstorm remains
+proposals, not additional release requirements. Continue existing unchecked asks,
+not an unrequested recorder or another speculative styling audit.
+
+### Previous alpha.33 checkpoint
+
 **Alpha.33 adds the requested all-core grid, dense Overview and ColorMagic
 randomization (A06/A13/A32).** Distinct logical-processor histories share Graphs'
 bounded store; visible-row layout is tested through 256 cores. Six palette families,

@@ -5,7 +5,17 @@ historical engineering log, not an expanding release checklist. Its old unchecke
 extras do not become release requirements unless linked to an agreed ask ID.
 Keep the current source/build evidence in `docs/CURRENT_STATE.md`.
 
-## Current: alpha.33 cores, Overview and ColorMagic
+## Current: alpha.34 dynamic CPU clocks
+
+- A06 now has a read-only native performance-distribution provider; per-processor
+  nominal references replace the static power-clock field as the main readout.
+- Average/fastest histories, per-processor values, interval/export provenance,
+  cached/gap states and bounded native parsing. See `docs/CPU_CLOCK.md`.
+- Native probe confirms changing intervals and 24 distinct processor records.
+  Build identity and final gates: `docs/CURRENT_STATE.md`. CPU temperatures,
+  cross-monitor/field parity and native responsiveness gates remain unchecked.
+
+## Previous: alpha.33 cores, Overview and ColorMagic
 
 - Completed the September 6 A06/A13/A32 implementation slice: logical-processor
   histories/grid, dense shared-history Overview, coordinated randomizer and undo.

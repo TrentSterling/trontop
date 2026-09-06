@@ -11,6 +11,7 @@ pub(super) enum Id {
     System(u8),
     Memory(u8),
     Cpu(usize),
+    CpuClock(u8),
     Activity(String),
     Gpu(String, u8),
     Temperature(String, u16),
@@ -308,6 +309,43 @@ impl History {
             );
         }
         let memory_health = s.diagnostics.get(Provider::MemoryCounters);
+        let clock_health = s.diagnostics.get(Provider::CpuClock);
+        let clock_state = if clock_health.state(Provider::CpuClock, now) == State::Live {
+            "Live"
+        } else if s.cpu.clocks.is_some() {
+            "Cached"
+        } else {
+            clock_health.state(Provider::CpuClock, now).label()
+        };
+        for (index, title, value) in [
+            (
+                0,
+                "CPU average clock",
+                s.cpu.clocks.as_ref().map(|v| v.average_mhz),
+            ),
+            (
+                1,
+                "CPU fastest clock",
+                s.cpu.clocks.as_ref().map(|v| v.fastest_mhz),
+            ),
+        ] {
+            self.field(
+                Field {
+                    id: Id::CpuClock(index),
+                    title,
+                    detail: "Windows performance-state interval / per-processor nominal clocks",
+                    group: Group::System,
+                    unit: Unit::Mhz,
+                    value: value.map(|v| v as f32),
+                    at: clock_health.last_attempt,
+                    state: clock_state,
+                    maximum: None,
+                    cadence: Duration::from_secs(1),
+                    partial: false,
+                },
+                now,
+            );
+        }
         // Keep other devices chartable on many-core machines, within the shared
         // 512-series budget. Processor indices never depend on current load/sort.
         for index in 0..s.cpu.logical_cores.min(256) {

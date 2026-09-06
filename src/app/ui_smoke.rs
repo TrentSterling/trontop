@@ -9,6 +9,7 @@ use eframe::App;
 mod actions;
 mod compact_layout;
 mod contrast;
+mod cpu_clock;
 mod disks;
 mod export;
 mod failure;
@@ -90,6 +91,7 @@ fn fixture() -> SystemSnapshot {
         cpu: CpuInfo {
             brand: "Fixture processor with a long descriptive model name".into(),
             frequency_mhz: 4900,
+            clocks: Some(cpu_clock::values(32, 0.0)),
             physical_cores: 24,
             logical_cores: 32,
             logical_usage: (0..32).map(|i| Some((i * 7 % 101) as f32)).collect(),

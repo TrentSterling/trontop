@@ -53,6 +53,11 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   The old Speed field is corrected to Windows Power clock, not claimed boost
   frequency. Native counter evidence and GitHub source research are recorded in
   `docs/HARDWARE_RESEARCH.md`; live frequency and the parity sheet remain open.
+  Alpha.34 connects dynamic Windows performance-state clocks, per-processor nominal
+  references, average/fastest histories and source-labelled exports. The native
+  production probe returns changing 5.12-5.17 GHz averages on this box; tests cover
+  groups, reset/recovery, missing intervals and presentation. `docs/CPU_CLOCK.md`.
+  Exact Task Manager comparison and broader field parity remain unchecked.
 - [x] **A07: Never flash empty fields or invent data.** Keep last usable readings
   with cached/partial/unavailable labels and chart gaps; preserve stable geometry.
   Evidence: GPU, inventory, sensor and disk tests in `docs/HEADLESS_QA.md`. Final
@@ -291,7 +296,14 @@ September 6 brainstorming: a shared history cursor for cross-metric correlation
 and developer-project grouping for Unity/compiler families are proposals, not new
 release gates. Scope and rationale: `docs/ALPHA33_REVIEW.md`.
 
-## Current handoff: alpha.33, then review
+## Current handoff: alpha.34 CPU clocks, then review
+
+A06 now has a measured dynamic clock path, not just the relabelled power clock.
+See `docs/CPU_CLOCK.md` and `docs/CURRENT_STATE.md` for source semantics, limits,
+native evidence and build verification. No new brainstorm requirement was added.
+CPU temperatures, native gates, the broader parity sheet and final review remain.
+
+### Previous alpha.33 handoff
 
 September 6 resumes A06/A13/A32: All cores, graph-heavy Overview and coherent theme
 randomization. Implementation and isolated checks are complete; evidence is in

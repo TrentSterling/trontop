@@ -1,6 +1,6 @@
 [package]
 name = "trontop"
-version = "0.3.0-alpha.33"
+version = "0.3.0-alpha.34"
 edition = "2024"
 rust-version = "1.93"
 description = "A fast, native Windows process and performance manager"
