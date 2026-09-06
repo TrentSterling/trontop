@@ -299,13 +299,19 @@ September 6 brainstorming: a shared history cursor for cross-metric correlation
 and developer-project grouping for Unity/compiler families are proposals, not new
 release gates. Scope and rationale: `docs/ALPHA33_REVIEW.md`.
 
-## Current handoff: alpha.35 adapters, build review and wrap-up
+## Current handoff: alpha.35 review checkpoint, thread closed
 
-User explicitly requested a latest-build launch, private GitHub readiness check
-and a wrap-up spot. Finish this adapter slice, verify/build, open the exact
-candidate and save the release blockers. Do not continue brainstorm features or
-another polish cycle after this handoff. `docs/GPU_ADAPTERS.md` records scope;
-`docs/CURRENT_STATE.md` records exact final evidence and launch/remote state.
+The requested adapter slice, local gate, optimized build and native launch are
+complete. Source and handoff notes are on the private feature branch. Exact-source
+Windows CI run 34058415830 succeeded, including artifact upload. Native acceptance,
+remaining features and release decisions above are still open.
+
+Trent then explicitly requested testing/resolution notes saved and this thread
+closed. Stop here; do not automatically launch, test, implement or publish more.
+`docs/CURRENT_STATE.md` contains the ordered resume checklist, desktop-safety
+constraints, exact executable/hash, prior launch evidence and final remote status.
+`docs/GPU_ADAPTERS.md` records the implementation scope. A new explicit resume is
+required; brainstorm features and another speculative polish cycle are not implied.
 
 ### Previous alpha.34 handoff
 

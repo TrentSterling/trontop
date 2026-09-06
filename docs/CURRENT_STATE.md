@@ -2,6 +2,69 @@
 
 Last updated: 2026-09-06
 
+## Thread shutdown: saved resume checklist
+
+Trent explicitly requested notes saved and this thread closed. **No further
+implementation, testing, preview replacement or release action in this thread.**
+Alpha.35 remains the review candidate below; this shutdown pass changes only
+documentation. Its previous launch is recorded evidence, not a fresh runtime check.
+No app instance, personal settings, other projects or desktop windows were touched.
+
+Use this as the execution order for the existing ledger, not additional scope:
+
+1. [ ] On an explicit new resume, read `CODEX.md`, this file and `ASK_LEDGER.md`;
+   acquire the repository lease and check the worktree before editing. Confirm
+   Trent's feedback on alpha.35 and choose one bounded acceptance gate.
+2. [ ] Resolve D01-D05: supported CPU sensor access, isolated drag-test permission,
+   private/public release boundary and signing/settings expectations, performance
+   budgets, and whether Ctrl+Shift+Esc belongs in this release. Record approved
+   deferrals explicitly; do not silently check off missing features.
+3. [ ] A19-A22/A25: with fresh permission and an isolated desktop/test account,
+   measure real titlebar movement versus Terminal/Explorer, close latency, tray
+   Show/Quit, visible/minimized/**tray-hidden** CPU and resource usage. Exercise
+   real tray updates/hover and repeated hide/restore beyond repaint deadlines;
+   a minimized-only test cannot clear hidden-window repaint-loop regressions.
+   Do not inject input or move/minimize/focus day-job windows. Do not propagate a
+   drag patch to Boxel or another project until a real fix is verified separately.
+4. [ ] A13/A21/A25: native restart persistence, dirty/failed/slow settings saves,
+   close with slow providers, and renderer recovery. Record timestamps, exact
+   executable hash, actual exit/window/tray state and relevant failure logs.
+   Earlier freeze/close reports are unresolved, not attributed to Unity load or
+   one provider without evidence. Read `docs/FAILURE_REPORTS.md`,
+   `docs/SETTINGS_PERSISTENCE.md`, `docs/RENDERER_RECOVERY.md` and
+   `docs/DRAG_INVESTIGATION.md` before the corresponding test.
+5. [ ] A04/A25: use owned disposable child processes and an explicitly approved
+   test service for process/service controls; cover denied/protected/stale targets,
+   cancellation and failure recovery. Validate export contents and copy paths.
+   Never target unrelated processes or services. See
+   `docs/PROCESS_ACTION_SAFETY.md` and `docs/SERVICE_CONTROLS.md`.
+6. [ ] A22/A25: after budgets and isolation are agreed, run the 60-minute mixed-load
+   soak, recording CPU, memory, handles, frame times, growth and provider freshness
+   through visible/hidden states. Retain missing/cached fields and chart gaps.
+   Investigate failed budgets or reproducible failures only, not an endless gauntlet.
+7. [ ] A04/A06/A10: finish or obtain explicit deferral for missing controls, CPU
+   temperatures and remaining field-by-field Task Manager coverage. Use the source
+   notes in `docs/HARDWARE_RESEARCH.md`, `docs/CPU_CLOCK.md`,
+   `docs/GPU_ADAPTERS.md` and `docs/SENSORS_PLAN.md`. No silent driver installation.
+8. [ ] A11/A13-A16/A31/A32: one finite visual acceptance pass at compact/normal
+   sizes and multiple DPI scales, light/dark/extreme themes, empty/cached/error
+   states and deep scrolling. Check alignment, readable contrast, zebra bands,
+   hover/focus, icons and persistence; obtain Trent's approval of the exact build.
+9. [ ] A26/A29: clean standard-user/no-Rust machine, relocated EXE and read-only
+   app folder; verify Windows-only dependencies and settings behavior. Review and
+   merge the private branch, then tag/package/publish only the agreed release scope.
+   Verify the downloaded artifact's own hash/version and record known limitations.
+
+Ordinary validation to rerun **after future code changes**, not during shutdown:
+`cargo fmt --all --check`, `cargo test --offline`,
+`cargo clippy --offline --all-targets -- -D warnings`, and
+`cargo build --release --offline`. See `docs/HEADLESS_QA.md` for opt-in cases.
+Never run every ignored test indiscriminately. Tests using fixtures or offscreen
+rendering are not native drag, close, recovery or soak evidence. Freeze and record
+the final candidate hash before native acceptance; a later rebuild needs its own
+applicable checks. The CI artifact and local EXE are separate build outputs; do
+not assume their hashes match without comparing them.
+
 ## Latest running candidate: alpha.35 GPU adapters and release handoff
 
 **Requested stopping point: build, launch, private GitHub check, then hand off.**
@@ -48,9 +111,11 @@ fixtures, not screenshots proving native desktop behavior.
 - Source commit `bab22c8` was pushed successfully to `feat/provider-diagnostics`.
 - Exact-source Windows verification:
   https://github.com/TrentSterling/trontop/actions/runs/34058415830.
-  At the handoff check, setup/toolchain/formatting passed and tests were running;
-  Clippy, release build and artifact upload were still pending. Do not substitute
-  an older green run for this candidate's gate.
+  **SUCCESS**, completed **2026-09-06 21:00:38 UTC**, rechecked during shutdown.
+  Formatting, tests, strict Clippy, the local renderer patch check, release build
+  and portable artifact upload all passed. This clears the exact-source CI gate,
+  not native acceptance or a release-download verification. The ordinary local
+  suite was not rerun for these documentation-only changes.
 - Default `main` is still the older `bfe8689` tip, not this feature branch. It is
   not protected, and no open PR or published GitHub release was present at check.
   No merge, tag, release upload, visibility change or public publication was made.
@@ -69,8 +134,8 @@ fixtures, not screenshots proving native desktop behavior.
    review, native persistence and DPI checks remain open. These are finite checks,
    not permission for endless redesign.
 4. **Distribution gate (A26/A29/D03):** run the single EXE on a clean standard-user
-   Windows setup, confirm relocation/read-only-folder behavior, finish the exact-
-   source CI gate, review/merge the branch, choose private alpha versus public
+   Windows setup, confirm relocation/read-only-folder behavior, review/merge the
+   branch, choose private alpha versus public
    distribution, then create the agreed versioned artifact/checksum/known-limits
    release and verify the downloaded file. Unsigned-binary handling needs agreement.
 

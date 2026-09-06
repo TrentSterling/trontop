@@ -5,11 +5,20 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Thread closed at Trent's request on 2026-09-06. Documentation-only shutdown.**
+Do not automatically resume implementation, launch/replace previews, run a soak,
+or manipulate the desktop. Read `docs/CURRENT_STATE.md` (shutdown checklist and
+exact candidate), then `ASK_LEDGER.md` (remaining asks/decisions). On a new explicit
+resume, agree the bounded next gate before starting work. This is a saved review
+checkpoint, not a declaration that the product is complete.
+
 **Alpha.35 adds per-adapter GPU history and memory (A06/A07/A15/A32).** Read
 `docs/GPU_ADAPTERS.md` and `docs/CURRENT_STATE.md`. Trent explicitly requested
 the newest build launched, private GitHub readiness checked, and a wrap-up spot.
 Stop at that handoff; no more feature/polish iterations until further direction.
 Release blockers remain in `ASK_LEDGER.md`, not a new expanding task list.
+Exact-source Windows CI run 34058415830 succeeded, including artifact upload.
+Local candidate and native launch evidence remain unchanged by these notes.
 
 ### Previous alpha.34 checkpoint
 
