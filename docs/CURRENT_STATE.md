@@ -2,7 +2,83 @@
 
 Last updated: 2026-09-06
 
-## Latest built candidate: alpha.34 dynamic CPU clocks (A06/A07/A22/A32)
+## Latest running candidate: alpha.35 GPU adapters and release handoff
+
+**Requested stopping point: build, launch, private GitHub check, then hand off.**
+Do not start another feature, polish or speculative bug-hunting cycle without
+Trent's direction. `ASK_LEDGER.md` remains the completion contract.
+
+Alpha.35 adds identity-keyed GPU adapters, real DXGI names/capacities, individual
+engine histories, and whole-adapter dedicated/shared/committed memory histories.
+Performance / GPU adapters has aligned metric cards and compact engine charts;
+Graphs and Overview share these histories. Missing and cached readings remain
+explicit. The redesign skill guided that layout within the existing Tront theme.
+All-core graphs, dynamic CPU clocks and ColorMagic from alpha.33/34 are included.
+
+Candidate: `target/review/alpha35-gpu-adapters/trontop.exe`, **0.3.0-alpha.35**,
+13,794,304 bytes, built **2026-09-06 20:34:43 UTC**. Source commit:
+**bab22c8c9405813edb4bc506d64012faec95a3fc**. Later documentation commits do not
+change this executable.
+SHA-256: `21A8C13B71580777B2EBA484499513D2E6B76D48F0BC884F7A0BAC6DCEF3A6E0`.
+The preserved copy matches the optimized release EXE; PE product version matches.
+Windows-only imports, including DXGI, were inspected; no app-sidecar or VC runtime
+DLL is required. The executable is **unsigned**. A clean-machine run is still due.
+
+**Launched on Trent's normal desktop on explicit request**, PID 131980, HWND
+23006288. Read-only inspection confirmed title Trontop, visible, not minimized,
+responding, 1280x760 at (640,340). No global input, dragging, focus manipulation or
+other app/window changes. The older alpha.32 preview was left untouched. This is
+launch evidence, not a native interaction or sustained responsiveness test.
+
+Local gate: **279 passed, 0 failed, 25 ignored** (55.95 s), strict Clippy (5.26 s),
+formatting/diff checks and optimized release build (1m 06s) passed. The production
+read-only GPU adapter probe passed (3.43 s). Initial inventory took 427.191 ms;
+later memory queries took 0.195 / 0.122 ms. These are provider measurements, not
+UI/drag/close latency claims. `docs/GPU_ADAPTERS.md` records identity semantics,
+capacity scope, source links, limits and reproduction commands.
+
+Four offscreen fixtures generated (4.17 s) and visually inspected under
+`target/ui-smoke/`: `alpha35-gpu-wide.png`, `alpha35-gpu-compact.png`,
+`alpha35-gpu-missing-light.png`, `alpha35-gpu-cached.png`. These are synthetic
+fixtures, not screenshots proving native desktop behavior.
+
+### Private GitHub readiness
+
+- Repository remains private: https://github.com/TrentSterling/trontop.
+- Source commit `bab22c8` was pushed successfully to `feat/provider-diagnostics`.
+- Exact-source Windows verification:
+  https://github.com/TrentSterling/trontop/actions/runs/34058415830.
+  At the handoff check, setup/toolchain/formatting passed and tests were running;
+  Clippy, release build and artifact upload were still pending. Do not substitute
+  an older green run for this candidate's gate.
+- Default `main` is still the older `bfe8689` tip, not this feature branch. It is
+  not protected, and no open PR or published GitHub release was present at check.
+  No merge, tag, release upload, visibility change or public publication was made.
+
+### What currently blocks release
+
+1. **Native reliability acceptance (A19-A22/A25):** the exact EXE still needs safe,
+   isolated close/drag/tray/restart/action/export checks and a mixed-load soak.
+   Earlier freeze/close reports are not cleared by unit tests or offscreen renders.
+2. **Agreed feature coverage (A04/A06/A10/D01):** CPU/core/board temperature provider
+   is not connected; suspend/resume and Startup toggles remain missing; service
+   command validation and the field-by-field Task Manager comparison remain open.
+   Networking details/process rates, remaining CPU fields and NPU status still need
+   completion or explicit approved deferral. No driver installation is implied.
+3. **Final acceptance (A11/A13-A16/A31/A32):** Trent's cohesive branding/theme/layout
+   review, native persistence and DPI checks remain open. These are finite checks,
+   not permission for endless redesign.
+4. **Distribution gate (A26/A29/D03):** run the single EXE on a clean standard-user
+   Windows setup, confirm relocation/read-only-folder behavior, finish the exact-
+   source CI gate, review/merge the branch, choose private alpha versus public
+   distribution, then create the agreed versioned artifact/checksum/known-limits
+   release and verify the downloaded file. Unsigned-binary handling needs agreement.
+
+Performance budgets (D04) and optional Ctrl+Shift+Esc interception (D05) remain
+explicit ledger decisions. A usable private preview is available now; the full
+requested release is not declared complete. New brainstorm ideas are not blockers.
+
+## Previous built candidate: alpha.34 dynamic CPU clocks (A06/A07/A22/A32)
 
 CPU Performance now uses a Windows performance-state interval average rather than
 the static-looking CurrentMhz field. It also shows fastest/slowest reporting

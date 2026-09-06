@@ -40,8 +40,7 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   to reproduce Windows App history. Evidence: `README.md`, `docs/HEADLESS_QA.md`.
 - [ ] **A06: Finish the Task Manager data comparison. PARTIAL.** Existing CPU/memory,
   disk rates/activity/latency/queue and network rates are real. Remaining comparison:
-  per-adapter GPU names, dedicated/shared memory and engine charts; network adapter
-  details and process network rates; CPU/memory detail fields; History semantics;
+  network adapter details and process network rates; CPU/memory detail fields; History semantics;
   NPU exposure or an explicit unsupported status. Done with a field-by-field parity
   sheet against Trent's supplied Task Manager screens, not a blanket parity claim.
   Evidence so far: `docs/TELEMETRY.md`, `docs/PHYSICAL_DISKS.md`.
