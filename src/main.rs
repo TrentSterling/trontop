@@ -8,6 +8,7 @@ mod export;
 mod failure;
 mod format;
 mod gpu_activity;
+mod gpu_adapters;
 mod gpu_sensors;
 mod icons;
 mod inventory;

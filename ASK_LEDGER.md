@@ -58,6 +58,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   production probe returns changing 5.12-5.17 GHz averages on this box; tests cover
   groups, reset/recovery, missing intervals and presentation. `docs/CPU_CLOCK.md`.
   Exact Task Manager comparison and broader field parity remain unchecked.
+  Alpha.35 adds identity-keyed Windows adapters, per-engine histories and whole-
+  adapter dedicated/shared/committed memory with DXGI capacities. Read-only native
+  probe and isolated tests: `docs/GPU_ADAPTERS.md`. Networking, remaining CPU
+  details, NPU identity/support and field-by-field comparison remain unchecked.
 - [x] **A07: Never flash empty fields or invent data.** Keep last usable readings
   with cached/partial/unavailable labels and chart gaps; preserve stable geometry.
   Evidence: GPU, inventory, sensor and disk tests in `docs/HEADLESS_QA.md`. Final
@@ -296,7 +300,15 @@ September 6 brainstorming: a shared history cursor for cross-metric correlation
 and developer-project grouping for Unity/compiler families are proposals, not new
 release gates. Scope and rationale: `docs/ALPHA33_REVIEW.md`.
 
-## Current handoff: alpha.34 CPU clocks, then review
+## Current handoff: alpha.35 adapters, build review and wrap-up
+
+User explicitly requested a latest-build launch, private GitHub readiness check
+and a wrap-up spot. Finish this adapter slice, verify/build, open the exact
+candidate and save the release blockers. Do not continue brainstorm features or
+another polish cycle after this handoff. `docs/GPU_ADAPTERS.md` records scope;
+`docs/CURRENT_STATE.md` records exact final evidence and launch/remote state.
+
+### Previous alpha.34 handoff
 
 A06 now has a measured dynamic clock path, not just the relabelled power clock.
 See `docs/CPU_CLOCK.md` and `docs/CURRENT_STATE.md` for source semantics, limits,

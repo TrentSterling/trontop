@@ -13,6 +13,7 @@ mod cpu_clock;
 mod disks;
 mod export;
 mod failure;
+mod gpu_adapters;
 mod graphs;
 mod memory;
 mod offscreen;
@@ -118,6 +119,7 @@ fn fixture() -> SystemSnapshot {
         }],
         physical_disks: Default::default(),
         gpu: GpuSnapshot {
+            adapters: Vec::new(),
             available: true,
             valid_counters: 32,
             total_counters: 32,

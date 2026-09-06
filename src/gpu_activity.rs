@@ -64,7 +64,7 @@ impl Usage {
         self.combine(other, |a, b| a + b)
     }
 
-    fn peak(self, other: Self) -> Self {
+    pub(crate) fn peak(self, other: Self) -> Self {
         self.combine(other, f32::max)
     }
 
@@ -81,7 +81,7 @@ impl Usage {
         }
     }
 
-    fn bounded(self) -> Self {
+    pub(crate) fn bounded(self) -> Self {
         match self {
             Self::Measured(value) => Self::Measured(value.clamp(0.0, 100.0)),
             Self::Partial(value) => Self::Partial(value.clamp(0.0, 100.0)),

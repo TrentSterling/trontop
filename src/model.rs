@@ -203,6 +203,7 @@ pub struct NetworkRow {
 
 #[derive(Clone, Debug, Default)]
 pub struct GpuSnapshot {
+    pub adapters: Vec<crate::gpu_adapters::Adapter>,
     pub available: bool,
     pub valid_counters: usize,
     pub total_counters: usize,

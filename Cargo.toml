@@ -1,6 +1,6 @@
 [package]
 name = "trontop"
-version = "0.3.0-alpha.34"
+version = "0.3.0-alpha.35"
 edition = "2024"
 rust-version = "1.93"
 description = "A fast, native Windows process and performance manager"
@@ -20,6 +20,8 @@ tray-icon = "0.21.3"
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Security",
     "Win32_Storage_FileSystem",

@@ -13,6 +13,7 @@ pub(super) enum Id {
     Cpu(usize),
     CpuClock(u8),
     Activity(String),
+    Adapter(crate::gpu_adapters::Key, u64),
     Gpu(String, u8),
     Temperature(String, u16),
     Disk(String, usize),
@@ -460,6 +461,70 @@ impl History {
                 value: usage.value(), at: activity_health.last_attempt,
                 state: if !activity_live { "Unavailable" } else if partial { "Partial / graph gap" } else if usage.exact().is_some() { "Live" } else { "Unavailable" },
                 maximum: Some(100.0), cadence: Duration::from_secs(1), partial }, now);
+        }
+        for adapter in &s.gpu.adapters {
+            let detail = format!("{} / {}", adapter.name(), adapter.key.label());
+            for (metric, title) in [
+                "Dedicated GPU memory",
+                "Shared GPU memory",
+                "GPU committed memory",
+            ]
+            .iter()
+            .enumerate()
+            {
+                let value = &adapter.memory[metric];
+                self.field(
+                    Field {
+                        id: Id::Adapter(adapter.key, metric as u64),
+                        title,
+                        detail: &detail,
+                        group: Group::Gpu,
+                        unit: Unit::Gib,
+                        value: value.value.map(|v| v as f32 / 1_073_741_824.),
+                        at: value.last_attempt,
+                        state: value.state(now),
+                        maximum: None,
+                        cadence: Duration::from_secs(1),
+                        partial: false,
+                    },
+                    now,
+                );
+            }
+            for (index, title, usage) in
+                std::iter::once((3, "Busiest engine".to_string(), adapter.activity)).chain(
+                    adapter.engines.iter().map(|e| {
+                        (
+                            4 + u64::from(e.number),
+                            format!("{} / engine {}", e.kind, e.number),
+                            e.usage,
+                        )
+                    }),
+                )
+            {
+                let partial = usage.value().is_some() && usage.exact().is_none();
+                self.field(
+                    Field {
+                        id: Id::Adapter(adapter.key, index),
+                        title: &title,
+                        detail: &detail,
+                        group: Group::Gpu,
+                        unit: Unit::Percent,
+                        value: usage.value(),
+                        at: adapter.sampled_at,
+                        state: if partial {
+                            "Partial / graph gap"
+                        } else if usage.exact().is_some() {
+                            "Live"
+                        } else {
+                            "Unavailable"
+                        },
+                        maximum: Some(100.),
+                        cadence: Duration::from_secs(1),
+                        partial,
+                    },
+                    now,
+                );
+            }
         }
         let gpu = &s.gpu_sensors;
         let gpu_live = !gpu.using_cached

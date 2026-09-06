@@ -17,6 +17,7 @@ pub(super) struct Dashboard {
     style: Style,
     filter: Option<Group>,
     pub(super) cpu_total: bool,
+    pub(super) gpu_selected: Option<crate::gpu_adapters::Key>,
     // Reference path for geometry and same-binary CPU comparisons only.
     #[cfg(test)]
     pub(super) draw_all_rows: bool,
@@ -26,6 +27,52 @@ pub(super) struct Dashboard {
     pub(super) fixed_now: Option<Instant>,
 }
 impl Dashboard {
+    pub(super) fn adapter_charts(
+        &self,
+        ui: &mut egui::Ui,
+        key: crate::gpu_adapters::Key,
+        memory: bool,
+        t: Tokens,
+    ) {
+        let charts: Vec<_> = self
+            .history
+            .charts
+            .iter()
+            .filter(|c| match c.id {
+                history::Id::Adapter(k, metric) => {
+                    k == key && if memory { metric < 3 } else { metric >= 4 }
+                }
+                _ => false,
+            })
+            .collect();
+        let cols = if ui.available_width() >= 480.0 { 2 } else { 1 };
+        let width = ui.available_width();
+        let mut height = 0.0;
+        let now = self.now();
+        for (row, chunk) in charts.chunks(cols).enumerate() {
+            let size = Vec2::new(width, height);
+            if row == 0
+                || ui.is_rect_visible(egui::Rect::from_min_size(ui.next_widget_position(), size))
+            {
+                let response = ui.push_id(("gpu-charts", key, memory, row), |ui| {
+                    ui.set_width(width);
+                    ui.columns(cols, |columns| {
+                        for (index, (column, chart)) in columns.iter_mut().zip(chunk).enumerate() {
+                            column.push_id(&chart.id, |ui| {
+                                card(ui, chart, now, self.style, (row + index) % 2 == 1, t)
+                            });
+                        }
+                    });
+                });
+                if row == 0 {
+                    height = response.response.rect.height();
+                }
+            } else {
+                ui.allocate_space(size);
+            }
+            ui.add_space(6.0);
+        }
+    }
     pub(super) fn now(&self) -> Instant {
         #[cfg(test)]
         if let Some(now) = self.fixed_now {

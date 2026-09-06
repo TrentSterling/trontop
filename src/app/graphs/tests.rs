@@ -3,6 +3,62 @@ use crate::diagnostics::{Provider, State};
 use history::Id;
 
 #[test]
+fn gpu_adapter_histories_do_not_mix_devices_repeat_cached_values_or_lose_partial_gaps() {
+    use crate::gpu_activity::Usage;
+    use crate::gpu_adapters::{Adapter, Engine, Key};
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.gpu.adapters = (1..=2)
+        .map(|low| {
+            let mut a = Adapter {
+                key: Key {
+                    low,
+                    ..Default::default()
+                },
+                sampled_at: Some(now),
+                activity: Usage::Measured(low as f32),
+                engines: vec![Engine {
+                    number: u32::MAX,
+                    kind: "3D".into(),
+                    usage: Usage::Measured(low as f32),
+                }],
+                ..Default::default()
+            };
+            a.memory[0].record(Some(u64::from(low) * 1_073_741_824), now);
+            a
+        })
+        .collect();
+    let mut h = History::default();
+    h.sample(&s, now);
+    let key = s.gpu.adapters[0].key;
+    let memory = Id::Adapter(key, 0);
+    let engine = Id::Adapter(key, u64::from(u32::MAX) + 4);
+    assert_eq!(h.chart(&memory).unwrap().current, Some(1.));
+    assert_eq!(
+        h.chart(&Id::Adapter(s.gpu.adapters[1].key, 0))
+            .unwrap()
+            .current,
+        Some(2.)
+    );
+    assert_eq!(h.chart(&engine).unwrap().current, Some(1.));
+    s.gpu.adapters.reverse();
+    let later = now + Duration::from_secs(1);
+    for a in &mut s.gpu.adapters {
+        a.memory[0].record(None, later);
+        a.sampled_at = Some(later);
+        a.engines[0].usage = Usage::Partial(5.);
+    }
+    h.sample(&s, later);
+    assert_eq!(h.chart(&memory).unwrap().current, Some(1.));
+    assert_eq!(h.chart(&memory).unwrap().state(later), "Cached");
+    assert_eq!(h.chart(&memory).unwrap().points.back().unwrap().value, None);
+    assert_eq!(h.chart(&engine).unwrap().points.back().unwrap().value, None);
+    assert!(h.chart(&engine).unwrap().value_label().starts_with(">="));
+    h.sample(&s, later);
+    assert_eq!(h.chart(&memory).unwrap().points.len(), 2);
+}
+
+#[test]
 fn cpu_clock_graphs_keep_provider_timestamps_and_failure_gaps() {
     let now = Instant::now();
     let mut s = sample(now);

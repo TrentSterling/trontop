@@ -5,7 +5,16 @@ historical engineering log, not an expanding release checklist. Its old unchecke
 extras do not become release requirements unless linked to an agreed ask ID.
 Keep the current source/build evidence in `docs/CURRENT_STATE.md`.
 
-## Current: alpha.34 dynamic CPU clocks
+## Current: alpha.35 GPU adapters and requested wrap-up
+
+- A06/A07/A15/A32: DXGI names/capacities, whole-adapter PDH memory, individual
+  engine histories, stable identity selection and source-labelled exports.
+- `docs/GPU_ADAPTERS.md` contains native evidence, limits and verification scope.
+- User requested latest-build launch and private GitHub readiness, then wrap up.
+  Final build/launch/remote status belongs in `docs/CURRENT_STATE.md`; do not
+  silently expand work into the brainstorm proposals.
+
+## Previous: alpha.34 dynamic CPU clocks
 
 - A06 now has a read-only native performance-distribution provider; per-processor
   nominal references replace the static power-clock field as the main readout.

@@ -145,6 +145,20 @@ fn json_snapshot(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::Resu
             .map(|(name, usage)| json!({"name": name, "usage": gpu(*usage)})),
         stop,
     )?;
+    array(w, "gpu_adapters", s.gpu.adapters.iter().map(|g| json!({
+        "identity": g.key.label(), "identity_scope": "Windows LUID and physical node; session-local, not a serial",
+        "name": g.name(), "description_current": g.description_current,
+        "description_source": "DXGI", "activity": gpu(g.activity),
+        "dedicated_video_capacity_bytes": g.description.as_ref().map(|d| d.dedicated_video),
+        "dedicated_system_capacity_bytes": g.description.as_ref().map(|d| d.dedicated_system),
+        "shared_system_limit_bytes": g.description.as_ref().map(|d| d.shared_limit),
+        "capacity_scope": "DXGI logical adapter, not per-node budgets or free memory",
+        "engines": g.engines.iter().map(|e| json!({"index": e.number, "kind": e.kind, "activity": gpu(e.usage)})).collect::<Vec<_>>(),
+        "memory_source": "Windows PDH GPU Adapter Memory, whole physical adapter",
+        "memory": (["dedicated_usage", "shared_usage", "total_committed"].iter().zip(&g.memory).map(|(name, v)| json!({
+            "metric": name, "bytes": v.value, "state": v.state(c.at), "last_usable_age_seconds": seconds(v.last_success, c.at)
+        })).collect::<Vec<_>>())
+    })), stop)?;
     array(w, "gpu_sensors", s.gpu_sensors.adapters.iter().map(|g| json!({
         "name": g.name, "uuid": private.then_some(&g.uuid), "cached": s.gpu_sensors.using_cached,
         "last_usable_age_seconds": seconds(s.gpu_sensors.last_success, c.at),

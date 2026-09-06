@@ -65,6 +65,29 @@ fn encoded(capture: &Capture) -> Vec<u8> {
 }
 
 #[test]
+fn adapter_export_keeps_source_scope_missing_and_retained_memory() {
+    let mut c = capture(false, Format::Json);
+    let mut adapter = crate::gpu_adapters::Adapter::default();
+    adapter.memory[0].record(Some(9_123_456_789), c.at - Duration::from_secs(1));
+    adapter.memory[0].record(None, c.at);
+    adapter.memory[1].record(Some(0), c.at);
+    c.snapshot.gpu.adapters.push(adapter);
+    let data: serde_json::Value = serde_json::from_slice(&encoded(&c)).unwrap();
+    let a = &data["gpu_adapters"][0];
+    assert_eq!(a["memory"][0]["bytes"], 9_123_456_789_u64);
+    assert_eq!(a["memory"][0]["state"], "Cached");
+    assert_eq!(a["memory"][1]["bytes"], 0);
+    assert!(a["memory"][2]["bytes"].is_null());
+    assert!(a["dedicated_video_capacity_bytes"].is_null());
+    assert!(
+        a["memory_source"]
+            .as_str()
+            .unwrap()
+            .contains("whole physical adapter")
+    );
+}
+
+#[test]
 fn cpu_clock_export_keeps_nulls_interval_group_identity_and_source() {
     let mut c = capture(false, Format::Json);
     c.snapshot.cpu.frequency_mhz = 3700;

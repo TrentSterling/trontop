@@ -21,6 +21,7 @@ const HISTORY_LENGTH: usize = 120;
 mod diagnostics;
 mod disks;
 mod export;
+mod gpus;
 mod graphs;
 mod inventory;
 mod overview;
@@ -1663,7 +1664,7 @@ impl TrontopApp {
         if widgets::device_button(
             ui,
             self.performance_device == PerformanceDevice::Gpu,
-            "GPU ENGINES",
+            "GPU ADAPTERS",
             &gpu_value,
             &self.gpu_history,
             theme::mix(t.accent, t.secondary, 0.5),
@@ -2036,7 +2037,11 @@ impl TrontopApp {
         });
     }
 
-    fn gpu_performance(&self, ui: &mut egui::Ui) {
+    fn gpu_performance(&mut self, ui: &mut egui::Ui) {
+        if !self.snapshot.gpu.adapters.is_empty() {
+            self.gpu_adapters_page(ui);
+            return;
+        }
         let t = self.colors();
         let color = theme::mix(t.accent, t.secondary, 0.5);
         widgets::performance_heading(

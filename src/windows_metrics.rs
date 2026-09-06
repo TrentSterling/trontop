@@ -32,6 +32,7 @@ mod native {
     }
 
     pub struct GpuSampler {
+        adapters: crate::gpu_adapters::Sampler,
         query: Option<PDH_HQUERY>,
         counters: Vec<Counter>,
         last_error: Option<String>,
@@ -40,6 +41,7 @@ mod native {
     impl GpuSampler {
         pub fn new() -> Self {
             let mut sampler = Self {
+                adapters: crate::gpu_adapters::Sampler::default(),
                 query: None,
                 counters: Vec::new(),
                 last_error: None,
@@ -117,6 +119,15 @@ mod native {
         }
 
         pub fn sample(&mut self) -> (GpuSnapshot, HashMap<u32, Usage>) {
+            let (mut snapshot, by_pid) = self.sample_engines();
+            snapshot.adapters = self.adapters.sample(
+                std::mem::take(&mut snapshot.adapters),
+                std::time::Instant::now(),
+            );
+            (snapshot, by_pid)
+        }
+
+        fn sample_engines(&mut self) -> (GpuSnapshot, HashMap<u32, Usage>) {
             let Some(query) = self.query else {
                 return (
                     GpuSnapshot {
@@ -177,6 +188,8 @@ mod native {
                     number.map_or(Usage::Unavailable, Usage::Measured),
                 ));
             }
+            let adapters =
+                crate::gpu_adapters::aggregate(readings.iter().copied(), self.last_error.is_some());
             let (total, mut by_pid, engines) = gpu_activity::aggregate(readings);
             // Incomplete enumeration may have omitted an engine for any process.
             if self.last_error.is_some() {
@@ -188,6 +201,7 @@ mod native {
             }
             (
                 GpuSnapshot {
+                    adapters,
                     available: valid_counters > 0,
                     valid_counters,
                     total_counters: self.counters.len(),

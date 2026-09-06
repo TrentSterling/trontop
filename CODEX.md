@@ -5,6 +5,14 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.35 adds per-adapter GPU history and memory (A06/A07/A15/A32).** Read
+`docs/GPU_ADAPTERS.md` and `docs/CURRENT_STATE.md`. Trent explicitly requested
+the newest build launched, private GitHub readiness checked, and a wrap-up spot.
+Stop at that handoff; no more feature/polish iterations until further direction.
+Release blockers remain in `ASK_LEDGER.md`, not a new expanding task list.
+
+### Previous alpha.34 checkpoint
+
 **Alpha.34 connects dynamic CPU clocks (A06/A07/A22/A32).** Native performance-state
 deltas are weighted by each processor's nominal MHz, with explicit source and
 interval semantics. Performance shows average/fastest/slowest readings and a
