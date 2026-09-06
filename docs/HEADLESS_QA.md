@@ -39,6 +39,7 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
   production process sorting/selection across sizes and scales, and preserved
   outer-row mouse clicks. A selected offscreen test generates four focus views,
   all inspected. See `THEME_CONTRAST.md`; no native input/window or timer added.
+  Final ordinary suite: 255 pass, 18 opt-in tests ignored; strict Clippy passes.
 
 - Alpha.31 adds strict visible-text/geometry comparison between visible-row and
   full-row graph layout at the 512-chart cap, across deep local scrolling, modes

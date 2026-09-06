@@ -2,7 +2,38 @@
 
 Last updated: 2026-09-05
 
-## Latest built candidate: alpha.31 graph layout performance (A22/A32)
+## Latest built candidate: alpha.32 table keyboard focus (A16)
+
+Clickable table labels, headers and heat cells now show a rounded contrast-safe
+focus outline without moving text or changing row/column geometry. The outline
+uses existing cell padding. Process row hit areas and icons retain mouse clicks
+without adding invisible duplicate Tab stops; labeled targets and expansion
+buttons retain keyboard activation. No timer, animation loop or dependency added.
+
+Candidate: `target/review/alpha32-table-focus/trontop.exe`, **0.3.0-alpha.32**,
+13,643,776 bytes, built at **2026-09-06 02:25:21.750 UTC** from clean
+**3aab2cd93a233d92700c51c45abb8660856a6510**. The later handoff-doc commit is not
+the embedded source identity.
+SHA-256: `B028348498E60B60646E84EEB7A107E041001F647F0E2DF4342C1714404DC382`.
+The preserved copy matches the optimized release EXE. **Built, not launched.**
+Current previews and personal preferences were not touched; source remains local.
+
+Final verification: **255 passed, 0 failed, 18 ignored** (55.65 s); strict Clippy
+(5.06 s), formatting, diff check and optimized release build (1m 03s) passed.
+Four new regressions cover Tab visibility/contrast/geometry, disabled and
+Enter/Space behavior, real process-table sorting/selection at compact/normal sizes
+and four egui scale factors, and preserved full-row mouse gaps. The original
+missing-outline test failed before the implementation; the production-UI test
+then found the duplicate row stop. All four final offscreen focus PNGs were
+generated and inspected (3.66 s). See `docs/THEME_CONTRAST.md`.
+
+This bounded redesign-skill pass preserves the existing theme, density, zebra
+bands and hover behavior. Earlier graph/settings/tray changes are included.
+Native close/drag timing, tray validation, soak, CPU temperatures and final visual
+acceptance remain open. No native window/input, preview replacement or upload.
+Stop at this tested review handoff, not another speculative polishing cycle.
+
+## Previous built candidate: alpha.31 graph layout performance (A22/A32)
 
 The graph wall now skips expensive card content layout outside the viewport while
 keeping measured row heights and stable interaction IDs. A common row width fixes

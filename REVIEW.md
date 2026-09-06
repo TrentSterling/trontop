@@ -1,4 +1,22 @@
-# Alpha.31 graph layout performance
+# Alpha.32 visible table keyboard focus
+
+Optimized release: `target/review/alpha32-table-focus/trontop.exe`.
+Built from clean **3aab2cd**, not launched; your existing preview is untouched.
+
+- Tab now visibly highlights clickable table headers, names and heat-value cells.
+  Contrast-safe rounded outlines keep clear of text without shifting the layout.
+- Removed duplicate invisible row/icon keyboard stops. Mouse clicks, including
+  row padding, still work; keyboard sorting and selection pass through the real UI.
+- **255 tests passed**, 18 opt-in tests ignored; strict Clippy, formatting and
+  optimized release build passed. Four final offscreen focus views inspected.
+
+Includes alpha.31 graph layout improvements and earlier settings/tray changes.
+This is an interaction-polish fix, not a newly measured frame-rate or native
+close/drag claim. Those measurements still require approved isolated testing.
+No native input/window, current-preview changes, personal settings or upload.
+Exact hash and evidence: `docs/CURRENT_STATE.md`, `docs/THEME_CONTRAST.md`.
+
+## Previous alpha.31 graph layout performance
 
 Optimized release: `target/review/alpha31-graph-layout/trontop.exe`.
 Built from clean **d87354e**, not launched; your existing preview is untouched.
