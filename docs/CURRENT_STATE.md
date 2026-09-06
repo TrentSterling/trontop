@@ -2,7 +2,43 @@
 
 Last updated: 2026-09-05
 
-## Latest built candidate: alpha.30 memory counters and graphs (A06/A07/A32)
+## Latest built candidate: alpha.31 graph layout performance (A22/A32)
+
+The graph wall now skips expensive card content layout outside the viewport while
+keeping measured row heights and stable interaction IDs. A common row width fixes
+fractional-scale column drift. Changing categories returns to the first graph;
+switching Lines/Bars preserves the scroll position. Existing themes, rounded zebra
+surfaces, hover behavior and provider histories are retained.
+
+Candidate: `target/review/alpha31-graph-layout/trontop.exe`, **0.3.0-alpha.31**,
+13,643,776 bytes, built at **2026-09-06 02:00:51.405 UTC** from clean
+**d87354e579f0467287b736b073ac5ed92459ef37**. The later handoff-doc commit is not
+the embedded source identity.
+SHA-256: `E83D3676C5A4B79F0D7798AD520AD843D1210377CCF19C46F7F6C2E337887E83`.
+The preserved copy matches the optimized release EXE. **Built, not launched.**
+Current previews and personal preferences were not touched; source remains local.
+
+Final verification: **251 passed, 0 failed, 17 ignored** (55.74 s); strict Clippy
+(1.98 s), formatting, diff check and optimized release build (49.49 s) passed.
+New regressions compare visible text and geometry against full layout through
+scrolling and fractional scales, verify category reset after deep scrolling, and
+reconstruct the complete font atlas across synthetic filter clicks. The last test
+fixes missing glyphs in the offscreen screenshot helper, not the app renderer.
+Six graph and six memory PNGs were generated; eight views were inspected across
+the pass, including the corrected thermal labels.
+
+One same-binary release CPU benchmark at 512 charts measured layout plus
+tessellation p95 of **3.12 to 0.88 ms** at 1920x1080 and **2.48 to 0.28 ms** at
+1040x640. This is a synthetic CPU comparison, not native FPS or a guaranteed
+frame budget. Small workloads show smaller gains and occasional outliers.
+Details and all six workload comparisons: `docs/GRAPH_WALL.md`.
+
+Includes alpha.30 memory counters and earlier settings/tray changes. Native close
+and drag timing, tray validation, soak testing, CPU temperature coverage and user
+acceptance remain open. No global input, native window tests, preview replacement,
+driver installation or upload occurred. Stop at this bounded build/review handoff.
+
+## Previous built candidate: alpha.30 memory counters and graphs (A06/A07/A32)
 
 Corrects COMMITTED and removes the misleading page-file graph: the old Windows
 sysinfo swap estimate was not page-file occupancy. The existing background sampler

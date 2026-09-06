@@ -1,4 +1,26 @@
-# Alpha.30 memory graphs and accurate counters
+# Alpha.31 graph layout performance
+
+Optimized release: `target/review/alpha31-graph-layout/trontop.exe`.
+Built from clean **d87354e**, not launched; your existing preview is untouched.
+
+- Offscreen graph cards skip expensive content layout. At the 512-chart limit,
+  one release CPU benchmark measured layout/tessellation p95 falling from
+  **3.12 to 0.88 ms** wide and **2.48 to 0.28 ms** compact.
+- Fixed fractional-scale column alignment. Category changes return to the first
+  graph; Lines/Bars switches keep their position. Theme and hover behavior remain.
+- Fixed the screenshot helper dropping font-atlas updates during filter clicks;
+  a regression proves the missing-glyph case and verifies the complete atlas.
+- **251 tests passed**, 17 opt-in tests ignored; strict Clippy, formatting and
+  optimized release build passed. Twelve offscreen renders generated, eight views
+  inspected across the pass, including corrected thermal labels.
+
+The timing result is synthetic CPU work, not native FPS, drag or close evidence.
+Includes alpha.30 memory counters and earlier settings/tray changes. Native close
+timing remains unmeasured; CPU temperatures and remaining parity are still open.
+No current-window changes, global input, personal settings access or upload.
+Exact hash and evidence: `docs/CURRENT_STATE.md`, `docs/GRAPH_WALL.md`.
+
+## Previous alpha.30 memory graphs and accurate counters
 
 Optimized release: `target/review/alpha30-memory/trontop.exe`.
 Built from clean **8e337b6**, not launched; your existing preview is untouched.
