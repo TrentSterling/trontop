@@ -34,6 +34,14 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.29 adds seven tray lifecycle tests using private Windows events and the
+  production worker loop with fake owner-thread-only tray backends. No native
+  icon/window, global input or OS actions. Covers slow/failed startup, late
+  cleanup, bounded backlog/drop, update recovery, action polling and no extra
+  UI repaints on ordinary samples. About geometry includes truthful tray state.
+  `cargo test --offline tray -- --nocapture --test-threads=1` does not run the
+  separately ignored real-tray test. See `TRAY_LIFECYCLE.md` and A19/A25 limits.
+
 - Alpha.26 adds twelve settings regressions covering bounded workers, legacy
   migration, staged replacement, invalid/read-only/conflicting files, coalescing,
   retained failures/retry, and blocked read/write drop. Production lifecycle tests

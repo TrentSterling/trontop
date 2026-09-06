@@ -4,6 +4,28 @@ pub enum TrayAction {
     Quit,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum TrayState {
+    Starting,
+    Ready,
+    UpdateFailed,
+    Unavailable,
+    Stopped,
+}
+
+impl TrayState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Starting => "Starting in background",
+            Self::Ready => "Ready",
+            Self::UpdateFailed => "Icon update failed; retry on next sample",
+            Self::Unavailable => "Unavailable",
+            Self::Stopped => "Stopped",
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct TraySample {
     pub cpu_percent: f32,
@@ -141,139 +163,25 @@ fn mix(a: [u8; 3], b: [u8; 3], amount: f32) -> [u8; 3] {
 
 #[cfg(windows)]
 mod native {
-    use super::{CpuMeter, TrayAction, TraySample};
+    use super::{CpuMeter, TraySample};
     use eframe::egui;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicU8, Ordering};
-    use std::sync::{Arc, Mutex, mpsc};
-    use std::thread::{self, JoinHandle};
     use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
     use tray_icon::{
         Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
     };
-    use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::System::Threading::GetCurrentThreadId;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, MSG, PM_NOREMOVE, PeekMessageW, PostThreadMessageW,
-        TranslateMessage, WM_APP, WM_QUIT,
-    };
+    mod worker;
+    pub use worker::{TrayController, TraySink};
 
-    const SAMPLE_READY: u32 = WM_APP + 27;
-
-    #[derive(Clone)]
-    pub struct TraySink {
-        latest: Arc<Mutex<Option<TraySample>>>,
-        thread_id: u32,
+    struct NativeTray {
+        tray: TrayIcon,
+        meter: CpuMeter,
     }
 
-    impl TraySink {
-        pub fn publish(&self, sample: TraySample) {
-            if let Ok(mut latest) = self.latest.lock() {
-                *latest = Some(sample);
-            }
-            unsafe {
-                let _ = PostThreadMessageW(self.thread_id, SAMPLE_READY, WPARAM(0), LPARAM(0));
-            }
-        }
-    }
-
-    pub struct TrayController {
-        sink: TraySink,
-        pending: Arc<AtomicU8>,
-        worker: Option<JoinHandle<()>>,
-        #[cfg(test)]
-        applied: Arc<std::sync::atomic::AtomicU64>,
-    }
-
-    impl TrayController {
-        pub fn new(ctx: egui::Context) -> Option<Self> {
-            let latest = Arc::new(Mutex::new(None));
-            let worker_latest = Arc::clone(&latest);
-            let pending = Arc::new(AtomicU8::new(0));
-            let worker_pending = Arc::clone(&pending);
-            #[cfg(test)]
-            let applied = Arc::new(std::sync::atomic::AtomicU64::new(0));
-            #[cfg(test)]
-            let worker_applied = Arc::clone(&applied);
-            let (ready_tx, ready_rx) = mpsc::sync_channel(1);
-            let worker = thread::Builder::new()
-                .name("trontop-tray".into())
-                .spawn(move || {
-                    let mut message = MSG::default();
-                    unsafe {
-                        let _ = PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE);
-                    }
-                    let Some(tray) = create_native_tray(ctx, worker_pending) else {
-                        let _ = ready_tx.send(None);
-                        return;
-                    };
-                    let thread_id = unsafe { GetCurrentThreadId() };
-                    if ready_tx.send(Some(thread_id)).is_err() {
-                        return;
-                    }
-                    let mut meter = CpuMeter::default();
-                    while unsafe { GetMessageW(&mut message, None, 0, 0) }.0 > 0 {
-                        if message.hwnd.is_invalid() && message.message == SAMPLE_READY {
-                            let sample = worker_latest
-                                .lock()
-                                .ok()
-                                .and_then(|mut latest| latest.take());
-                            if let Some(sample) = sample {
-                                let result = update_native_tray(&tray, &mut meter, sample);
-                                #[cfg(test)]
-                                if result.is_ok() {
-                                    worker_applied.fetch_add(1, Ordering::Release);
-                                }
-                                if let Err(error) = result {
-                                    eprintln!("Trontop tray update failed: {error}");
-                                }
-                            }
-                        } else {
-                            unsafe {
-                                let _ = TranslateMessage(&message);
-                                DispatchMessageW(&message);
-                            }
-                        }
-                    }
-                    // Tray/menu handles must also be destroyed on their owner thread.
-                    drop(tray);
-                })
-                .ok()?;
-            match ready_rx.recv().ok().flatten() {
-                Some(thread_id) => Some(Self {
-                    sink: TraySink { latest, thread_id },
-                    pending,
-                    worker: Some(worker),
-                    #[cfg(test)]
-                    applied,
-                }),
-                None => {
-                    let _ = worker.join();
-                    None
-                }
-            }
-        }
-
-        pub fn sink(&self) -> TraySink {
-            self.sink.clone()
-        }
-
-        pub fn poll(&self) -> Option<TrayAction> {
-            match self.pending.swap(0, Ordering::AcqRel) {
-                1 => Some(TrayAction::Show),
-                2 => Some(TrayAction::Quit),
-                _ => None,
-            }
-        }
-    }
-
-    impl Drop for TrayController {
-        fn drop(&mut self) {
-            unsafe {
-                let _ = PostThreadMessageW(self.sink.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
-            }
-            if let Some(worker) = self.worker.take() {
-                crate::shutdown::finish(worker, std::time::Duration::from_millis(100));
-            }
+    impl worker::Backend for NativeTray {
+        fn update(&mut self, sample: TraySample) -> Result<(), ()> {
+            update_native_tray(&self.tray, &mut self.meter, sample).map_err(|_| ())
         }
     }
 
@@ -370,15 +278,15 @@ mod native {
                     process_count: 123,
                 });
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-                while tray.applied.load(Ordering::Acquire) <= index as u64 {
+                while tray.applied() <= index as u64 {
                     assert!(
                         std::time::Instant::now() < deadline,
                         "tray update stalled without UI frames"
                     );
-                    thread::sleep(std::time::Duration::from_millis(10));
+                    std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             }
-            assert_eq!(tray.applied.load(Ordering::Acquire), 4);
+            assert_eq!(tray.applied(), 4);
         }
     }
 }
@@ -410,6 +318,10 @@ impl TrayController {
 
     pub fn poll(&self) -> Option<TrayAction> {
         None
+    }
+
+    pub fn state(&self) -> TrayState {
+        TrayState::Unavailable
     }
 }
 

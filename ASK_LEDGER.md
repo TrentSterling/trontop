@@ -123,10 +123,14 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
 
 ## Required: feels fast and leaves the desktop alone
 
-- [x] **A19: A genuinely live tray icon, not just a changing tooltip.** CPU fill and
+- [ ] **A19: A genuinely live tray icon, not just a changing tooltip. REVIEW.** CPU fill and
   scrolling history update on an independent native worker; tooltip includes other
   resources, Show/Quit available. Earlier native captures differed with the main
   window hidden. Evidence: `docs/TELEMETRY.md`, historical `docs/CURRENT_STATE.md`.
+  Alpha.29 makes tray construction asynchronous and replaces thread-ID messages
+  with a private event/message wait. Seven isolated lifecycle tests pass, but the
+  changed native pump needs the A25 isolated tray/menu/hidden-window gate again.
+  Historical captures are not verification of this new worker. See `docs/TRAY_LIFECYCLE.md`.
 - [ ] **A20: Smooth real titlebar dragging. PARTIAL, NOT VERIFIED FIXED.** Compare an
   optimized Trontop with Terminal/Explorer using real input on an isolated desktop.
   Record move/present timing, not just a synthetic drag video. Trent noticed some
@@ -161,8 +165,11 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   callback state changes with a saturated queue. See `docs/FAILURE_REPORTS.md`.
   Alpha.26 moves settings read/parse/serialization/write off the UI thread, with
   bounded coalescing, preserved failures and no worker join. Migration/blocked
-  storage tests pass. Tray startup still waits for its worker; this audited wait
-  remains open, not an assumed cause of the crash. See `docs/SETTINGS_PERSISTENCE.md`.
+  storage tests pass. Alpha.29 removes the recorded synchronous tray-construction
+  ready wait and failed-constructor join. Seven new worker/event tests cover blocked
+  startup/update, late cleanup, bounded samples, failure recovery and UI repaint
+  restraint. About reports real lifecycle status. Native gates remain open;
+  this is not an assumed cause of the crash. See `docs/TRAY_LIFECYCLE.md`.
 - [x] **A23: Safe automation that does not mess with other work.** Headless fixtures
   do not open native windows, inject global input, change focus or execute viewport
   commands. `AGENTS.md` forbids the previous unsafe desktop behavior. Any future
@@ -255,10 +262,10 @@ expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
    request at 23:38 UTC, replacing five old previews with permission. `REVIEW.md`
    has the exact identity and remaining limits. Trent again flagged diminishing
    returns; get feedback on this build before another implementation cycle.
-2. Alpha.26 addresses the settings-store wait under A13/A21/A22 with preservation
-   and unsaved/error tests. Next bounded code-level wait is tray initialization:
-   remove the synchronous ready/failed-worker join without duplicating workers or
-   making tray availability dishonest. Keep A13/A21 unchecked until native gates.
+2. Alpha.26/28 address settings waits and duplicate work with preservation and
+   unsaved/error tests. Alpha.29 removes the recorded synchronous tray startup
+   wait with bounded samples and truthful state. This completes that code slice,
+   not the native tray/close/soak gates. Keep A13/A19/A21 unchecked pending those gates.
 3. Resolve permission for isolated native measurements before touching any windows.
    Work the remaining bounded asks and release decisions, not new alpha features.
 

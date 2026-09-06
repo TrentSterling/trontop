@@ -2,7 +2,36 @@
 
 Last updated: 2026-09-05
 
-## Latest built candidate: alpha.28 settings close path (A21/A22)
+## Latest built candidate: alpha.29 asynchronous tray startup (A22)
+
+Removes the recorded app-construction wait for Shell tray creation and the
+failed-constructor join. One owner worker, one latest-sample slot and one private
+auto-reset event handle startup, updates, Windows messages and cancellation.
+About reports tray lifecycle state. Late creation after close cleans up on its
+owner thread; ordinary tray samples do not request extra UI repaints.
+
+Candidate: `target/review/alpha29-tray-startup/trontop.exe`, **0.3.0-alpha.29**,
+13,630,464 bytes, built at **2026-09-06 00:48:55.501 UTC** from modified a9df6e0.
+SHA-256: `501D6B9E3392596F65D9BE4FCE89267941243BCE9E56E79B9398EBE2ED4F90C9`.
+The preserved review copy matches the optimized release EXE. **Not launched**;
+the current preview and personal settings were untouched. Source remains local.
+
+Final verification: **243 passed, 0 failed, 14 ignored** (29.13 s); strict Clippy
+(2.23 s), formatting, diff check and release build (53.05 s) passed. Seven new
+worker tests cover blocked/failed startup, bounded samples and drop, owner-thread
+late cleanup, update recovery/actions, repaint restraint and already-observed
+messages in the worker's own disposable queue. Focused tray suite: 9 passed,
+1 intentionally ignored native-icon test (0.22 s). One fixture startup returned
+in 78.4 microseconds; this is not measured native app startup or close latency.
+About's existing compact dark/light test now checks the tray row too. No new
+visual redesign or screenshot evidence was claimed.
+
+See `docs/TRAY_LIFECYCLE.md`. A19 is REVIEW again because the changed native pump
+requires isolated icon/menu/hidden-window validation; historical captures do not
+prove this version. A21/A22/A25 and the full objective remain incomplete. No
+global input, real tray/window tests, preview replacement or upload were performed.
+
+## Previous built candidate: alpha.28 settings close path (A21/A22)
 
 Focused continuation of the responsiveness objective after the slow-close report.
 Two regressions failed on alpha.27: dispatch/Retry deep-cloned captured egui memory,

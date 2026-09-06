@@ -5,6 +5,20 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.29 removes the recorded tray-construction wait (A22).** The resumed full
+responsiveness objective authorizes this bounded next item from the ledger.
+Controller startup no longer awaits Shell tray creation or joins its failed
+worker. One private event and latest-sample slot coalesce startup/update backlogs;
+the owner thread cleans late construction after cancellation. About reports
+Starting/Ready/Update failed/Unavailable/Stopped. Seven new isolated worker tests
+pass. See `docs/TRAY_LIFECYCLE.md` and exact build in `docs/CURRENT_STATE.md`.
+No native tray/window created in tests, no current preview touched, no upload.
+A19 is now REVIEW because the changed native pump needs its isolated gate again;
+historical icon captures are not enough. A21/A22/A25 remain incomplete. Stop this
+slice at verification/build handoff; do not invent another speculative audit.
+
+### Previous alpha.28 close-path handoff
+
 **Alpha.28 is a bounded A21/A22 settings-path follow-up under the continuing
 responsiveness objective.** Two regressions reproduced redundant egui-memory
 clones and unchanged saves failing on file contention. Share the captured snapshot

@@ -29,6 +29,7 @@ impl TrontopApp {
                 widgets::detail_row(ui, "Build", env!("TRONTOP_BUILD_ID"), t);
                 widgets::detail_row(ui, "Target", env!("TRONTOP_BUILD_TARGET"), t);
                 widgets::detail_row(ui, "Profile", if cfg!(debug_assertions) { "Debug" } else { "Optimized release" }, t);
+                widgets::detail_row(ui, "System tray", self.tray.as_ref().map_or(crate::tray::TrayState::Unavailable, TrayController::state).label(), t);
                 ui.add_space(10.0);
                 if ui.button("Copy support report").clicked() {
                     ctx.copy_text(support_report(&self.snapshot.diagnostics, Instant::now()));

@@ -20,6 +20,8 @@ fn about_failure_log_controls_fit_and_copy_only_after_explicit_local_click() {
             let text = text_shapes(&output);
             let mut click = egui::Pos2::ZERO;
             for label in [
+                "System tray",
+                "Unavailable",
                 "Local failure log",
                 "Copy log location",
                 crate::failure::LOCATION_HINT,

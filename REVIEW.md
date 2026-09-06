@@ -1,4 +1,19 @@
-# Alpha.28 close-path follow-up
+# Alpha.29 tray-startup follow-up
+
+Optimized release: `target/review/alpha29-tray-startup/trontop.exe`.
+Built, not launched; your existing preview is untouched.
+
+- Opening no longer waits synchronously for Windows tray-icon creation.
+- Slow tray startup/update retains one latest sample, not an accumulating queue.
+- About shows actual tray lifecycle status; normal icon updates add no UI repaint.
+- **243 tests passed**, 14 ignored; strict Clippy, formatting and release passed.
+
+Includes the graph wall and alpha.28 settings improvements. Native tray/menu,
+hidden-window CPU and close measurements remain unverified for the new worker.
+No desktop input, current-window changes, user-settings access or upload. Exact
+build identity and limits: `docs/CURRENT_STATE.md`, `docs/TRAY_LIFECYCLE.md`.
+
+## Previous alpha.28 close-path follow-up
 
 Optimized release is ready at `target/review/alpha28-close/trontop.exe`.
 Built, not launched; the existing alpha.26 preview is unchanged.
