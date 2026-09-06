@@ -2,6 +2,62 @@ use super::*;
 use crate::diagnostics::{Provider, State};
 use history::Id;
 
+#[test]
+fn logical_cpu_histories_are_distinct_and_missing_samples_leave_gaps() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.cpu.logical_cores = 4;
+    s.cpu.logical_usage = vec![Some(3.0), Some(81.0), Some(0.0), None];
+    let mut history = History::default();
+    history.sample(&s, now);
+    for (id, value) in [(0, Some(3.0)), (1, Some(81.0)), (2, Some(0.0)), (3, None)] {
+        let c = history.charts.iter().find(|c| c.id == Id::Cpu(id)).unwrap();
+        assert_eq!(c.current, value);
+        assert_eq!(c.points[0].value, value);
+        assert_eq!(c.range(now), (0.0, 100.0));
+    }
+    let later = now + Duration::from_secs(1);
+    s.diagnostics
+        .get_mut(Provider::System)
+        .record(later, Duration::ZERO, State::Live, None, None);
+    s.cpu.logical_usage = vec![Some(f32::NAN), Some(101.0), None, Some(57.0)];
+    history.sample(&s, later);
+    for (id, retained) in [(0, 3.0), (1, 81.0), (2, 0.0)] {
+        let c = history.charts.iter().find(|c| c.id == Id::Cpu(id)).unwrap();
+        assert_eq!(c.current, Some(retained));
+        assert_eq!(c.points.back().unwrap().value, None);
+        assert_eq!(c.state(later), "Cached");
+    }
+    let c = history.charts.iter().find(|c| c.id == Id::Cpu(3)).unwrap();
+    assert_eq!(c.points.back().unwrap().value, Some(57.0));
+    assert_eq!(c.state(later), "Live");
+}
+
+#[test]
+fn cpu_grid_history_reserves_budget_for_other_hardware() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.cpu.logical_cores = 1024;
+    s.cpu.logical_usage = vec![Some(12.0); 1024];
+    let mut history = History::default();
+    history.sample(&s, now);
+    assert_eq!(
+        history
+            .charts
+            .iter()
+            .filter(|c| matches!(c.id, Id::Cpu(_)))
+            .count(),
+        256
+    );
+    assert!(
+        history
+            .charts
+            .iter()
+            .any(|c| c.id == Id::Gpu("test-gpu".into(), 0))
+    );
+    assert!(history.charts.len() <= 512);
+}
+
 fn sample(at: Instant) -> SystemSnapshot {
     let mut s = SystemSnapshot {
         memory_total_bytes: 64 << 30,

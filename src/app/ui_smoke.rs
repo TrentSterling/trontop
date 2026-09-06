@@ -92,6 +92,7 @@ fn fixture() -> SystemSnapshot {
             frequency_mhz: 4900,
             physical_cores: 24,
             logical_cores: 32,
+            logical_usage: (0..32).map(|i| Some((i * 7 % 101) as f32)).collect(),
         },
         disks: (0..8)
             .map(|index| DiskRow {
@@ -816,7 +817,9 @@ fn compact_sidebar_preserves_footer_and_performance_details_are_scrollable() {
             egui::Event::MouseWheel {
                 phase: egui::TouchPhase::Move,
                 unit: egui::MouseWheelUnit::Point,
-                delta: Vec2::new(0.0, -600.0),
+                // All-core mode is taller than the old aggregate-only page.
+                // Test reaching the bottom, not an obsolete content height.
+                delta: Vec2::new(0.0, -200_000.0),
                 modifiers: egui::Modifiers::NONE,
             },
         ],

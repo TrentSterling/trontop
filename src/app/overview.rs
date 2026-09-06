@@ -5,7 +5,7 @@ use std::time::Instant;
 impl TrontopApp {
     pub(super) fn overview_page(&mut self, ui: &mut egui::Ui) {
         let health = self.snapshot.diagnostics.get(Provider::System);
-        let now = Instant::now();
+        let now = self.graphs.now();
         let subtitle = format!(
             "{} / last usable system sample {} / background telemetry",
             health.state(Provider::System, now).label(),
@@ -24,63 +24,23 @@ impl TrontopApp {
                 widgets::stat_card(&mut cols[2], "GPU ACTIVITY", &gpu, "Busiest Windows GPU engine", t.secondary, self.theme, t);
                 widgets::stat_card(&mut cols[3], "UPTIME", &if has_sample { format::duration(self.snapshot.uptime_seconds) } else { "--".into() }, &format!("{} processes", self.snapshot.process_count), t.good, self.theme, t);
             });
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                widgets::section_label(ui, "Temperatures & power", t);
-                let state = self.snapshot.diagnostics.get(Provider::GpuSensors).state(Provider::GpuSensors, Instant::now());
-                widgets::status_pill(ui, &format!("GPU: {}", if self.snapshot.gpu_sensors.using_cached { "Cached" } else { state.label() }), diagnostics::state_color(state, t));
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("All sensors").clicked() { self.page = Page::Sensors; }
-                });
+            ui.add_space(8.0);
+            self.graphs.ensure_sample(&self.snapshot);
+            self.graphs.controls(ui, t);
+            ui.add_space(6.0);
+            widgets::section_label(ui, "Machine signals", t);
+            self.graphs.overview_wall(ui, true, t);
+            ui.add_space(8.0);
+            widgets::section_label(ui, &format!("All {} logical processors", self.snapshot.cpu.logical_cores), t);
+            self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                widgets::section_label(ui, "Memory, engines, storage & sensors", t);
+                if ui.small_button("Sensor details").clicked() { self.page = Page::Sensors; }
             });
-            let placeholder = crate::gpu_sensors::AdapterSensors { name: "GPU sensor fields".into(), ..Default::default() };
-            let adapters = if self.snapshot.gpu_sensors.adapters.is_empty() { std::slice::from_ref(&placeholder) } else { &self.snapshot.gpu_sensors.adapters };
-            for (index, adapter) in adapters.iter().enumerate() {
-                widgets::hover_frame(ui, widgets::surface(ui, t, index % 2 == 1), |ui| {
-                    ui.set_min_width(ui.available_width());
-                    ui.add(egui::Label::new(RichText::new(&adapter.name).strong()).truncate()).on_hover_text(&adapter.name);
-                    ui.columns(3, |cols| {
-                        widgets::metric(&mut cols[0], "TEMPERATURE", &adapter.temperature_c.map_or_else(|| "-- °C".into(), |v| format!("{v} °C")), t);
-                        widgets::metric(&mut cols[1], "BOARD POWER", &adapter.power_w.map_or_else(|| "-- W".into(), |v| format!("{v:.1} W")), t);
-                        widgets::metric(&mut cols[2], "FAN TARGET", &adapter.fan_percent.map_or_else(|| "-- %".into(), |v| format!("{v}%")), t);
-                    });
-                });
-                ui.add_space(4.0);
-            }
-            for drive in &self.snapshot.storage_sensors.drives {
-                let hottest = drive.temperatures.sensors.iter().filter_map(|s| s.celsius).max();
-                let value = hottest.map_or_else(|| "-- °C".into(), |v| format!("{v} °C / {}", drive.status(Instant::now())));
-                widgets::detail_row(ui, &drive.device.name, &value, t);
-            }
-            widgets::hover_label(ui, RichText::new("Drive summary uses the hottest reported sensor. CPU temperature coverage is not connected.").size(11.0).color(t.text_muted));
-            ui.add_space(12.0);
-            ui.columns(2, |cols| {
-                widgets::hover_label(&mut cols[0], RichText::new("CPU history").strong().size(14.0));
-                widgets::history_graph(&mut cols[0], &self.cpu_history, t.accent, 145.0, Some(100.0), t);
-                widgets::hover_label(&mut cols[1], RichText::new("Memory history").strong().size(14.0));
-                widgets::history_graph(&mut cols[1], &self.memory_history, t.secondary, 145.0, Some(100.0), t);
-            });
-            ui.add_space(12.0);
-            ui.columns(2, |cols| {
-                widgets::section_label(&mut cols[0], "Storage & network", t);
-                let rate = |present, value| if has_sample && present { format::rate(value) } else { "-- B/s".into() };
-                let has_disks = !self.snapshot.disks.is_empty();
-                let has_networks = !self.snapshot.networks.is_empty();
-                widgets::detail_row(&mut cols[0], "Disk read", &rate(has_disks, self.snapshot.disks.iter().map(|d| d.read_bytes_per_sec).sum()), t);
-                widgets::detail_row(&mut cols[0], "Disk write", &rate(has_disks, self.snapshot.disks.iter().map(|d| d.write_bytes_per_sec).sum()), t);
-                widgets::detail_row(&mut cols[0], "Network receive", &rate(has_networks, self.snapshot.networks.iter().map(|n| n.received_bytes_per_sec).sum()), t);
-                widgets::detail_row(&mut cols[0], "Network send", &rate(has_networks, self.snapshot.networks.iter().map(|n| n.transmitted_bytes_per_sec).sum()), t);
-                widgets::section_label(&mut cols[1], "Memory headroom", t);
-                let bytes = |value| if has_sample { format::bytes(value) } else { "--".into() };
-                widgets::detail_row(&mut cols[1], "Available RAM", &bytes(self.snapshot.memory_available_bytes), t);
-                let memory = self.snapshot.memory_details;
-                let counter = |value: Option<u64>| value.map_or_else(|| "--".into(), format::bytes);
-                widgets::detail_row(&mut cols[1], "Committed", &counter(memory.map(|m| m.commit_bytes)), t);
-                widgets::detail_row(&mut cols[1], "Commit limit", &counter(memory.map(|m| m.commit_limit_bytes)), t);
-                self.memory_counter_status(&mut cols[1]);
-                if cols[1].button("Performance details").clicked() { self.page = Page::Performance; }
-            });
-            ui.add_space(12.0);
+            self.graphs.overview_wall(ui, false, t);
+            widgets::hover_label(ui, RichText::new("Measured history only. Gaps mark missing samples. CPU temperature needs a compatible sensor provider.").size(11.0).color(t.text_muted));
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 widgets::section_label(ui, "Heaviest processes", t);
                 if ui.button("Open processes").clicked() { self.page = Page::Processes; }

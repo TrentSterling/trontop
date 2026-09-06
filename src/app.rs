@@ -34,6 +34,7 @@ mod tree_state;
 mod ui_smoke;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 enum Page {
     Overview,
     Graphs,
@@ -1672,7 +1673,7 @@ impl TrontopApp {
         }
     }
 
-    fn cpu_performance(&self, ui: &mut egui::Ui) {
+    fn cpu_performance(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         widgets::performance_heading(
             ui,
@@ -1686,7 +1687,25 @@ impl TrontopApp {
             t.accent,
             t,
         );
-        widgets::history_graph(ui, &self.cpu_history, t.accent, 270.0, Some(100.0), t);
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut self.graphs.cpu_total, false, "All cores");
+            ui.selectable_value(&mut self.graphs.cpu_total, true, "Total CPU");
+            widgets::hover_label(
+                ui,
+                RichText::new(format!(
+                    "{} logical processors / 120 seconds / 0-100% each",
+                    self.snapshot.cpu.logical_cores
+                ))
+                .size(11.0)
+                .color(t.text_muted),
+            );
+        });
+        if self.graphs.cpu_total {
+            widgets::history_graph(ui, &self.cpu_history, t.accent, 270.0, Some(100.0), t);
+        } else {
+            self.graphs.ensure_sample(&self.snapshot);
+            self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
+        }
         ui.add_space(12.0);
         ui.columns(4, |columns| {
             widgets::metric(
@@ -1697,8 +1716,12 @@ impl TrontopApp {
             );
             widgets::metric(
                 &mut columns[1],
-                "SPEED",
-                &format!("{:.2} GHz", self.snapshot.cpu.frequency_mhz as f32 / 1000.0),
+                "POWER CLOCK",
+                &if self.snapshot.cpu.frequency_mhz > 0 {
+                    format!("{:.2} GHz", self.snapshot.cpu.frequency_mhz as f32 / 1000.0)
+                } else {
+                    "-- GHz".into()
+                },
                 t,
             );
             widgets::metric(
@@ -1728,6 +1751,12 @@ impl TrontopApp {
             t,
         );
         widgets::detail_row(ui, "Operating system", &self.snapshot.os_name, t);
+        widgets::hover_label(
+            ui,
+            RichText::new("Power clock is Windows CurrentMhz for CPU 0, not measured boost speed.")
+                .size(11.0)
+                .color(t.text_muted),
+        );
     }
 
     fn memory_performance(&self, ui: &mut egui::Ui) {

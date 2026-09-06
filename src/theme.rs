@@ -6,6 +6,7 @@ pub const LEGACY_STORAGE_KEY: &str = "trontop.theme.v2";
 
 mod contrast;
 mod gradient;
+pub(crate) mod magic;
 mod storage;
 #[cfg(test)]
 pub(crate) use contrast::ratio as contrast_ratio;
@@ -257,6 +258,14 @@ pub fn tokens(settings: ThemeSettings) -> Tokens {
             column_strength: settings.column_strength,
         }
     };
+    // Coordinate neutral surfaces with the user's palette, without turning
+    // labels into raw-accent text or changing the brightness safety envelope.
+    let ground = mix(accent, secondary, 0.30);
+    let tinted = |color: Color32, amount| text_surface(mix(color, ground, amount), settings.dark);
+    result.bg = tinted(result.bg, 0.045);
+    result.panel = tinted(result.panel, 0.06);
+    result.panel_raised = tinted(result.panel_raised, 0.08);
+    result.graph_bg = tinted(result.graph_bg, 0.025);
     if settings.high_contrast {
         result.text = if settings.dark {
             Color32::WHITE

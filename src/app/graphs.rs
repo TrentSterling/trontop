@@ -16,6 +16,7 @@ pub(super) struct Dashboard {
     history: History,
     style: Style,
     filter: Option<Group>,
+    pub(super) cpu_total: bool,
     // Reference path for geometry and same-binary CPU comparisons only.
     #[cfg(test)]
     pub(super) draw_all_rows: bool,
@@ -25,6 +26,152 @@ pub(super) struct Dashboard {
     pub(super) fixed_now: Option<Instant>,
 }
 impl Dashboard {
+    pub(super) fn now(&self) -> Instant {
+        #[cfg(test)]
+        if let Some(now) = self.fixed_now {
+            return now;
+        }
+        Instant::now()
+    }
+    pub(super) fn ensure_sample(&mut self, snapshot: &SystemSnapshot) {
+        if self.history.charts.is_empty() {
+            self.sample(snapshot, Instant::now());
+        }
+    }
+
+    pub(super) fn controls(&mut self, ui: &mut egui::Ui, t: Tokens) {
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut self.style, Style::Lines, "Lines");
+            ui.selectable_value(&mut self.style, Style::Bars, "Bars");
+            widgets::hover_label(
+                ui,
+                RichText::new(format!(
+                    "{} signals / 120 seconds / hover to inspect",
+                    self.history.charts.len()
+                ))
+                .size(11.0)
+                .color(t.text_muted),
+            );
+        });
+    }
+
+    pub(super) fn cpu_grid(&self, ui: &mut egui::Ui, logical_count: usize, t: Tokens) {
+        if logical_count == 0 {
+            widgets::hover_label(ui, "Waiting for logical processor inventory");
+            return;
+        }
+        let count = logical_count.min(256);
+        let cols = (((ui.available_width() + 6.0) / 112.0).floor() as usize)
+            .clamp(1, 8)
+            .min(count);
+        let width = ui.available_width();
+        let now = Instant::now();
+        #[cfg(test)]
+        let now = self.fixed_now.unwrap_or(now);
+        let mut row_height = 0.0;
+        for first in (0..count).step_by(cols) {
+            let size = Vec2::new(width, row_height);
+            let visible = first == 0
+                || ui.is_rect_visible(egui::Rect::from_min_size(ui.next_widget_position(), size));
+            #[cfg(test)]
+            let visible = visible || self.draw_all_rows;
+            if !visible {
+                ui.allocate_space(size);
+                ui.add_space(4.0);
+                continue;
+            }
+            let response = ui.push_id(("cpu-grid", first), |ui| {
+                ui.set_width(width);
+                ui.columns(cols, |columns| {
+                    for (offset, column) in columns.iter_mut().enumerate().take(count - first) {
+                        let index = first + offset;
+                        let chart = self.history.chart(&history::Id::Cpu(index));
+                        column.push_id(index, |ui| {
+                            widgets::hover_frame(ui, widgets::surface(ui, t, (first / cols + offset) % 2 == 1).inner_margin(5), |ui| {
+                                ui.set_min_width(ui.available_width());
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(format!("CPU {index}")).size(10.0).strong().color(t.text));
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        let value = chart.map_or_else(|| "--".into(), |c| format!("{}{}", if c.state(now) == "Live" { "" } else { "~" }, c.value_label()));
+                                        ui.add(egui::Label::new(RichText::new(value).size(10.0).monospace().color(t.text)).truncate())
+                                            .on_hover_text("Logical processor busy time. ~ means the value is retained, not a fresh measurement.");
+                                    });
+                                });
+                                if let Some(chart) = chart {
+                                    plot(ui, chart, now, self.style, t.accent, t, 72.0);
+                                } else {
+                                    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 72.0), Sense::hover());
+                                    ui.painter().rect_filled(rect, 4.0, t.graph_bg);
+                                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "No data", FontId::proportional(10.0), t.text_muted);
+                                }
+                            });
+                        });
+                    }
+                });
+            });
+            if first == 0 {
+                row_height = response.response.rect.height();
+            }
+            ui.add_space(4.0);
+        }
+        if logical_count > count {
+            widgets::hover_label(
+                ui,
+                format!("Showing {count} of {logical_count} logical processors (graph budget)."),
+            );
+        }
+    }
+
+    // Share timestamped series with Graphs; Overview never polls hardware or
+    // creates a second copy of history. A clipped row reserves space only.
+    pub(super) fn overview_wall(&self, ui: &mut egui::Ui, headline: bool, t: Tokens) {
+        let is_headline = |chart: &&Chart| {
+            matches!(chart.id, history::Id::System(_) | history::Id::Activity(_))
+                && chart.group == Group::System
+                || matches!(
+                    chart.id,
+                    history::Id::Gpu(_, 0 | 1) | history::Id::Network(_, _)
+                )
+        };
+        let charts: Vec<_> = self
+            .history
+            .charts
+            .iter()
+            .filter(|chart| chart.group != Group::Cores)
+            .filter(|chart| is_headline(chart) == headline)
+            .collect();
+        let cols = ((ui.available_width() / 250.0).floor() as usize).clamp(1, 4);
+        let width = ui.available_width();
+        let mut height = 0.0;
+        let now = Instant::now();
+        #[cfg(test)]
+        let now = self.fixed_now.unwrap_or(now);
+        for (row, chunk) in charts.chunks(cols).enumerate() {
+            let size = Vec2::new(width, height);
+            let visible = row == 0
+                || ui.is_rect_visible(egui::Rect::from_min_size(ui.next_widget_position(), size));
+            #[cfg(test)]
+            let visible = visible || self.draw_all_rows;
+            if visible {
+                let response = ui.push_id(("overview-signals", headline, row), |ui| {
+                    ui.set_width(width);
+                    ui.columns(cols, |columns| {
+                        for (index, (column, chart)) in columns.iter_mut().zip(chunk).enumerate() {
+                            column.push_id(&chart.id, |ui| {
+                                card(ui, chart, now, self.style, (row + index) % 2 == 1, t)
+                            });
+                        }
+                    });
+                });
+                if row == 0 {
+                    height = response.response.rect.height();
+                }
+            } else {
+                ui.allocate_space(size);
+            }
+            ui.add_space(6.0);
+        }
+    }
     pub(super) fn sample(&mut self, snapshot: &SystemSnapshot, now: Instant) {
         self.history.sample(snapshot, now);
     }
@@ -70,6 +217,10 @@ impl TrontopApp {
             scroll = scroll.vertical_scroll_offset(0.0);
         }
         scroll.show(ui, |ui| {
+            if self.graphs.filter == Some(Group::Cores) {
+                self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
+                return;
+            }
             let count = columns(ui.available_width());
             // A continuous wall avoids mostly empty rows at section boundaries.
             let charts: Vec<_> = Group::ALL
@@ -168,6 +319,7 @@ fn columns(width: f32) -> usize {
 fn card(ui: &mut egui::Ui, chart: &Chart, now: Instant, style: Style, banded: bool, t: Tokens) {
     let color = match chart.group {
         Group::System => t.accent,
+        Group::Cores => t.accent,
         Group::Memory => t.secondary,
         Group::Thermal => t.secondary,
         Group::Gpu => theme::mix(t.accent, t.secondary, 0.5),
@@ -199,13 +351,21 @@ fn card(ui: &mut egui::Ui, chart: &Chart, now: Instant, style: Style, banded: bo
                     .on_hover_text("Only measured values enter the graph. Gaps indicate missing, partial or stale samples. Cached values are not extended into fake history.");
             });
         });
-        plot(ui, chart, now, style, color, t);
+        plot(ui, chart, now, style, color, t, 106.0);
     });
 }
 
-fn plot(ui: &mut egui::Ui, chart: &Chart, now: Instant, style: Style, color: Color32, t: Tokens) {
+fn plot(
+    ui: &mut egui::Ui,
+    chart: &Chart,
+    now: Instant,
+    style: Style,
+    color: Color32,
+    t: Tokens,
+    height: f32,
+) {
     let (rect, response) =
-        ui.allocate_exact_size(Vec2::new(ui.available_width(), 106.0), Sense::hover());
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
     // Offscreen cards still occupy layout space, but emit no chart geometry.
     if !ui.is_rect_visible(rect) {
         return;
@@ -331,7 +491,11 @@ fn plot(ui: &mut egui::Ui, chart: &Chart, now: Instant, style: Style, color: Col
         painter.text(
             plot.center(),
             egui::Align2::CENTER_CENTER,
-            "No measured samples yet",
+            if rect.width() < 200.0 {
+                "No data"
+            } else {
+                "No measured samples yet"
+            },
             FontId::proportional(11.0),
             t.text_muted,
         );

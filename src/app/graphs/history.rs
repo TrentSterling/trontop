@@ -10,6 +10,7 @@ pub(super) const WINDOW: Duration = Duration::from_secs(120);
 pub(super) enum Id {
     System(u8),
     Memory(u8),
+    Cpu(usize),
     Activity(String),
     Gpu(String, u8),
     Temperature(String, u16),
@@ -25,15 +26,17 @@ pub(super) enum Group {
     Gpu,
     Storage,
     Network,
+    Cores,
 }
 impl Group {
-    pub(super) const ALL: [Self; 6] = [
+    pub(super) const ALL: [Self; 7] = [
         Self::System,
         Self::Memory,
         Self::Thermal,
         Self::Gpu,
         Self::Storage,
         Self::Network,
+        Self::Cores,
     ];
     pub(super) fn label(self) -> &'static str {
         match self {
@@ -43,6 +46,7 @@ impl Group {
             Self::Gpu => "GPU",
             Self::Storage => "Disks",
             Self::Network => "Network",
+            Self::Cores => "All cores",
         }
     }
 }
@@ -160,6 +164,10 @@ struct Field<'a> {
 }
 
 impl History {
+    pub(super) fn chart(&self, id: &Id) -> Option<&Chart> {
+        self.index.get(id).map(|&index| &self.charts[index])
+    }
+
     fn field(&mut self, field: Field<'_>, now: Instant) {
         let index = if let Some(&index) = self.index.get(&field.id) {
             index
@@ -260,6 +268,21 @@ impl History {
                     .then(|| s.memory_used_bytes as f32 / s.memory_total_bytes as f32 * 100.0),
                 Some(100.0),
             ),
+            (
+                "Processes",
+                "Live process count",
+                Unit::Count,
+                Some(s.process_count as f32),
+                None,
+            ),
+            (
+                "Available RAM",
+                "Physical memory available to applications",
+                Unit::Gib,
+                (s.memory_total_bytes > 0)
+                    .then(|| s.memory_available_bytes as f32 / 1_073_741_824.0),
+                Some(s.memory_total_bytes as f32 / 1_073_741_824.0),
+            ),
         ];
         for (index, (title, detail, unit, value, maximum)) in system_values.into_iter().enumerate()
         {
@@ -268,7 +291,11 @@ impl History {
                     id: Id::System(index as u8),
                     title,
                     detail,
-                    group: Group::System,
+                    group: if index == 3 {
+                        Group::Memory
+                    } else {
+                        Group::System
+                    },
                     unit,
                     value: system.last_success.and(value),
                     at: system.last_success,
@@ -281,6 +308,37 @@ impl History {
             );
         }
         let memory_health = s.diagnostics.get(Provider::MemoryCounters);
+        // Keep other devices chartable on many-core machines, within the shared
+        // 512-series budget. Processor indices never depend on current load/sort.
+        for index in 0..s.cpu.logical_cores.min(256) {
+            let value = s
+                .cpu
+                .logical_usage
+                .get(index)
+                .copied()
+                .flatten()
+                .filter(|v| v.is_finite() && (0.0..=100.0).contains(v));
+            self.field(
+                Field {
+                    id: Id::Cpu(index),
+                    title: &format!("CPU {index}"),
+                    detail: "Logical processor busy time / 0-100% / Windows sysinfo",
+                    group: Group::Cores,
+                    unit: Unit::Percent,
+                    value: system.last_success.and(value),
+                    at: system.last_attempt,
+                    state: if value.is_none() {
+                        "Unavailable"
+                    } else {
+                        system_state
+                    },
+                    maximum: Some(100.0),
+                    cadence: Duration::from_secs(1),
+                    partial: false,
+                },
+                now,
+            );
+        }
         let memory_live = memory_health.state(Provider::MemoryCounters, now) == State::Live;
         let gib = |value: u64| value as f32 / 1_073_741_824.0;
         let memory = s.memory_details;

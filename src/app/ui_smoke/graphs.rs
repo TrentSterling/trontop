@@ -6,12 +6,150 @@ pub(super) fn populated(settings: ThemeSettings) -> TrontopApp {
     populated_with_networks(settings, None)
 }
 
+#[test]
+fn cpu_grid_and_total_toggle_work_in_the_production_page() {
+    let size = Vec2::new(1920.0, 1080.0);
+    let mut app = populated(ThemeSettings::default());
+    app.snapshot.cpu.logical_cores = 24;
+    app.page = Page::Performance;
+    app.performance_device = PerformanceDevice::Cpu;
+    let ctx = egui::Context::default();
+    theme::install(&ctx, app.theme);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..4 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let text = visible_text(&output);
+    for core in 0..24 {
+        assert!(
+            text.iter().any(|(t, _)| t == &format!("CPU {core}")),
+            "missing core {core}"
+        );
+    }
+    assert!(!text.iter().any(|(t, _)| t == "CPU 24"));
+    output = click_local_text_output(&ctx, &mut app, size, "Total CPU");
+    assert!(app.graphs.cpu_total);
+    assert!(!visible_text(&output).iter().any(|(t, _)| t == "CPU 0"));
+    click_local_text(&ctx, &mut app, size, "All cores");
+    assert!(!app.graphs.cpu_total);
+}
+
+#[test]
+fn theme_randomize_and_undo_buttons_roundtrip_in_production_ui() {
+    let size = Vec2::new(1040.0, 640.0);
+    let mut app = populated(ThemeSettings::default());
+    app.show_theme_editor = true;
+    let original = app.theme;
+    let ctx = egui::Context::default();
+    theme::install(&ctx, app.theme);
+    click_local_text(&ctx, &mut app, size, "Randomize");
+    assert_ne!(app.theme, original);
+    click_local_text(&ctx, &mut app, size, "Undo roll");
+    assert_eq!(app.theme, original);
+}
+
+#[test]
+#[ignore = "Offscreen alpha33 core/overview/theme review PNGs, no native windows or input"]
+fn render_cores_magic_visual_pass() {
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-smoke");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut renderer = offscreen::Renderer::new();
+    for (name, page, size, dark, studio, flavor) in [
+        (
+            "cores-24",
+            Page::Performance,
+            Vec2::new(1920.0, 1080.0),
+            true,
+            false,
+            theme::magic::Flavor::Jewel,
+        ),
+        (
+            "cores-compact",
+            Page::Performance,
+            Vec2::new(1040.0, 640.0),
+            true,
+            false,
+            theme::magic::Flavor::Neon,
+        ),
+        (
+            "overview-dense",
+            Page::Overview,
+            Vec2::new(1920.0, 1080.0),
+            true,
+            false,
+            theme::magic::Flavor::Jewel,
+        ),
+        (
+            "overview-light",
+            Page::Overview,
+            Vec2::new(1280.0, 760.0),
+            false,
+            false,
+            theme::magic::Flavor::Pastel,
+        ),
+        (
+            "magic-dark",
+            Page::Overview,
+            Vec2::new(1040.0, 640.0),
+            true,
+            true,
+            theme::magic::Flavor::Vintage,
+        ),
+        (
+            "magic-light",
+            Page::Overview,
+            Vec2::new(1040.0, 640.0),
+            false,
+            true,
+            theme::magic::Flavor::Earthy,
+        ),
+    ] {
+        let mut settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        theme::magic::randomize(
+            &mut settings,
+            if studio {
+                151
+            } else if dark {
+                63
+            } else {
+                17
+            },
+            flavor,
+        );
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = populated_for(settings, None, 24);
+        app.page = page;
+        app.show_theme_editor = studio;
+        let mut output = egui::FullOutput::default();
+        // Let egui's window fade settle before reviewing text contrast.
+        for _ in 0..30 {
+            output.append(frame(&ctx, &mut app, size, vec![]));
+        }
+        renderer.save(
+            &ctx,
+            output,
+            size,
+            &directory.join(format!("alpha33-{name}.png")),
+        );
+    }
+    println!("ALPHA33_VISUAL: 6 offscreen PNGs; synthetic histories; zero desktop input");
+}
+
 fn populated_with_networks(settings: ThemeSettings, networks: Option<usize>) -> TrontopApp {
+    populated_for(settings, networks, 32)
+}
+
+fn populated_for(settings: ThemeSettings, networks: Option<usize>, cores: usize) -> TrontopApp {
     let mut app = super::app(settings, false);
     let start = Instant::now() - Duration::from_secs(120);
     for index in 0..=120 {
         let at = start + Duration::from_secs(index);
         let mut s = fixture();
+        s.cpu.logical_cores = cores;
         if let Some(count) = networks {
             s.networks = (0..count)
                 .map(|i| NetworkRow {
@@ -24,6 +162,12 @@ fn populated_with_networks(settings: ThemeSettings, networks: Option<usize>) -> 
         }
         s.sequence = index + 1;
         s.cpu_percent = 30.0 + (index as f32 * 0.2).sin() * 13.0;
+        s.cpu.logical_usage = (0..s.cpu.logical_cores)
+            .map(|core| {
+                let phase = index as f32 * (0.06 + (core % 5) as f32 * 0.035) + core as f32;
+                Some((18.0 + (core % 4) as f32 * 19.0 + phase.sin() * 16.0).clamp(0.0, 100.0))
+            })
+            .collect();
         s.memory_used_bytes += ((index as f32 * 0.1).sin().abs() * 2_000_000_000.0) as u64;
         s.memory_details.as_mut().unwrap().commit_bytes +=
             ((index as f32 * 0.1).sin().abs() * 3_000_000_000.0) as u64;
@@ -120,6 +264,106 @@ fn visible_text(output: &egui::FullOutput) -> Vec<(String, egui::Rect)> {
         .filter(|(text, clip)| clip.intersects(text.visual_bounding_rect()))
         .map(|(text, _)| (text.galley.job.text.clone(), text.visual_bounding_rect()))
         .collect()
+}
+
+#[test]
+fn overview_and_core_grid_clipping_match_full_layout_at_fractional_scale() {
+    let size = Vec2::new(1280.0, 760.0);
+    for page in [Page::Overview, Page::Performance] {
+        let settings = ThemeSettings::default();
+        let mut reference = populated_for(settings, None, 256);
+        let mut actual = populated_for(settings, None, 256);
+        let now = Instant::now() + Duration::from_secs(20);
+        let stale = now - Duration::from_secs(30);
+        for app in [&mut reference, &mut actual] {
+            app.page = page;
+            app.graphs.fixed_now = Some(now);
+            app.snapshot
+                .diagnostics
+                .get_mut(crate::diagnostics::Provider::System)
+                .record(
+                    stale,
+                    Duration::ZERO,
+                    crate::diagnostics::State::Live,
+                    None,
+                    None,
+                );
+        }
+        reference.graphs.draw_all_rows = true;
+        let a = egui::Context::default();
+        let b = egui::Context::default();
+        for ctx in [&a, &b] {
+            theme::install(ctx, settings);
+            ctx.set_pixels_per_point(1.25);
+        }
+        for scroll in [0.0, -1800.0, -200_000.0, 200_000.0] {
+            let events = || {
+                vec![
+                    egui::Event::PointerMoved(egui::pos2(900.0, 480.0)),
+                    egui::Event::MouseWheel {
+                        phase: egui::TouchPhase::Move,
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: Vec2::new(0.0, scroll),
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ]
+            };
+            frame(&a, &mut reference, size, events());
+            frame(&b, &mut actual, size, events());
+            for _ in 0..24 {
+                frame(&a, &mut reference, size, vec![]);
+                frame(&b, &mut actual, size, vec![]);
+            }
+            let expected = visible_text(&frame(&a, &mut reference, size, vec![]));
+            let output = visible_text(&frame(&b, &mut actual, size, vec![]));
+            assert_eq!(expected.len(), output.len(), "{page:?}/{scroll}");
+            for ((name, rect), (expected_name, expected_rect)) in output.iter().zip(&expected) {
+                assert_eq!(name, expected_name, "{page:?}/{scroll}");
+                assert!(
+                    (rect.min - expected_rect.min).length() < 0.1
+                        && (rect.max - expected_rect.max).length() < 0.1,
+                    "{page:?}/{scroll}/{name}: {rect:?} != {expected_rect:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "CPU-only layout/tessellation timing of synthetic alpha33 pages; not native FPS"]
+fn cores_overview_cpu_timing_probe() {
+    for cores in [24, 256] {
+        for page in [Page::Performance, Page::Overview] {
+            for size in [Vec2::new(1040.0, 640.0), Vec2::new(1920.0, 1080.0)] {
+                let mut app = populated_for(ThemeSettings::default(), None, cores);
+                app.page = page;
+                let ctx = egui::Context::default();
+                theme::install(&ctx, app.theme);
+                let mut times = Vec::new();
+                for index in 0..120 {
+                    let start = Instant::now();
+                    let output = frame(
+                        &ctx,
+                        &mut app,
+                        size,
+                        vec![egui::Event::PointerMoved(egui::pos2(
+                            600.0 + (index % 20) as f32,
+                            450.0,
+                        ))],
+                    );
+                    std::hint::black_box(ctx.tessellate(output.shapes, output.pixels_per_point));
+                    if index >= 20 {
+                        times.push(start.elapsed().as_secs_f64() * 1e6);
+                    }
+                }
+                times.sort_by(f64::total_cmp);
+                println!(
+                    "ALPHA33_CPU page={page:?} cores={cores} size={size:?} median_us={:.1} p95_us={:.1} max_us={:.1}",
+                    times[50], times[95], times[99]
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -278,8 +522,8 @@ fn graph_wall_filter_returns_to_first_row_after_deep_scroll() {
     assert!(
         visible_text(&output)
             .iter()
-            .any(|(text, _)| text.starts_with("Synthetic interface")),
-        "scroll must actually reach the network tail"
+            .any(|(text, _)| text == "CPU 31"),
+        "scroll must actually reach the all-core tail after the network graphs"
     );
     click_local_text(&ctx, &mut app, size, "Memory");
     for _ in 0..4 {

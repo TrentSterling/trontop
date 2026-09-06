@@ -25,6 +25,9 @@ pub struct Studio {
     name: String,
     saved: Vec<Saved>,
     notice: Option<(String, bool)>,
+    flavor: theme::magic::Flavor,
+    rolls: Vec<theme::magic::Palette>,
+    roll_sequence: u64,
 }
 
 impl Studio {
@@ -68,6 +71,18 @@ impl Studio {
                 });
                 ui.add_enabled_ui(editable, |ui| {
                   ui.horizontal(|ui| {
+                    if widgets::action_button(ui, "Randomize", Vec2::new(112.0, 28.0), t.accent_dim, t)
+                        .on_hover_text("ColorMagic: four related pegs and matching accents. Keeps light/dark mode, spacing, gradient intensity and layout.").clicked() {
+                        self.randomize(settings);
+                    }
+                    egui::ComboBox::from_id_salt("magic_flavor").width(110.0).selected_text(self.flavor.label()).show_ui(ui, |ui| {
+                        for flavor in theme::magic::Flavor::ALL { ui.selectable_value(&mut self.flavor, flavor, flavor.label()); }
+                    });
+                    if ui.add_enabled(!self.rolls.is_empty(), egui::Button::new("Undo roll")).on_hover_text("Restore the previous palette. Later layout edits are preserved. Remembers 12 rolls.").clicked() {
+                        self.undo_roll(settings);
+                    }
+                  });
+                  ui.horizontal(|ui| {
                     for (i, name) in ["Palette", "Appearance", "Presets", "My themes"].iter().enumerate() {
                         ui.selectable_value(&mut self.tab, i, *name);
                     }
@@ -79,7 +94,7 @@ impl Studio {
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .id_salt(("theme_body", self.tab))
-                    .max_height((ctx.content_rect().height() - 285.0).clamp(220.0, 510.0))
+                    .max_height((ctx.content_rect().height() - 324.0).clamp(160.0, 471.0))
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.tab {
                         0 => self.palette(ui, settings, t),
@@ -129,6 +144,27 @@ impl Studio {
             }
         }
         self.colors = Some(colors);
+    }
+
+    fn randomize(&mut self, settings: &mut ThemeSettings) {
+        self.roll_sequence = self.roll_sequence.wrapping_add(1);
+        let clock = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos() as u64);
+        let seed = clock ^ self.roll_sequence.wrapping_mul(0x9e3779b97f4a7c15);
+        if self.rolls.len() == MAX_SAVED {
+            self.rolls.remove(0);
+        }
+        self.rolls.push(theme::magic::Palette::capture(settings));
+        theme::magic::randomize(settings, seed, self.flavor);
+        self.sync_hex(*settings);
+    }
+
+    fn undo_roll(&mut self, settings: &mut ThemeSettings) {
+        if let Some(palette) = self.rolls.pop() {
+            palette.apply(settings);
+        }
+        self.sync_hex(*settings);
     }
 
     fn palette(&mut self, ui: &mut egui::Ui, s: &mut ThemeSettings, t: Tokens) {

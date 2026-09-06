@@ -1,5 +1,27 @@
 use super::*;
 
+#[test]
+fn randomizer_undo_is_bounded_and_hex_fields_follow_the_roll() {
+    let mut studio = Studio::default();
+    let mut s = ThemeSettings::default();
+    let original = s;
+    studio.randomize(&mut s);
+    assert_ne!(s, original);
+    assert_eq!(studio.hex[0], hex(s.stops[0].color));
+    studio.undo_roll(&mut s);
+    assert_eq!(s, original);
+    for _ in 0..40 {
+        studio.randomize(&mut s);
+    }
+    assert_eq!(studio.rolls.len(), MAX_SAVED);
+    for _ in 0..MAX_SAVED {
+        studio.undo_roll(&mut s);
+    }
+    let before = s;
+    studio.undo_roll(&mut s);
+    assert_eq!(s, before);
+}
+
 fn frame(
     ctx: &egui::Context,
     studio: &mut Studio,
@@ -99,7 +121,15 @@ fn studio_all_tabs_fit_and_emit_no_native_window_commands() {
                 for s in &output.shapes {
                     visit(&s.shape, s.clip_rect, &mut texts);
                 }
-                for label in ["Palette", "Appearance", "Presets", "My themes", "Done"] {
+                for label in [
+                    "Randomize",
+                    "Undo roll",
+                    "Palette",
+                    "Appearance",
+                    "Presets",
+                    "My themes",
+                    "Done",
+                ] {
                     let (_, rect, clip) = texts
                         .iter()
                         .find(|(t, _, _)| t == label)

@@ -1,7 +1,13 @@
-# Four-peg Theme Studio (alpha.19)
+# Four-peg Theme Studio
 
 Ask A13 in `../ASK_LEDGER.md`. This is a bounded theme-editor pass, not a claim
 that every application page has completed its final accessibility/visual audit.
+
+Alpha.33 adds ColorMagic **Randomize**, Pastel/Neon/Vintage/Dark/Earthy/Jewel
+families plus Surprise me, coordinated accents and 12-roll undo. The adaptation
+studied owner-authored Boxel/TrontColors, not an unavailable SpaceView checkout.
+Mode, peg positions and layout preferences survive rolls; nothing randomizes on
+launch. See [ALPHA33_REVIEW.md](ALPHA33_REVIEW.md) for tests and reviewed renders.
 
 ## Available controls
 

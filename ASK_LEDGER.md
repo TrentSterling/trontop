@@ -49,6 +49,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   connecting Windows commit/limit/peak, cache and kernel pools with provider health.
   Five regressions and a real read-only probe pass; `docs/MEMORY_COUNTERS.md`.
   Remaining CPU/memory details and the wider comparison are still unchecked.
+  Alpha.33 adds per-logical-processor histories and the requested All cores grid.
+  The old Speed field is corrected to Windows Power clock, not claimed boost
+  frequency. Native counter evidence and GitHub source research are recorded in
+  `docs/HARDWARE_RESEARCH.md`; live frequency and the parity sheet remain open.
 - [x] **A07: Never flash empty fields or invent data.** Keep last usable readings
   with cached/partial/unavailable labels and chart gaps; preserve stable geometry.
   Evidence: GPU, inventory, sensor and disk tests in `docs/HEADLESS_QA.md`. Final
@@ -93,6 +97,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   close choices. Twelve new tests include a real app/worker/file/fresh-app theme,
   named-palette and zoom round trip. Eight new settings views reviewed. See
   `docs/SETTINGS_PERSISTENCE.md`. Native restart and Trent's review remain open.
+  Alpha.33 adds the requested ColorMagic Randomize button, coordinated four-peg
+  palettes, six families plus Surprise me and 12-roll undo. Mode/layout stay
+  intact; contrast and actual UI interaction checks pass. `docs/ALPHA33_REVIEW.md`
+  records dark/light renders; native persistence and final review remain open.
 - [ ] **A14: Zebra rows AND columns throughout. PARTIAL / REVIEW.** Check every
   table, device list, inspector/detail list, History/Startup/Users/Services list,
   sensor group and dialog. Alternation must remain distinct beneath selection and
@@ -181,6 +189,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   Alpha.31 bounds graph-card layout to the visible rows plus one measuring row;
   a 512-chart reference comparison verifies scroll/scale geometry and capped work.
   CPU-only A/B timing is documented in `docs/GRAPH_WALL.md`, not a native FPS claim.
+  Alpha.33 shares histories with the dense Overview, clips its rows and core grid,
+  and moves physical-core inventory out of the per-second refresh. Native CPU
+  micro-probe and optimized synthetic UI timing: `docs/ALPHA33_REVIEW.md`.
+  Neither clears the unmeasured native gates.
 - [x] **A23: Safe automation that does not mess with other work.** Headless fixtures
   do not open native windows, inject global input, change focus or execute viewport
   commands. `AGENTS.md` forbids the previous unsafe desktop behavior. Any future
@@ -235,6 +247,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   Alpha.31 removes offscreen card layout, fixes fractional column-width drift,
   and returns category selections to their first graph. Histories/metrics are not
   reduced. Two regressions pass; final layout acceptance still belongs to Trent.
+  Alpha.33 supplies the requested dense Overview and All cores grid, including
+  process-count and available-RAM histories without extra polling. Verification:
+  `docs/ALPHA33_REVIEW.md`. Trent's layout review remains open.
 
 ## Decisions to resolve, not silently implement or discard
 
@@ -243,6 +258,7 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   verified driver-free CPU provider exists here. Agree on a supported existing
   provider/optional integration, or explicitly accept and document the limit.
   Read `docs/SENSORS_PLAN.md`. Do not substitute ACPI zones for CPU package sensors.
+  September 6 source audit and read-only probes: `docs/HARDWARE_RESEARCH.md`.
 - [ ] **D02: Drag investigation and cross-project rollout.** Trent requested the
   fix across egui apps, then questioned it and asked to park disruptive testing.
   Findings are saved. Resume only after approval for isolated measurement; port
@@ -271,7 +287,20 @@ theme randomization, alerts, storage wear/error dashboards, deeper ETW tooling,
 crash-dump collection, shader/noise effects, perpetual animation, website marketing
 expansion. Keep these here unless Trent explicitly promotes one to an ask ID.
 
-## Next handoff, then stop expanding
+September 6 brainstorming: a shared history cursor for cross-metric correlation
+and developer-project grouping for Unity/compiler families are proposals, not new
+release gates. Scope and rationale: `docs/ALPHA33_REVIEW.md`.
+
+## Current handoff: alpha.33, then review
+
+September 6 resumes A06/A13/A32: All cores, graph-heavy Overview and coherent theme
+randomization. Implementation and isolated checks are complete; evidence is in
+`docs/ALPHA33_REVIEW.md`, candidate identity in `docs/CURRENT_STATE.md`. CPU temps,
+live boost speed, native responsiveness and final aesthetics remain unchecked.
+Review this build before another speculative visual cycle. The brainstorm does
+not expand release requirements by itself.
+
+## Historical handoff notes
 
 1. Current resumed slice is the alpha.19 crash and responsiveness regression
    (A20/A22/A25), plus focused A15/A16 alignment polish, not a feature expansion.

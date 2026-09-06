@@ -1,4 +1,11 @@
-# Graph wall: alpha.31 layout performance
+# Graph wall
+
+## Alpha.33: All cores and dense Overview (A06/A32)
+
+Per-logical-processor history, the CPU grid, graph-heavy Overview, process count
+and available RAM share this bounded history store. Clipped rows reserve space
+without laying out their contents. Scope, final tests, six visual fixtures and
+optimized CPU-only timing: [ALPHA33_REVIEW.md](ALPHA33_REVIEW.md).
 
 ## Alpha.31: bounded offscreen layout (A22/A32)
 

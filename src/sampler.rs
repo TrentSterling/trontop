@@ -18,6 +18,27 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const GPU_INVENTORY_INTERVAL: u64 = 30;
 const CONTROL_REFRESH_INTERVAL: u64 = 5;
 
+fn cpu_info(system: &System, physical_cores: usize) -> CpuInfo {
+    CpuInfo {
+        brand: system
+            .cpus()
+            .first()
+            .map(|cpu| cpu.brand().trim().to_string())
+            .unwrap_or_default(),
+        frequency_mhz: system.cpus().first().map_or(0, sysinfo::Cpu::frequency),
+        physical_cores,
+        logical_cores: system.cpus().len(),
+        logical_usage: system
+            .cpus()
+            .iter()
+            .map(|cpu| {
+                let usage = cpu.cpu_usage();
+                usage.is_finite().then(|| usage.clamp(0.0, 100.0))
+            })
+            .collect(),
+    }
+}
+
 pub struct Sampler {
     latest: Arc<SnapshotMailbox>,
     stop: Arc<AtomicBool>,
@@ -137,6 +158,8 @@ fn sample_loop(
     let mut process_controls = HashMap::<(u32, u64), ProcessControlInfo>::new();
 
     system.refresh_cpu_frequency();
+    // Physical topology is inventory, not a per-second usage counter.
+    let physical_cores = System::physical_core_count().unwrap_or_default();
 
     if wait_for_stop(&stop, sysinfo::MINIMUM_CPU_UPDATE_INTERVAL) {
         return;
@@ -321,16 +344,7 @@ fn sample_loop(
             })
             .collect();
         let user_rows = aggregate_users(&processes);
-        let cpu = CpuInfo {
-            brand: system
-                .cpus()
-                .first()
-                .map(|cpu| cpu.brand().trim().to_string())
-                .unwrap_or_default(),
-            frequency_mhz: system.cpus().first().map_or(0, sysinfo::Cpu::frequency),
-            physical_cores: System::physical_core_count().unwrap_or_default(),
-            logical_cores: system.cpus().len(),
-        };
+        let cpu = cpu_info(&system, physical_cores);
 
         let sensors = sensor_sampler.sample();
         if let Some(at) = sensors.attempted_at {
@@ -475,6 +489,36 @@ fn wait_for_stop(stop: &AtomicBool, duration: Duration) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "Read-only sysinfo CPU probe; no window, stress workload, tray or process control"]
+    fn native_logical_cpu_read_only_probe() {
+        let mut system = sysinfo::System::new();
+        system.refresh_cpu_all();
+        let physical = sysinfo::System::physical_core_count().unwrap_or_default();
+        let mut durations = Vec::new();
+        for sample in 0..4 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let at = std::time::Instant::now();
+            system.refresh_cpu_usage();
+            let cpu = super::cpu_info(&system, physical);
+            durations.push(at.elapsed().as_secs_f64() * 1e6);
+            assert!(cpu.logical_cores > 0);
+            assert_eq!(cpu.logical_usage.len(), cpu.logical_cores);
+            assert!(
+                cpu.logical_usage
+                    .iter()
+                    .all(|v| v.is_some_and(|v| (0.0..=100.0).contains(&v)))
+            );
+            println!(
+                "CPU_READ_ONLY sample={sample} logical={} physical={} power_clock_mhz={} busy={:?}",
+                cpu.logical_cores, cpu.physical_cores, cpu.frequency_mhz, cpu.logical_usage
+            );
+        }
+        durations.sort_by(f64::total_cmp);
+        println!(
+            "CPU_READ_ONLY refresh_and_snapshot_us={durations:?}; no claim of Task Manager utility equivalence or native frame timing"
+        );
+    }
     use super::*;
 
     fn snapshot(sequence: u64) -> SystemSnapshot {

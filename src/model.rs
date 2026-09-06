@@ -173,6 +173,8 @@ pub struct CpuInfo {
     pub frequency_mhz: u64,
     pub physical_cores: usize,
     pub logical_cores: usize,
+    /// Per-logical-processor busy time, in sysinfo's Windows processor order.
+    pub logical_usage: Vec<Option<f32>>,
 }
 
 #[derive(Clone, Debug, Default)]
