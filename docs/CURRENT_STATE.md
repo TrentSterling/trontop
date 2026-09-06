@@ -2,7 +2,39 @@
 
 Last updated: 2026-09-05
 
-## Latest built candidate: alpha.29 asynchronous tray startup (A22)
+## Latest built candidate: alpha.30 memory counters and graphs (A06/A07/A32)
+
+Corrects COMMITTED and removes the misleading page-file graph: the old Windows
+sysinfo swap estimate was not page-file occupancy. The existing background sampler
+now reads actual commit/limit/peak, system cache and kernel pool counters. Memory
+has eight aligned zebra fields with cached/unavailable states and responsive
+wrapping. Graphs adds a Memory filter with five history series; missing samples
+leave gaps. Overview and JSON use the same counters and explicit provenance.
+
+Candidate: `target/review/alpha30-memory/trontop.exe`, **0.3.0-alpha.30**,
+13,640,704 bytes, built at **2026-09-06 01:23:34.326 UTC** from clean
+**8e337b61a2d8cb30916ce2299a02bef5c2ea516f**. The later handoff-doc commit is not
+the embedded source identity.
+SHA-256: `0330BE3E86C2187D313C3E4629C56B68DDDEFBD67898DB1072BDE2CF2E1C1C43`.
+The preserved copy matches the optimized release EXE. **Built, not launched.**
+Current previews and personal preferences were not touched; source remains local.
+
+Final verification: **248 passed, 0 failed, 16 ignored** (31.10 s); strict Clippy
+(2.21 s), formatting, diff check and optimized release build (1m 12s) passed.
+Five new ordinary regressions cover counter conversion, retained failures,
+timestamped graph gaps, JSON provenance and stable compact/light/dark geometry.
+The opt-in read-only native probe passed 20 queries (median 18.9 microseconds,
+max 176.6 microseconds in one debug run). This is not whole-app performance.
+Six memory and six graph-wall PNGs were generated offscreen with synthetic data;
+all six memory views plus the dark and compact graph walls were inspected.
+
+See `docs/MEMORY_COUNTERS.md`. This does not complete Task Manager parity or CPU
+temperature coverage. A21 native close timing, A19 native tray validation,
+drag/soak measurements and user acceptance remain open. No global input, real
+tray/window tests, preview replacement, driver installation or upload occurred.
+Stop at this bounded build/review handoff, not another speculative audit.
+
+## Previous built candidate: alpha.29 asynchronous tray startup (A22)
 
 Removes the recorded app-construction wait for Shell tray creation and the
 failed-constructor join. One owner worker, one latest-sample slot and one private

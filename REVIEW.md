@@ -1,4 +1,24 @@
-# Alpha.29 tray-startup follow-up
+# Alpha.30 memory graphs and accurate counters
+
+Optimized release: `target/review/alpha30-memory/trontop.exe`.
+Built from clean **8e337b6**, not launched; your existing preview is untouched.
+
+- Five added memory graphs: commit charge, commit pressure, system cache, paged
+  pool and nonpaged pool. A Memory filter keeps them together.
+- Correct Windows COMMITTED/limit/peak readings replace the old RAM-plus-swap
+  estimate. The misleading page-file graph is removed.
+- Eight aligned, alternating memory fields keep their positions when data is
+  cached or unavailable. Compact layouts reflow and explanatory text wraps.
+- **248 tests passed**, 16 opt-in tests ignored; strict Clippy, formatting and
+  release build passed. Six memory renders plus two graph-wall renders inspected.
+
+Includes the earlier graph wall and settings/tray-startup changes. Native close
+timing remains unmeasured; this is not a claim that Unity caused the delay or that
+closing is instant. CPU temperatures and remaining parity are still open.
+No current-window changes, global input, personal settings access or upload.
+Exact hash and evidence: `docs/CURRENT_STATE.md`, `docs/MEMORY_COUNTERS.md`.
+
+## Previous alpha.29 tray-startup follow-up
 
 Optimized release: `target/review/alpha29-tray-startup/trontop.exe`.
 Built, not launched; your existing preview is untouched.
