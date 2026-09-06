@@ -10,6 +10,7 @@ mod gpu_activity;
 mod gpu_sensors;
 mod icons;
 mod inventory;
+mod memory_metrics;
 mod model;
 mod platform;
 mod preferences;

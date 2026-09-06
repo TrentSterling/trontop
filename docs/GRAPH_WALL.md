@@ -1,4 +1,9 @@
-# Graph wall: alpha.27
+# Graph wall: alpha.27, memory correction in alpha.30
+
+Alpha.30 replaces the incorrectly labelled page-file graph with real Windows
+commit charge/pressure, system cache and kernel-pool charts, with a Memory filter.
+See `MEMORY_COUNTERS.md` for source, cache/gap semantics and current verification.
+The alpha.27 build/test records below remain historical.
 
 Scope: A32, explicitly requested after Trent's alpha.26 screenshots on 2026-09-05.
 One scrollable Graphs page, mostly time-series plots. Overview is unchanged.
@@ -7,7 +12,8 @@ Bars are readings over time, not a statistical frequency histogram.
 
 ## Included data
 
-- Whole-machine CPU, physical memory percentage, page-file usage, GPU activity.
+- Whole-machine CPU, physical memory percentage and GPU activity.
+- Windows commit charge/pressure, system cache and paged/nonpaged pools (alpha.30).
 - NVIDIA GPU temperature and board power, graphics/memory clocks, fan target
   (not RPM), VRAM used. Device identity is the provider's UUID.
 - Every reported drive temperature channel, using opaque device ID plus sensor
@@ -16,7 +22,9 @@ Bars are readings over time, not a statistical frequency histogram.
   These are device counters, not duplicated sums across mounted volumes.
 - Separate receive/send traffic for each reported network interface.
 
-No new OS queries, drivers, services, dependencies, input hooks or asset files.
+The original alpha.27 added no OS queries, drivers, services, dependencies, input
+hooks or asset files. Alpha.30 reads the underlying Windows memory counters in
+place of sysinfo's derived swap query; no new runtime component is installed.
 The existing sampler feeds a bounded history on accepted snapshots, even while
 another page is selected. Repaints do not collect telemetry or reformat processes.
 Maximum 512 series and 128 points per series, aged to a 120-second time window.

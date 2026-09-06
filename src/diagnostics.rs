@@ -12,10 +12,11 @@ pub enum Provider {
     ProcessControls,
     StorageSensors,
     DiskActivity,
+    MemoryCounters,
 }
 
 impl Provider {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::System,
         Self::GpuActivity,
         Self::GpuSensors,
@@ -24,6 +25,7 @@ impl Provider {
         Self::ProcessControls,
         Self::StorageSensors,
         Self::DiskActivity,
+        Self::MemoryCounters,
     ];
 
     pub fn name(self) -> &'static str {
@@ -36,6 +38,7 @@ impl Provider {
             Self::ProcessControls => "Process inspection",
             Self::StorageSensors => "Drive sensors / Windows storage",
             Self::DiskActivity => "Physical disks / Windows PDH",
+            Self::MemoryCounters => "Memory / Windows commit counters",
         }
     }
 
@@ -85,6 +88,7 @@ pub enum Issue {
     ProcessAccess,
     StorageSensors,
     DiskCounters,
+    MemoryCounters,
 }
 
 impl Issue {
@@ -106,6 +110,9 @@ impl Issue {
             }
             Self::DiskCounters => {
                 "Physical disk counters are unavailable, partial or stale; retained values are not live readings."
+            }
+            Self::MemoryCounters => {
+                "Windows memory counters could not refresh; prior values remain cached."
             }
         }
     }
@@ -162,7 +169,7 @@ impl Health {
 
 #[derive(Clone, Debug, Default)]
 pub struct Diagnostics {
-    entries: [Health; 8],
+    entries: [Health; Provider::ALL.len()],
 }
 
 impl Diagnostics {

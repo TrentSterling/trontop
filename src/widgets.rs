@@ -905,7 +905,11 @@ pub fn device_button(
 }
 
 pub fn metric(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
-    hover_frame(ui, surface(ui, t, false), |ui| {
+    metric_banded(ui, label, value, false, t);
+}
+
+pub fn metric_banded(ui: &mut egui::Ui, label: &str, value: &str, banded: bool, t: Tokens) {
+    hover_frame(ui, surface(ui, t, banded), |ui| {
         ui.set_min_width(ui.available_width());
         ui.add(
             egui::Label::new(RichText::new(label).size(10.0).strong().color(t.text_muted))

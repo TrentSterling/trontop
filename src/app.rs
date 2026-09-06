@@ -1733,42 +1733,84 @@ impl TrontopApp {
         widgets::performance_heading(
             ui,
             "MEMORY",
-            &format::bytes(self.snapshot.memory_total_bytes),
-            &format::percent(percent),
+            &if self.snapshot.memory_total_bytes > 0 {
+                format::bytes(self.snapshot.memory_total_bytes)
+            } else {
+                "Capacity unavailable".into()
+            },
+            &if self.snapshot.memory_total_bytes > 0 {
+                format::percent(percent)
+            } else {
+                "-- %".into()
+            },
             t.secondary,
             t,
         );
+        self.memory_counter_status(ui);
+        ui.add_space(8.0);
         widgets::history_graph(ui, &self.memory_history, t.secondary, 270.0, Some(100.0), t);
         ui.add_space(12.0);
-        ui.columns(4, |columns| {
-            widgets::metric(
-                &mut columns[0],
+        let memory = self.snapshot.memory_details;
+        let bytes = |value: Option<u64>| value.map_or_else(|| "--".into(), format::bytes);
+        let fields = [
+            (
                 "IN USE",
-                &format::bytes(self.snapshot.memory_used_bytes),
-                t,
-            );
-            widgets::metric(
-                &mut columns[1],
-                "AVAILABLE",
-                &format::bytes(self.snapshot.memory_available_bytes),
-                t,
-            );
-            widgets::metric(
-                &mut columns[2],
-                "COMMITTED",
-                &format::bytes(self.snapshot.memory_used_bytes + self.snapshot.swap_used_bytes),
-                t,
-            );
-            widgets::metric(
-                &mut columns[3],
-                "SWAP",
-                &format!(
-                    "{} / {}",
-                    format::bytes(self.snapshot.swap_used_bytes),
-                    format::bytes(self.snapshot.swap_total_bytes)
+                bytes(
+                    (self.snapshot.memory_total_bytes > 0)
+                        .then_some(self.snapshot.memory_used_bytes),
                 ),
-                t,
-            );
+            ),
+            (
+                "AVAILABLE",
+                bytes(
+                    (self.snapshot.memory_total_bytes > 0)
+                        .then_some(self.snapshot.memory_available_bytes),
+                ),
+            ),
+            ("COMMITTED", bytes(memory.map(|m| m.commit_bytes))),
+            ("COMMIT LIMIT", bytes(memory.map(|m| m.commit_limit_bytes))),
+            ("COMMIT PEAK", bytes(memory.map(|m| m.commit_peak_bytes))),
+            ("SYSTEM CACHE", bytes(memory.map(|m| m.system_cache_bytes))),
+            ("PAGED POOL", bytes(memory.map(|m| m.kernel_paged_bytes))),
+            (
+                "NONPAGED POOL",
+                bytes(memory.map(|m| m.kernel_nonpaged_bytes)),
+            ),
+        ];
+        let count = if ui.available_width() >= 760.0 { 4 } else { 2 };
+        for (row_index, row) in fields.chunks(count).enumerate() {
+            ui.columns(count, |cols| {
+                for (column_index, (column, (label, value))) in cols.iter_mut().zip(row).enumerate()
+                {
+                    widgets::metric_banded(
+                        column,
+                        label,
+                        value,
+                        (row_index + column_index) % 2 == 1,
+                        t,
+                    );
+                }
+            });
+            ui.add_space(8.0);
+        }
+        ui.scope(|ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            widgets::hover_label(ui, RichText::new("Commit is allocated virtual memory, not RAM plus page-file use. System cache includes standby pages and the system working set; commit peak is since boot.").size(11.0).color(t.text_muted));
+        });
+    }
+
+    fn memory_counter_status(&self, ui: &mut egui::Ui) {
+        let provider = crate::diagnostics::Provider::MemoryCounters;
+        let health = self.snapshot.diagnostics.get(provider);
+        let now = std::time::Instant::now();
+        let state = health.state(provider, now);
+        let cached =
+            self.snapshot.memory_details.is_some() && state != crate::diagnostics::State::Live;
+        let t = self.colors();
+        ui.horizontal_wrapped(|ui| {
+            widgets::status_pill(ui, if cached { "Memory counters: Cached" } else if state == crate::diagnostics::State::Live { "Memory counters: Live" } else { "Memory counters: Unavailable" }, diagnostics::state_color(state, t));
+            widgets::hover_label(ui, RichText::new(format!("Last usable: {}", crate::diagnostics::age(health.last_success, now))).size(11.0).color(t.text_muted))
+                .on_hover_text("Windows K32GetPerformanceInfo, sampled in the background. Cached values retain their original timestamp; missing readings never become zero.");
         });
     }
 

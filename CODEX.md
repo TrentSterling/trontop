@@ -5,6 +5,19 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.30 fixes memory data and expands the requested graphs (A06/A07/A32).**
+The old COMMITTED formula and page-file graph used sysinfo's commit-minus-physical
+estimate incorrectly. A background K32GetPerformanceInfo query now supplies actual
+commit/limit/peak, system cache and kernel pools. Layout reflows and keeps labelled
+cached/missing fields; JSON retains explicit legacy-estimate semantics. Five new
+regressions and a read-only native probe pass. `docs/MEMORY_COUNTERS.md` has scope
+and evidence. Read `docs/CURRENT_STATE.md` for the latest build, not earlier paths.
+No preview launch/replacement, native interaction or upload. CPU temperature,
+native close/drag/tray/soak, remaining data parity and acceptance are still open.
+Stop at this tested memory-data/build handoff; do not start speculative audits.
+
+### Previous alpha.29 tray-startup checkpoint
+
 **Alpha.29 removes the recorded tray-construction wait (A22).** The resumed full
 responsiveness objective authorizes this bounded next item from the ledger.
 Controller startup no longer awaits Shell tray creation or joins its failed

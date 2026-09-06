@@ -111,6 +111,7 @@ fn columns(width: f32) -> usize {
 fn card(ui: &mut egui::Ui, chart: &Chart, now: Instant, style: Style, banded: bool, t: Tokens) {
     let color = match chart.group {
         Group::System => t.accent,
+        Group::Memory => t.secondary,
         Group::Thermal => t.secondary,
         Group::Gpu => theme::mix(t.accent, t.secondary, 0.5),
         Group::Storage => t.good,

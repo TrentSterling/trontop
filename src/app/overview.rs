@@ -73,8 +73,11 @@ impl TrontopApp {
                 widgets::section_label(&mut cols[1], "Memory headroom", t);
                 let bytes = |value| if has_sample { format::bytes(value) } else { "--".into() };
                 widgets::detail_row(&mut cols[1], "Available RAM", &bytes(self.snapshot.memory_available_bytes), t);
-                widgets::detail_row(&mut cols[1], "Swap used", &bytes(self.snapshot.swap_used_bytes), t);
-                widgets::detail_row(&mut cols[1], "Swap capacity", &bytes(self.snapshot.swap_total_bytes), t);
+                let memory = self.snapshot.memory_details;
+                let counter = |value: Option<u64>| value.map_or_else(|| "--".into(), format::bytes);
+                widgets::detail_row(&mut cols[1], "Committed", &counter(memory.map(|m| m.commit_bytes)), t);
+                widgets::detail_row(&mut cols[1], "Commit limit", &counter(memory.map(|m| m.commit_limit_bytes)), t);
+                self.memory_counter_status(&mut cols[1]);
                 if cols[1].button("Performance details").clicked() { self.page = Page::Performance; }
             });
             ui.add_space(12.0);

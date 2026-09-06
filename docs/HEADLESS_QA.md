@@ -34,6 +34,14 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.30 adds five memory-counter regressions for page-to-byte conversion,
+  independent commit values, cached failure/recovery, graph gaps, exported nulls/
+  provenance and stable compact dark/light fields. Six additional memory PNGs
+  and six graph-wall PNGs generated; six memory plus dark/compact graph-wall
+  renders reviewed. The opt-in `native_memory_counters_read_only_probe` queries
+  Windows aggregate memory only, never windows/input or user preferences. See
+  `MEMORY_COUNTERS.md`. Ordinary suite: 248 pass, 16 ignored; Clippy passes.
+
 - Alpha.29 adds seven tray lifecycle tests using private Windows events and the
   production worker loop with fake owner-thread-only tray backends. No native
   icon/window, global input or OS actions. Covers slow/failed startup, late

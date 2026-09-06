@@ -133,6 +133,7 @@ fn sample_loop(
     let mut sequence = 0_u64;
     let mut previous_sample = Instant::now();
     let mut diagnostics = Diagnostics::default();
+    let mut memory = crate::memory_metrics::Sampler::default();
     let mut process_controls = HashMap::<(u32, u64), ProcessControlInfo>::new();
 
     system.refresh_cpu_frequency();
@@ -150,7 +151,11 @@ fn sample_loop(
         previous_sample = Instant::now();
 
         system.refresh_cpu_usage();
-        system.refresh_memory();
+        // sysinfo's Windows swap fields are commit-minus-physical estimates, not
+        // page-file occupancy. Query the original counters once and keep errors.
+        system.refresh_memory_specifics(sysinfo::MemoryRefreshKind::nothing().with_ram());
+        memory.refresh();
+        *diagnostics.get_mut(Provider::MemoryCounters) = memory.health.clone();
         system.refresh_processes(ProcessesToUpdate::All, true);
         disks.refresh(true);
         networks.refresh(true);
@@ -390,8 +395,7 @@ fn sample_loop(
             memory_used_bytes: system.used_memory(),
             memory_total_bytes: system.total_memory(),
             memory_available_bytes: system.available_memory(),
-            swap_used_bytes: system.used_swap(),
-            swap_total_bytes: system.total_swap(),
+            memory_details: memory.values,
             process_count: processes.len(),
             uptime_seconds: System::uptime(),
             sample_seconds,

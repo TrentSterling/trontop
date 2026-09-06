@@ -82,8 +82,12 @@ fn json_snapshot(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::Resu
                     "physical_cores": s.cpu.physical_cores, "logical_cores": s.cpu.logical_cores,
                     "percent": s.cpu_percent, "temperature_c": null, "temperature_provider": "not_connected"},
                 "memory_used_bytes": s.memory_used_bytes, "memory_total_bytes": s.memory_total_bytes,
-                "memory_available_bytes": s.memory_available_bytes, "swap_used_bytes": s.swap_used_bytes,
-                "swap_total_bytes": s.swap_total_bytes, "uptime_seconds": s.uptime_seconds,
+                "memory_available_bytes": s.memory_available_bytes,
+                // Preserve legacy schema keys, but explicitly identify their derived semantics.
+                "swap_used_bytes": s.memory_details.map(|m| m.commit_bytes.saturating_sub(m.physical_total_bytes)),
+                "swap_total_bytes": s.memory_details.map(|m| m.commit_limit_bytes.saturating_sub(m.physical_total_bytes)),
+                "swap_semantics": "legacy commit-minus-physical estimates; not page-file occupancy; see memory_counters for freshness",
+                "memory_counters": memory_counters(s, c.at), "uptime_seconds": s.uptime_seconds,
                 "sample_seconds": s.sample_seconds, "process_count": s.process_count, "gpu": gpu(s.gpu.reading())
             })
         },
@@ -174,6 +178,18 @@ fn json_snapshot(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::Resu
         "source": "last complete service inventory; command observations not included"
     })), stop)?;
     w.write_all(b"\n}\n")
+}
+
+fn memory_counters(s: &crate::model::SystemSnapshot, at: std::time::Instant) -> Value {
+    let h = s.diagnostics.get(Provider::MemoryCounters);
+    let m = s.memory_details;
+    json!({
+        "source": "Windows K32GetPerformanceInfo", "state": h.state(Provider::MemoryCounters, at).label(),
+        "last_usable_age_seconds": seconds(h.last_success, at),
+        "commit_bytes": m.map(|v| v.commit_bytes), "commit_limit_bytes": m.map(|v| v.commit_limit_bytes),
+        "commit_peak_bytes": m.map(|v| v.commit_peak_bytes), "system_cache_bytes": m.map(|v| v.system_cache_bytes),
+        "kernel_paged_bytes": m.map(|v| v.kernel_paged_bytes), "kernel_nonpaged_bytes": m.map(|v| v.kernel_nonpaged_bytes)
+    })
 }
 
 // Every CSV text field is quoted; dangerous leading text is additionally prefixed.

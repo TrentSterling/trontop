@@ -80,6 +80,42 @@ fn empty_json_is_valid_and_has_no_invented_system_sample() {
 }
 
 #[test]
+fn memory_counters_export_has_exact_bytes_nulls_and_cached_provenance() {
+    let mut c = capture(false, Format::Json);
+    let missing: serde_json::Value = serde_json::from_slice(&encoded(&c)).unwrap();
+    assert!(missing["system"]["memory_counters"]["commit_bytes"].is_null());
+    assert!(missing["system"]["swap_used_bytes"].is_null());
+    c.snapshot.memory_details = Some(crate::memory_metrics::Values {
+        commit_bytes: 24 << 30,
+        commit_limit_bytes: 80 << 30,
+        physical_total_bytes: 64 << 30,
+        ..Default::default()
+    });
+    let h = c.snapshot.diagnostics.get_mut(Provider::MemoryCounters);
+    h.record(
+        c.at - Duration::from_secs(2),
+        Duration::ZERO,
+        State::Live,
+        None,
+        None,
+    );
+    h.record(c.at, Duration::ZERO, State::Unavailable, None, None);
+    let doc: serde_json::Value = serde_json::from_slice(&encoded(&c)).unwrap();
+    let m = &doc["system"]["memory_counters"];
+    assert_eq!(m["commit_bytes"].as_u64(), Some(24 << 30));
+    assert_eq!(m["commit_limit_bytes"].as_u64(), Some(80 << 30));
+    assert_eq!(m["state"], "Stale");
+    assert_eq!(m["last_usable_age_seconds"], 2.0);
+    assert_eq!(doc["system"]["swap_used_bytes"], 0);
+    assert!(
+        doc["system"]["swap_semantics"]
+            .as_str()
+            .unwrap()
+            .contains("not page-file occupancy")
+    );
+}
+
+#[test]
 fn physical_disk_export_preserves_cached_missing_zero_and_private_instances() {
     use crate::disk_activity::{Device, Reading, Snapshot};
     let mut c = capture(false, Format::Json);

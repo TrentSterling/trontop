@@ -13,6 +13,7 @@ mod disks;
 mod export;
 mod failure;
 mod graphs;
+mod memory;
 mod offscreen;
 mod preferences;
 mod process_perf;
@@ -71,8 +72,15 @@ fn fixture() -> SystemSnapshot {
         memory_used_bytes: 41_000_000_000,
         memory_total_bytes: 64_000_000_000,
         memory_available_bytes: 23_000_000_000,
-        swap_used_bytes: 2_000_000_000,
-        swap_total_bytes: 16_000_000_000,
+        memory_details: Some(crate::memory_metrics::Values {
+            commit_bytes: 57_000_000_000,
+            commit_limit_bytes: 96_000_000_000,
+            commit_peak_bytes: 62_000_000_000,
+            physical_total_bytes: 64_000_000_000,
+            system_cache_bytes: 8_000_000_000,
+            kernel_paged_bytes: 1_700_000_000,
+            kernel_nonpaged_bytes: 1_300_000_000,
+        }),
         process_count: processes.len(),
         processes,
         uptime_seconds: 587_625,

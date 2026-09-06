@@ -45,6 +45,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   NPU exposure or an explicit unsupported status. Done with a field-by-field parity
   sheet against Trent's supplied Task Manager screens, not a blanket parity claim.
   Evidence so far: `docs/TELEMETRY.md`, `docs/PHYSICAL_DISKS.md`.
+  Alpha.30 corrects the COMMITTED calculation and mislabelled page-file graph,
+  connecting Windows commit/limit/peak, cache and kernel pools with provider health.
+  Five regressions and a real read-only probe pass; `docs/MEMORY_COUNTERS.md`.
+  Remaining CPU/memory details and the wider comparison are still unchecked.
 - [x] **A07: Never flash empty fields or invent data.** Keep last usable readings
   with cached/partial/unavailable labels and chart gaps; preserve stable geometry.
   Evidence: GPU, inventory, sensor and disk tests in `docs/HEADLESS_QA.md`. Final
@@ -216,6 +220,9 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   Missing/partial data make gaps; retained values are labelled. CPU temperature
   remains A10/D01, not a fabricated chart. Acceptance: `docs/GRAPH_WALL.md` and
   Trent's review of this specific layout.
+  Alpha.30 adds real commit/pressure/cache/kernel-pool histories and a Memory
+  filter, with missing intervals and retained labels. Six memory views and the
+  overall dark/compact graph layouts reviewed offscreen; Trent's review remains.
 
 ## Decisions to resolve, not silently implement or discard
 

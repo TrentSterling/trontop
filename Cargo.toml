@@ -1,6 +1,6 @@
 [package]
 name = "trontop"
-version = "0.3.0-alpha.29"
+version = "0.3.0-alpha.30"
 edition = "2024"
 rust-version = "1.93"
 description = "A fast, native Windows process and performance manager"
@@ -28,6 +28,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Ioctl",
     "Win32_System_LibraryLoader",
     "Win32_System_Performance",
+    "Win32_System_ProcessStatus",
     "Win32_System_Registry",
     "Win32_System_Services",
     "Win32_System_Threading",

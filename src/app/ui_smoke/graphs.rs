@@ -2,7 +2,7 @@
 use super::*;
 use std::time::{Duration, Instant};
 
-fn populated(settings: ThemeSettings) -> TrontopApp {
+pub(super) fn populated(settings: ThemeSettings) -> TrontopApp {
     let mut app = super::app(settings, false);
     let start = Instant::now() - Duration::from_secs(120);
     for index in 0..=120 {
@@ -11,6 +11,8 @@ fn populated(settings: ThemeSettings) -> TrontopApp {
         s.sequence = index + 1;
         s.cpu_percent = 30.0 + (index as f32 * 0.2).sin() * 13.0;
         s.memory_used_bytes += ((index as f32 * 0.1).sin().abs() * 2_000_000_000.0) as u64;
+        s.memory_details.as_mut().unwrap().commit_bytes +=
+            ((index as f32 * 0.1).sin().abs() * 3_000_000_000.0) as u64;
         for provider in crate::diagnostics::Provider::ALL {
             s.diagnostics.get_mut(provider).record(
                 at,
@@ -46,6 +48,12 @@ fn populated(settings: ThemeSettings) -> TrontopApp {
         // The production history receives provider timestamps; drive liveness is
         // evaluated at this synthetic sample time, not the time the test executes.
         app.graphs.sample(&s, at);
+        if index < 120 {
+            // Populate the existing performance plots as well as the graph wall.
+            // These are synthetic fixture histories, never a runtime fallback.
+            widgets::push_history(&mut app.cpu_history, s.cpu_percent, HISTORY_LENGTH);
+            widgets::push_history(&mut app.memory_history, memory_percent(&s), HISTORY_LENGTH);
+        }
         if index == 120 {
             app.accept_sample(s);
         }

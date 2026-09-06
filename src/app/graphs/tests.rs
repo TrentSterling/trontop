@@ -219,3 +219,74 @@ fn empty_snapshot_never_becomes_zero_cpu_and_responsive_columns_are_bounded() {
         assert_eq!(columns(width), expected);
     }
 }
+
+#[test]
+fn memory_graphs_use_commit_counters_and_preserve_missing_intervals() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.memory_details = Some(crate::memory_metrics::Values {
+        commit_bytes: 24 << 30,
+        commit_limit_bytes: 80 << 30,
+        kernel_nonpaged_bytes: 0,
+        ..Default::default()
+    });
+    s.diagnostics.get_mut(Provider::MemoryCounters).record(
+        now,
+        Duration::ZERO,
+        State::Live,
+        None,
+        None,
+    );
+    let mut history = History::default();
+    history.sample(&s, now);
+    let get = |history: &History, id| {
+        history
+            .charts
+            .iter()
+            .find(|c| c.id == Id::Memory(id))
+            .unwrap()
+            .current
+    };
+    // Physical usage is 32 GiB; commit is independently 24 GiB, never their sum.
+    assert_eq!(get(&history, 0), Some(24.0));
+    assert_eq!(get(&history, 1), Some(30.0));
+    assert_eq!(get(&history, 4), Some(0.0));
+    history.sample(&s, now + Duration::from_millis(500));
+    let later = now + Duration::from_secs(1);
+    s.diagnostics.get_mut(Provider::MemoryCounters).record(
+        later,
+        Duration::ZERO,
+        State::Unavailable,
+        None,
+        None,
+    );
+    history.sample(&s, later);
+    for c in history
+        .charts
+        .iter()
+        .filter(|c| matches!(c.id, Id::Memory(_)))
+    {
+        assert_eq!(c.points.len(), 2);
+        assert_eq!(c.points.back().unwrap().value, None);
+        assert_eq!(c.state(later), "Cached");
+        assert_eq!(c.measured_at, Some(now));
+    }
+    assert_eq!(get(&history, 0), Some(24.0));
+    let recovery = now + Duration::from_secs(2);
+    s.memory_details.as_mut().unwrap().commit_bytes = 16 << 30;
+    s.diagnostics.get_mut(Provider::MemoryCounters).record(
+        recovery,
+        Duration::ZERO,
+        State::Live,
+        None,
+        None,
+    );
+    history.sample(&s, recovery);
+    let c = history
+        .charts
+        .iter()
+        .find(|c| c.id == Id::Memory(0))
+        .unwrap();
+    assert_eq!(c.points.back().unwrap().value, Some(16.0));
+    assert_eq!(c.state(recovery), "Live");
+}

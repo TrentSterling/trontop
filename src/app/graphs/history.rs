@@ -9,6 +9,7 @@ pub(super) const WINDOW: Duration = Duration::from_secs(120);
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum Id {
     System(u8),
+    Memory(u8),
     Activity(String),
     Gpu(String, u8),
     Temperature(String, u16),
@@ -19,14 +20,16 @@ pub(super) enum Id {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Group {
     System,
+    Memory,
     Thermal,
     Gpu,
     Storage,
     Network,
 }
 impl Group {
-    pub(super) const ALL: [Self; 5] = [
+    pub(super) const ALL: [Self; 6] = [
         Self::System,
+        Self::Memory,
         Self::Thermal,
         Self::Gpu,
         Self::Storage,
@@ -35,6 +38,7 @@ impl Group {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::System => "Load",
+            Self::Memory => "Memory",
             Self::Thermal => "Temperatures & power",
             Self::Gpu => "GPU",
             Self::Storage => "Disks",
@@ -256,13 +260,6 @@ impl History {
                     .then(|| s.memory_used_bytes as f32 / s.memory_total_bytes as f32 * 100.0),
                 Some(100.0),
             ),
-            (
-                "Page file used",
-                "Windows swap usage; not total committed memory",
-                Unit::Gib,
-                Some(s.swap_used_bytes as f32 / 1_073_741_824.0),
-                Some((s.swap_total_bytes as f32 / 1_073_741_824.0).max(1.0)),
-            ),
         ];
         for (index, (title, detail, unit, value, maximum)) in system_values.into_iter().enumerate()
         {
@@ -276,6 +273,72 @@ impl History {
                     value: system.last_success.and(value),
                     at: system.last_success,
                     state: system_state,
+                    maximum,
+                    cadence: Duration::from_secs(1),
+                    partial: false,
+                },
+                now,
+            );
+        }
+        let memory_health = s.diagnostics.get(Provider::MemoryCounters);
+        let memory_live = memory_health.state(Provider::MemoryCounters, now) == State::Live;
+        let gib = |value: u64| value as f32 / 1_073_741_824.0;
+        let memory = s.memory_details;
+        let memory_values = [
+            (
+                "Commit charge",
+                "Committed virtual memory; not page-file occupancy",
+                memory.map(|m| gib(m.commit_bytes)),
+                Unit::Gib,
+                memory.map(|m| gib(m.commit_limit_bytes)),
+            ),
+            (
+                "Commit pressure",
+                "Committed / current commit limit",
+                memory.and_then(|m| m.pressure()),
+                Unit::Percent,
+                Some(100.0),
+            ),
+            (
+                "System cache",
+                "Standby pages + system working set",
+                memory.map(|m| gib(m.system_cache_bytes)),
+                Unit::Gib,
+                None,
+            ),
+            (
+                "Paged pool",
+                "Kernel paged-pool allocation",
+                memory.map(|m| gib(m.kernel_paged_bytes)),
+                Unit::Gib,
+                None,
+            ),
+            (
+                "Nonpaged pool",
+                "Kernel nonpaged-pool allocation",
+                memory.map(|m| gib(m.kernel_nonpaged_bytes)),
+                Unit::Gib,
+                None,
+            ),
+        ];
+        for (index, (title, detail, value, unit, maximum)) in memory_values.into_iter().enumerate()
+        {
+            self.field(
+                Field {
+                    id: Id::Memory(index as u8),
+                    title,
+                    detail,
+                    group: Group::Memory,
+                    unit,
+                    value: memory_health.last_success.and(value),
+                    at: memory_health.last_attempt,
+                    state: if memory_live {
+                        "Live"
+                    } else if memory.is_some() {
+                        "Cached"
+                    } else {
+                        "Unavailable"
+                    },
                     maximum,
                     cadence: Duration::from_secs(1),
                     partial: false,
