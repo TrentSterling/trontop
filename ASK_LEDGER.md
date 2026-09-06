@@ -118,6 +118,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   adaptive action text and six contrast/state regressions (202 ordinary tests
   pass). Extreme palette renders were reviewed; full inventory/native/final
   acceptance remain. Evidence: `docs/THEME_CONTRAST.md`.
+  Alpha.32 fixes missing table-cell focus outlines and duplicate invisible
+  row/icon Tab stops. Four regressions cover keyboard sorting/selection, disabled
+  cells, preserved mouse gaps and geometry/contrast. Four focus views inspected;
+  this is a bounded interaction fix, not final whole-app/native acceptance.
 - [x] **A17: Display labels must not be highlightable.** Global non-selectable
   labels; only deliberate editable/copy fields select text. Evidence: `src/theme.rs`
   and headless text/control checks. Recheck as part of the final UI audit.

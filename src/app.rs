@@ -1182,7 +1182,9 @@ impl TrontopApp {
             .striped(true)
             .resizable(true)
             .vscroll(true)
-            .sense(Sense::click())
+            // Cells own keyboard activation. The full-row hit area only fills
+            // mouse gaps; making it focusable adds an invisible duplicate stop.
+            .sense(Sense::CLICK)
             .cell_layout(Layout::left_to_right(Align::Center))
             .min_scrolled_height(0.0)
             .max_scroll_height(available_height)
@@ -1361,7 +1363,8 @@ impl TrontopApp {
                                     process.executable.as_deref(),
                                     18.0,
                                     t.text_muted,
-                                    egui::Sense::click(),
+                                    // The adjacent name is the keyboard target.
+                                    egui::Sense::CLICK,
                                 )
                                 .clicked()
                             {

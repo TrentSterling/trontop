@@ -142,6 +142,185 @@ fn headers_sort_displayed_groups_and_flat_switch_uses_individual_values() {
     }
 }
 
+fn press_local_key(key: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }
+}
+
+fn tab_to_text(
+    ctx: &egui::Context,
+    app: &mut TrontopApp,
+    size: Vec2,
+    label: &str,
+) -> egui::FullOutput {
+    // Only local egui events. Never activate another control while finding the
+    // requested cell, and never execute native/platform commands from outputs.
+    let mut output = egui::FullOutput::default();
+    for _ in 0..120 {
+        output.append(frame(ctx, app, size, vec![press_local_key(egui::Key::Tab)]));
+        if let Some(response) = ctx
+            .memory(|m| m.focused())
+            .and_then(|id| ctx.read_response(id))
+            && text_shapes(&output).iter().any(|(text, clip)| {
+                text.galley.job.text == label
+                    && clip.contains_rect(text.visual_bounding_rect())
+                    && response.rect.contains(text.visual_bounding_rect().center())
+            })
+        {
+            assert!(
+                output.shapes.iter().any(|clipped| {
+                    matches!(&clipped.shape, egui::Shape::Rect(shape)
+                    if shape.rect == response.rect.expand2(Vec2::new(4.0, 0.0)).shrink(1.0) && shape.stroke.width >= 1.0)
+                }),
+                "focused table cell {label} has no visible outline in {:?}",
+                response.rect
+            );
+            return output;
+        }
+    }
+    panic!("Tab did not reach {label}");
+}
+
+#[test]
+fn process_table_keyboard_focus_sort_and_selection_use_real_ui_without_native_input() {
+    for dark in [true, false] {
+        for (size, scale) in [
+            (Vec2::new(1040.0, 640.0), 1.0),
+            (Vec2::new(1280.0, 760.0), 1.0),
+            (Vec2::new(1040.0, 640.0), 1.25),
+            (Vec2::new(1280.0, 760.0), 1.5),
+            (Vec2::new(1280.0, 760.0), 2.0),
+        ] {
+            let settings = ThemeSettings {
+                dark,
+                ..Default::default()
+            };
+            let ctx = egui::Context::default();
+            theme::install(&ctx, settings);
+            ctx.set_pixels_per_point(scale);
+            let mut app = app(settings, false);
+            install_groups(&mut app);
+            app.sort_column = SortColumn::Cpu;
+            app.sort_direction = SortDirection::Descending;
+            app.rebuild_visible_processes();
+            for _ in 0..3 {
+                frame(&ctx, &mut app, size, vec![]);
+            }
+            tab_to_text(&ctx, &mut app, size, "CPU  v");
+            frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![press_local_key(egui::Key::Enter)],
+            );
+            assert_eq!(app.sort_direction, SortDirection::Ascending);
+            assert_root_order(&ctx, &mut app, size, &[4, 2, 0]);
+            tab_to_text(&ctx, &mut app, size, "Fixture.Idle.exe  [2]");
+            frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![press_local_key(egui::Key::Space)],
+            );
+            assert_eq!(app.selected_pid, Some(900_004));
+            assert!(app.pending_end_task.is_none());
+        }
+    }
+}
+
+#[test]
+fn process_table_row_padding_remains_mouse_clickable_without_duplicate_keyboard_target() {
+    let size = Vec2::new(1280.0, 760.0);
+    let settings = ThemeSettings::default();
+    let ctx = egui::Context::default();
+    theme::install(&ctx, settings);
+    let mut app = app(settings, false);
+    install_groups(&mut app);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let text = text_shapes(&output)
+        .into_iter()
+        .find(|(text, _)| text.galley.job.text == "Fixture.Render.exe  [2]")
+        .unwrap()
+        .0;
+    // The row is 32 points tall; this targets its bottom inset, outside the
+    // smaller child cell allocation, not the name, icon or expansion button.
+    let pos = egui::pos2(
+        text.pos.x + 4.0,
+        text.visual_bounding_rect().center().y + 14.0,
+    );
+    for pressed in [true, false] {
+        frame(
+            &ctx,
+            &mut app,
+            size,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+    }
+    assert_eq!(app.selected_pid, Some(900_000));
+    assert!(app.pending_end_task.is_none());
+}
+
+#[test]
+#[ignore = "offscreen keyboard-focus PNGs with fixture data, no native window or input"]
+fn render_table_keyboard_focus_visual_pass() {
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-smoke");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut renderer = offscreen::Renderer::new();
+    for (name, dark, size, label) in [
+        (
+            "focus-header-dark",
+            true,
+            Vec2::new(1040.0, 640.0),
+            "CPU  v",
+        ),
+        (
+            "focus-header-light",
+            false,
+            Vec2::new(1280.0, 760.0),
+            "CPU  v",
+        ),
+        ("focus-heat-dark", true, Vec2::new(1280.0, 760.0), "20.0%"),
+        (
+            "focus-name-light",
+            false,
+            Vec2::new(1040.0, 640.0),
+            "Fixture.Render.exe  [2]",
+        ),
+    ] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, false);
+        install_groups(&mut app);
+        let mut output = egui::FullOutput::default();
+        for _ in 0..3 {
+            output.append(frame(&ctx, &mut app, size, vec![]));
+        }
+        output.append(tab_to_text(&ctx, &mut app, size, label));
+        renderer.save(&ctx, output, size, &directory.join(format!("{name}.png")));
+    }
+    println!("Keyboard focus: 4 offscreen PNGs; synthetic data, no native windows or OS input");
+}
+
 #[test]
 fn refresh_search_and_pid_reuse_preserve_only_intended_expansion_state() {
     let mut app = app(ThemeSettings::default(), false);

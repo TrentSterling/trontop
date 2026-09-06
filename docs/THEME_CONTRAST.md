@@ -1,4 +1,36 @@
-# Custom-theme contrast (alpha.23)
+# Theme contrast and keyboard focus
+
+## Table interaction follow-up (alpha.32, A16)
+
+A local Tab regression reproduced focused table labels/heat cells with no visible
+indicator. The production process-table test then exposed an additional invisible
+stop on the encompassing row hit area before the actual header control.
+
+Custom table labels, sort headers and heat-value cells now paint a rounded
+contrast-safe focus outline. It borrows the existing outer-cell padding and clips
+to the column, without changing text, allocation, selection or hover geometry.
+The process table's whole-row hit area and redundant process-icon target retain
+mouse clicks but no longer add keyboard stops; labeled cells and expansion buttons
+retain keyboard activation. No extra timer, worker, animation or dependency.
+
+Four new ordinary regressions cover:
+
+- Real Tab traversal through labels and zero/full heat cells, outline removal,
+  disabled targets, unchanged text geometry and dark/light extreme-accent contrast.
+- Enter/Space activation and disabled-cell gating.
+- Production process-table keyboard sorting and PID selection in compact/normal
+  sizes and four egui scale factors. No native/platform commands are executed.
+- Mouse selection in the row's outer padding, preserving the full-row hit area.
+
+The specifically selected `render_table_keyboard_focus_visual_pass` produces four
+offscreen PNGs in `target/ui-smoke`: dark/light sort headers, a dark heat cell and
+a light process name. All four were inspected after widening text clearance.
+The final selected render took 3.66 seconds on RTX 5070 Ti / Vulkan 591.86.
+Fixture data is synthetic; these are not real keyboard, native DPI, close or drag
+measurements. The entire A16 page/state inventory and Trent's acceptance remain
+open. Current ordinary gate and exact EXE identity are in `CURRENT_STATE.md`.
+
+## Original alpha.23 contrast pass
 
 Scope: A16, with the related stable-layout and zebra constraints in A14/A15.
 This is an existing-interface audit, not another brand or layout redesign.

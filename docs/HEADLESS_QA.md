@@ -34,6 +34,12 @@ publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 
 ## Coverage
 
+- Alpha.32 adds four table-focus regressions: actual local Tab traversal and
+  contrast-safe outlines without text movement, Enter/Space and disabled gating,
+  production process sorting/selection across sizes and scales, and preserved
+  outer-row mouse clicks. A selected offscreen test generates four focus views,
+  all inspected. See `THEME_CONTRAST.md`; no native input/window or timer added.
+
 - Alpha.31 adds strict visible-text/geometry comparison between visible-row and
   full-row graph layout at the 512-chart cap, across deep local scrolling, modes
   and three UI scales. Another regression verifies category changes return to the

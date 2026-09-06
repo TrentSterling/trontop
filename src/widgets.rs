@@ -8,6 +8,8 @@ use std::collections::VecDeque;
 
 #[cfg(test)]
 mod contrast_tests;
+#[cfg(test)]
+mod table_interaction_tests;
 
 /// Passive labels respond visually without becoming selectable or clickable.
 pub fn hover_label(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
@@ -624,7 +626,25 @@ pub(crate) fn table_label(ui: &mut egui::Ui, text: RichText) -> egui::Response {
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), label.as_str())
     });
+    paint_table_focus(ui, &response);
     response
+}
+
+/// Table cells paint their own content, so egui cannot draw their focus state.
+/// Use the existing outer-cell padding without changing text or allocation.
+fn paint_table_focus(ui: &egui::Ui, response: &egui::Response) {
+    if response.enabled() && response.has_focus() {
+        let rect = response
+            .rect
+            .expand2(Vec2::new(4.0, 0.0))
+            .intersect(ui.clip_rect());
+        ui.painter_at(rect).rect_stroke(
+            rect.shrink(1.0),
+            ui.visuals().widgets.inactive.corner_radius,
+            Stroke::new(1.5, ui.visuals().widgets.active.bg_stroke.color),
+            egui::StrokeKind::Inside,
+        );
+    }
 }
 
 pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t: Tokens) -> bool {
@@ -675,6 +695,7 @@ fn heat_cell_response(
         FontId::monospace(11.0),
         t.text,
     );
+    paint_table_focus(ui, &response);
     response
 }
 

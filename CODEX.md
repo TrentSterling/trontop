@@ -5,6 +5,19 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.32 fixes keyboard-focus visibility in custom tables (A16).** The local
+Tab test failed before the outline existed; the real process-table test also found
+an invisible duplicate row target. Labels/heat cells now paint a contrast-safe
+outline using existing padding. Rows/icons still accept mouse clicks but no longer
+duplicate labeled keyboard targets. Four new regressions cover traversal, keyboard
+sorting/selection, disabled states, contrast/geometry and outer-row mouse clicks.
+Four offscreen focus PNGs were generated and inspected. Read `docs/THEME_CONTRAST.md`
+and `docs/CURRENT_STATE.md` for the final gate/build. No native window/input,
+preview replacement, personal preferences or upload. Stop this bounded pass at
+handoff; remaining native/acceptance gates and decisions are still open.
+
+### Previous alpha.31 graph-layout checkpoint
+
 **Alpha.31 bounds graph-wall layout work (A22/A32).** The supported 512-chart wall
 was still laying out all card contents. It now measures one real row and reserves
 offscreen space, with stable IDs, shared row widths and category scroll reset.
