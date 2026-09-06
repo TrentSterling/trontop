@@ -5,6 +5,21 @@ must not modify this repository.
 
 ## Current checkpoint
 
+**Alpha.33 adds the requested all-core grid, dense Overview and ColorMagic
+randomization (A06/A13/A32).** Distinct logical-processor histories share Graphs'
+bounded store; visible-row layout is tested through 256 cores. Six palette families,
+Surprise me and 12-roll undo preserve mode/layout and pass seeded contrast tests.
+The old Speed label is corrected to Power clock; measured boost speed is not done.
+Read `docs/ALPHA33_REVIEW.md` for the 263-pass final suite, six inspected offscreen
+views and CPU-only timing. `docs/HARDWARE_RESEARCH.md` records the GitHub backend
+audit and read-only Windows counter evidence. Exact built candidate identity is in
+`docs/CURRENT_STATE.md`. No current preview/settings, native desktop input, drivers
+or remote uploads were touched. CPU temps and native drag/close/tray/soak remain
+open. Shared history cursor and developer-project grouping are brainstorm proposals,
+not additional required asks. Stop this slice at build/review handoff.
+
+### Previous alpha.32 focus checkpoint
+
 **Alpha.32 fixes keyboard-focus visibility in custom tables (A16).** The local
 Tab test failed before the outline existed; the real process-table test also found
 an invisible duplicate row target. Labels/heat cells now paint a contrast-safe

@@ -1,8 +1,38 @@
 # Trontop current state
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
-## Latest built candidate: alpha.32 table keyboard focus (A16)
+## Latest built candidate: alpha.33 cores, Overview and ColorMagic (A06/A13/A32)
+
+Performance / CPU now defaults to distinct logical-processor graphs with a Total
+CPU switch. Overview uses the same timestamped histories for a dense machine-wide
+graph wall. Theme Studio adds coordinated four-peg Randomize, six ColorMagic
+families plus Surprise me, and 12-roll undo without changing mode/layout settings.
+The old Speed field is honestly labelled Power clock; live boost is not done.
+
+Candidate: `target/review/alpha33-cores-colormagic/trontop.exe`,
+**0.3.0-alpha.33**, 13,680,128 bytes, built at **2026-09-06 10:31:53.649 UTC**
+from clean source **d00dc395a0e51c8cdb31f82b221963d484783109**. The later
+handoff-doc commit is not the embedded source identity.
+SHA-256: `6145E483E77E76CF1CC4F3E6139D367D6E47F6F7A2C4DE858FC1FD0204A0F9ED`.
+The preserved copy matches the optimized release EXE; PE version strings match.
+**Built, not launched.** Existing previews and personal preferences were untouched.
+No source upload, tag, release, driver installation or native desktop input.
+
+Final gate: **263 passed, 0 failed, 21 ignored** (55.66 s), strict Clippy (4.04 s),
+formatting/diff checks and optimized release build (1m 02s) passed. Six final
+offscreen views were generated and inspected. A production read-only CPU probe
+confirmed 24 distinct logical readings; the optimized synthetic UI timing is
+explicitly CPU layout/tessellation only, not a native drag/close/soak result.
+See `docs/ALPHA33_REVIEW.md` and `docs/HARDWARE_RESEARCH.md` for exact scope,
+reproduction commands, sources, findings and unfinished measurement/sensor work.
+
+This completes the requested implementation slice, not the full product. The ask
+ledger retains CPU temps, live frequency, native interaction gates, parity and
+Trent's acceptance. Shared history cursor and developer-project grouping are
+brainstorm proposals only. Review this candidate before further speculative polish.
+
+## Previous built candidate: alpha.32 table keyboard focus (A16)
 
 Clickable table labels, headers and heat cells now show a rounded contrast-safe
 focus outline without moving text or changing row/column geometry. The outline

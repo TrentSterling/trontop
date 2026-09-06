@@ -5,7 +5,19 @@ historical engineering log, not an expanding release checklist. Its old unchecke
 extras do not become release requirements unless linked to an agreed ask ID.
 Keep the current source/build evidence in `docs/CURRENT_STATE.md`.
 
-## Current: alpha.19 theme checkpoint and ask ledger
+## Current: alpha.33 cores, Overview and ColorMagic
+
+- Completed the September 6 A06/A13/A32 implementation slice: logical-processor
+  histories/grid, dense shared-history Overview, coordinated randomizer and undo.
+- 263 ordinary tests pass; strict Clippy passes. Six offscreen views reviewed;
+  read-only CPU counter and optimized CPU-only UI probes recorded. No native
+  dragging/close/soak claim. See `docs/ALPHA33_REVIEW.md`.
+- `docs/HARDWARE_RESEARCH.md` explains Power clock versus live frequency and
+  reference-monitor sensor backends. CPU temperatures/live boost remain open.
+- Build identity: `docs/CURRENT_STATE.md`. Review before more speculative polish.
+  New shared-cursor/project-grouping brainstorm ideas are not release gates.
+
+## Previous: alpha.19 theme checkpoint and ask ledger
 
 - [x] Four-peg gradient renderer and tabbed Studio, strict v2 migration/v3 import,
   named presets, surface controls, local drag/keyboard and fixed footer tests
