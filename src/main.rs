@@ -21,6 +21,7 @@ mod process_icons;
 mod sampler;
 mod service_control;
 mod shutdown;
+mod specs;
 mod startup;
 mod storage_sensors;
 mod theme;

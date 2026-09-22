@@ -29,6 +29,7 @@ mod preferences;
 mod sensors;
 mod service_controls;
 mod storage;
+mod system;
 mod tree_state;
 
 #[cfg(test)]
@@ -47,6 +48,7 @@ enum Page {
     Users,
     Details,
     Services,
+    System,
 }
 
 impl Page {
@@ -62,10 +64,11 @@ impl Page {
             Self::Users => Icon::Users,
             Self::Details => Icon::Details,
             Self::Services => Icon::Services,
+            Self::System => Icon::System,
         }
     }
 
-    const ALL: [(Self, &'static str, &'static str); 10] = [
+    const ALL: [(Self, &'static str, &'static str); 11] = [
         (Self::Overview, "00", "Overview"),
         (Self::Graphs, "09", "Graphs"),
         (Self::Processes, "01", "Processes"),
@@ -76,6 +79,7 @@ impl Page {
         (Self::Details, "06", "Details"),
         (Self::Services, "07", "Services"),
         (Self::Sensors, "08", "Hardware sensors"),
+        (Self::System, "10", "System"),
     ];
 }
 
@@ -167,6 +171,12 @@ pub struct TrontopApp {
     affinity_draft: usize,
     run_command: String,
     tray: Option<TrayController>,
+    /// Started lazily on the first System page view; never in headless tests.
+    specs: Option<crate::specs::Monitor>,
+    specs_enabled: bool,
+    specs_view: crate::specs::Snapshot,
+    system_section: crate::specs::SectionId,
+    reveal_private: bool,
 }
 
 impl TrontopApp {
@@ -189,6 +199,7 @@ impl TrontopApp {
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
         app.process_actions = crate::process_actions::Controller::spawn(cc.egui_ctx.clone());
         app.exporter = crate::export::Exporter::native();
+        app.specs_enabled = true;
         app
     }
 
@@ -261,6 +272,11 @@ impl TrontopApp {
             affinity_draft: 0,
             run_command: String::new(),
             tray,
+            specs: None,
+            specs_enabled: false,
+            specs_view: crate::specs::Snapshot::default(),
+            system_section: crate::specs::SectionId::Summary,
+            reveal_private: false,
         }
     }
 
@@ -667,6 +683,7 @@ impl TrontopApp {
                             Page::Users => "USER SESSIONS",
                             Page::Details => "PROCESS DETAILS",
                             Page::Services => "SERVICE CONTROL",
+                            Page::System => "SYSTEM SPECIFICATIONS",
                         })
                         .size(10.0)
                         .strong()
@@ -2735,6 +2752,7 @@ impl eframe::App for TrontopApp {
         {
             self.accept_sample(snapshot);
         }
+        self.poll_specs();
         if let Some(action) = self.tray.as_ref().and_then(TrayController::poll) {
             match action {
                 TrayAction::Show => {
@@ -2800,6 +2818,7 @@ impl eframe::App for TrontopApp {
                 Page::Users => self.users_page(ui),
                 Page::Details => self.details_page(ui),
                 Page::Services => self.services_page(ui),
+                Page::System => self.system_page(ui),
             });
         self.confirm_end_task(&ctx);
         self.priority_editor(&ctx);

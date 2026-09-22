@@ -7,6 +7,10 @@ use std::time::{Duration, Instant};
 mod native;
 #[cfg(windows)]
 pub use native::Sampler;
+/// DXGI adapter descriptions keyed by LUID (high, low); read-only, worker threads only.
+#[cfg(windows)]
+#[allow(unused_imports)] // Consumed by the specs graphics provider.
+pub(crate) use native::inventory as dxgi_inventory;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Key {

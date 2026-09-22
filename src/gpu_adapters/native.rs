@@ -172,7 +172,7 @@ impl Sampler {
     }
 }
 
-fn inventory() -> Result<BTreeMap<(u32, u32), Description>, String> {
+pub(crate) fn inventory() -> Result<BTreeMap<(u32, u32), Description>, String> {
     let factory: IDXGIFactory1 =
         unsafe { CreateDXGIFactory1() }.map_err(|e| format!("DXGI inventory: {e}"))?;
     let mut result = BTreeMap::new();

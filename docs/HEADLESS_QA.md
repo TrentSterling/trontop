@@ -12,6 +12,7 @@ cargo test app::ui_smoke -- --nocapture
 cargo test shared_surfaces -- --nocapture
 cargo test render_offscreen_visual_pass -- --ignored --nocapture
 cargo test render_graph_wall_visual_pass -- --ignored --nocapture
+cargo test render_system_specs_visual_pass -- --ignored --nocapture
 cargo test --release process_view_timing_probe -- --ignored --nocapture --test-threads=1
 cargo test --release process_tree_timing_probe -- --ignored --nocapture --test-threads=1
 ```
@@ -31,6 +32,9 @@ shell execution. Do not broaden it to arbitrary processes or the native tray tes
 The separately selected `native_inventory_workers_publish_read_only_snapshots`
 probe starts only the read-only Startup and Services workers and measures their
 publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
+The System page smoke tests render synthetic specs sections only and assert
+that no specs worker starts; its `native_specs_*_read_only_probe` tests are
+selected by exact name. See `SYSTEM_SPECS.md`.
 
 ## Coverage
 

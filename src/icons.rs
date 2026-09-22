@@ -13,6 +13,7 @@ pub enum Icon {
     Details,
     Services,
     Sensors,
+    System,
     Theme,
     Info,
     Export,
@@ -147,6 +148,17 @@ impl Icon {
                 line(&[[18.0, 6.0], [21.0, 6.0]]);
                 line(&[[18.0, 10.0], [20.0, 10.0]]);
             }
+            Self::System => {
+                // A processor package with pins on every side.
+                box_at(6.0, 6.0, 12.0, 12.0, 1.5);
+                box_at(9.5, 9.5, 5.0, 5.0, 0.5);
+                for p in [9.0, 12.0, 15.0] {
+                    line(&[[p, 2.5], [p, 6.0]]);
+                    line(&[[p, 18.0], [p, 21.5]]);
+                    line(&[[2.5, p], [6.0, p]]);
+                    line(&[[18.0, p], [21.5, p]]);
+                }
+            }
             Self::Theme => {
                 line(&[
                     [4.0, 12.0],
@@ -220,6 +232,7 @@ mod tests {
                 Icon::Services,
                 Icon::Restart,
                 Icon::Sensors,
+                Icon::System,
                 Icon::Theme,
                 Icon::Info,
                 Icon::Export,

@@ -501,7 +501,8 @@ pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Toke
     ));
 }
 
-fn paint_text(
+/// One clipped, non-wrapping line aligned inside `rect`.
+pub fn paint_text(
     ui: &egui::Ui,
     rect: egui::Rect,
     text: &str,
