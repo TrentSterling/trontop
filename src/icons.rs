@@ -25,6 +25,17 @@ pub enum Icon {
     Maximize,
     Restore,
     Close,
+    // System specs sections and actions.
+    Window,
+    Memory,
+    Board,
+    Gpu,
+    Drive,
+    Disc,
+    Speaker,
+    Keyboard,
+    Network,
+    Copy,
 }
 
 impl Icon {
@@ -208,6 +219,100 @@ impl Icon {
                 line(&[[6.0, 6.0], [18.0, 18.0]]);
                 line(&[[18.0, 6.0], [6.0, 18.0]]);
             }
+            Self::Window => {
+                box_at(3.0, 4.0, 18.0, 16.0, 1.5);
+                line(&[[3.5, 8.5], [20.5, 8.5]]);
+                box_at(6.0, 11.0, 5.0, 6.0, 0.5);
+                box_at(13.0, 11.0, 5.0, 6.0, 0.5);
+            }
+            Self::Memory => {
+                box_at(2.0, 7.0, 20.0, 9.0, 1.0);
+                for x in [5.0, 9.5, 14.0] {
+                    box_at(x, 9.0, 3.0, 4.0, 0.3);
+                }
+                line(&[[11.0, 16.0], [11.0, 19.0], [13.0, 19.0], [13.0, 16.0]]);
+                for x in [5.0, 8.0, 16.0, 19.0] {
+                    line(&[[x, 16.0], [x, 18.0]]);
+                }
+            }
+            Self::Board => {
+                box_at(3.0, 3.0, 18.0, 18.0, 1.5);
+                box_at(6.0, 6.0, 6.0, 6.0, 0.5);
+                line(&[[15.0, 6.0], [18.0, 6.0]]);
+                line(&[[15.0, 9.0], [18.0, 9.0]]);
+                line(&[[6.0, 15.5], [18.0, 15.5]]);
+                line(&[[6.0, 18.0], [13.0, 18.0]]);
+            }
+            Self::Gpu => {
+                box_at(2.0, 6.0, 20.0, 11.0, 1.5);
+                circle(8.0, 11.5, 3.0);
+                circle(16.0, 11.5, 3.0);
+                line(&[[5.0, 17.0], [5.0, 20.0]]);
+                line(&[[9.0, 17.0], [9.0, 20.0]]);
+            }
+            Self::Drive => {
+                box_at(3.0, 5.0, 18.0, 14.0, 2.0);
+                line(&[[3.5, 13.5], [20.5, 13.5]]);
+                painter.circle_filled(point(16.5, 16.3), 1.2 * scale, color);
+                line(&[[6.0, 16.3], [11.0, 16.3]]);
+            }
+            Self::Disc => {
+                circle(12.0, 12.0, 9.0);
+                circle(12.0, 12.0, 2.5);
+                line(&[[12.0, 5.5], [16.0, 6.8]]);
+            }
+            Self::Speaker => {
+                painter.add(Shape::closed_line(
+                    vec![
+                        point(3.0, 9.0),
+                        point(7.0, 9.0),
+                        point(12.0, 4.5),
+                        point(12.0, 19.5),
+                        point(7.0, 15.0),
+                        point(3.0, 15.0),
+                    ],
+                    stroke,
+                ));
+                line(&[[15.5, 9.0], [16.8, 12.0], [15.5, 15.0]]);
+                line(&[[18.5, 6.5], [20.8, 12.0], [18.5, 17.5]]);
+            }
+            Self::Keyboard => {
+                box_at(2.0, 6.0, 20.0, 12.0, 1.5);
+                for y in [9.5, 12.5] {
+                    for x in [5.5, 9.0, 12.5, 16.0] {
+                        painter.circle_filled(point(x + 1.0, y), 0.9 * scale, color);
+                    }
+                }
+                line(&[[7.0, 15.5], [17.0, 15.5]]);
+            }
+            Self::Network => {
+                circle(12.0, 12.0, 9.0);
+                line(&[[3.0, 12.0], [21.0, 12.0]]);
+                line(&[
+                    [12.0, 3.0],
+                    [9.0, 7.5],
+                    [8.5, 12.0],
+                    [9.0, 16.5],
+                    [12.0, 21.0],
+                ]);
+                line(&[
+                    [12.0, 3.0],
+                    [15.0, 7.5],
+                    [15.5, 12.0],
+                    [15.0, 16.5],
+                    [12.0, 21.0],
+                ]);
+            }
+            Self::Copy => {
+                box_at(8.0, 8.0, 12.0, 13.0, 1.5);
+                line(&[
+                    [16.0, 5.5],
+                    [16.0, 3.5],
+                    [4.0, 3.5],
+                    [4.0, 17.0],
+                    [6.0, 17.0],
+                ]);
+            }
         }
     }
 }
@@ -243,6 +348,16 @@ mod tests {
                 Icon::Maximize,
                 Icon::Restore,
                 Icon::Close,
+                Icon::Window,
+                Icon::Memory,
+                Icon::Board,
+                Icon::Gpu,
+                Icon::Drive,
+                Icon::Disc,
+                Icon::Speaker,
+                Icon::Keyboard,
+                Icon::Network,
+                Icon::Copy,
             ] {
                 let output = ctx.run_ui(egui::RawInput::default(), |ui| {
                     icon.paint(ui.painter(), bounds, Color32::WHITE);

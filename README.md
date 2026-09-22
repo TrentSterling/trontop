@@ -35,6 +35,12 @@ Version 0.3 alpha provides:
 - explicit JSON snapshot and CSV process export, with private details excluded by
   default, provider freshness, background writing and a native Save As picker;
   format/limitations and the remaining picker-validation gate: `docs/EXPORTS.md`
+- a Speccy-class System page: OS, CPU (full CPUID brand, per-core-type caches,
+  VT-x capability vs firmware vs hypervisor), per-DIMM RAM from SMBIOS, board and
+  BIOS, graphics with 64-bit VRAM and monitors, storage with NVMe health, audio,
+  peripherals, network and read-only sensor sources, live temperatures and clocks
+  inline, copy and TXT/JSON save with private values hidden by default; no driver,
+  elevation or guessed values: `docs/SYSTEM_SPECS.md`
 - a frameless Tront shell and four-peg gradient Theme Studio: draggable stops,
   hex/position edits, eight presets, named saves, import/export, live surfaces and
   legacy-theme migration; remaining acceptance checks: `docs/THEME_STUDIO.md`

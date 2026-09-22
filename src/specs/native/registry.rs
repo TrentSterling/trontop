@@ -9,7 +9,6 @@ const MAX_VALUE_BYTES: usize = 1024 * 1024;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hive {
     LocalMachine,
-    CurrentUser,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,16 +86,20 @@ pub fn decode(kind: u32, bytes: &[u8]) -> Option<RegValue> {
 #[cfg(windows)]
 mod native {
     use super::*;
+    #[cfg(test)]
+    use windows::Win32::Foundation::ERROR_NO_MORE_ITEMS;
     use windows::Win32::Foundation::{
-        ERROR_FILE_NOT_FOUND, ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS, ERROR_PATH_NOT_FOUND,
-        ERROR_SUCCESS, WIN32_ERROR,
+        ERROR_FILE_NOT_FOUND, ERROR_MORE_DATA, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, WIN32_ERROR,
     };
+    #[cfg(test)]
+    use windows::Win32::System::Registry::RegEnumKeyExW;
     use windows::Win32::System::Registry::{
-        HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE,
-        KEY_WOW64_64KEY, REG_VALUE_TYPE, RegCloseKey, RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW,
-        RegQueryValueExW,
+        HKEY, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE, KEY_WOW64_64KEY,
+        REG_VALUE_TYPE, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
     };
-    use windows::core::{PCWSTR, PWSTR};
+    use windows::core::PCWSTR;
+    #[cfg(test)]
+    use windows::core::PWSTR;
 
     struct Key(HKEY);
     impl Drop for Key {
@@ -120,7 +123,6 @@ mod native {
     fn open(hive: Hive, path: &str) -> Result<Option<Key>, NativeError> {
         let root = match hive {
             Hive::LocalMachine => HKEY_LOCAL_MACHINE,
-            Hive::CurrentUser => HKEY_CURRENT_USER,
         };
         let path = wide(path);
         let mut key = HKEY::default();
@@ -187,6 +189,7 @@ mod native {
     }
 
     /// Up to `limit` subkey names. Ok(empty) when the key is absent.
+    #[cfg(test)]
     pub fn subkeys(hive: Hive, path: &str, limit: usize) -> Result<Vec<String>, NativeError> {
         let Some(key) = open(hive, path)? else {
             return Ok(Vec::new());
@@ -221,46 +224,12 @@ mod native {
         }
         Ok(names)
     }
-
-    /// Up to `limit` value names of a key. Ok(empty) when the key is absent.
-    pub fn value_names(hive: Hive, path: &str, limit: usize) -> Result<Vec<String>, NativeError> {
-        let Some(key) = open(hive, path)? else {
-            return Ok(Vec::new());
-        };
-        let mut names = Vec::new();
-        let mut name = vec![0u16; 16384];
-        for index in 0..limit.min(u32::MAX as usize) as u32 {
-            let mut length = name.len() as u32;
-            // SAFETY: name capacity matches `length`; data is not requested.
-            let status = unsafe {
-                RegEnumValueW(
-                    key.0,
-                    index,
-                    Some(PWSTR(name.as_mut_ptr())),
-                    &mut length,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            };
-            if status == ERROR_NO_MORE_ITEMS {
-                break;
-            }
-            if status != ERROR_SUCCESS {
-                return Err(NativeError::win32("RegEnumValueW", status.0));
-            }
-            names.push(String::from_utf16_lossy(
-                name.get(..length as usize)
-                    .ok_or(NativeError::Malformed("registry value name length"))?,
-            ));
-        }
-        Ok(names)
-    }
 }
 
 #[cfg(windows)]
-pub use native::{read, subkeys, value_names};
+pub use native::read;
+#[cfg(all(windows, test))]
+pub use native::subkeys;
 
 #[cfg(test)]
 mod tests {

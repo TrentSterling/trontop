@@ -51,6 +51,30 @@ pub(super) fn write(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::R
     match c.options.format {
         Format::Json => json_snapshot(w, c, stop),
         Format::Csv => csv_processes(w, c, stop),
+        Format::SpecsText | Format::SpecsJson => specs(w, c),
+    }
+}
+
+/// System specs as text or JSON. Live values resolve at the capture instant;
+/// private values follow `private_details`; drive interface paths never appear.
+fn specs(w: &mut impl Write, c: &Capture) -> io::Result<()> {
+    let specs = c
+        .specs
+        .as_ref()
+        .ok_or_else(|| io::Error::other("No System specs were captured."))?;
+    let live = Some((&c.snapshot, specs.bridge.as_ref(), c.at));
+    let private = c.options.private_details;
+    if c.options.format == Format::SpecsText {
+        let text = crate::specs::text(specs, live, private);
+        // UTF-8 BOM and CRLF so Notepad and mail clients keep the layout.
+        w.write_all(b"\xEF\xBB\xBF")?;
+        w.write_all(text.replace('\n', "\r\n").as_bytes())
+    } else {
+        let mut document = crate::specs::json(specs, live, private);
+        document["captured_unix_ms"] = c.unix_ms.into();
+        document["build"] = env!("TRONTOP_BUILD_ID").into();
+        serde_json::to_writer_pretty(&mut *w, &document).map_err(io::Error::other)?;
+        w.write_all(b"\n")
     }
 }
 

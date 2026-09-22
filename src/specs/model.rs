@@ -3,7 +3,8 @@
 use super::live::LiveKey;
 use std::time::{Duration, Instant, SystemTime};
 
-/// The reason every scaffold provider returns until its lane replaces it.
+/// The reason test fixtures use for a section without data.
+#[cfg(test)]
 pub const NOT_IMPLEMENTED: &str = "not implemented";
 /// Shown for a Known value that turned out to be blank text.
 pub const NOT_REPORTED: &str = "not reported by the device or Windows";
@@ -120,10 +121,6 @@ impl Value {
         Self::Unavailable(reason.into())
     }
 
-    pub fn not_implemented() -> Self {
-        Self::Unavailable(NOT_IMPLEMENTED.into())
-    }
-
     pub fn from_option<T: Into<String>>(value: Option<T>, reason: impl Into<String>) -> Self {
         value.map_or_else(|| Self::unavailable(reason), Self::known)
     }
@@ -197,6 +194,7 @@ impl Row {
         row
     }
 
+    #[cfg(test)]
     pub fn unit(mut self, unit: impl Into<String>) -> Self {
         self.unit = Some(unit.into());
         self
@@ -275,6 +273,7 @@ impl Group {
         self.row(Row::new(label, value))
     }
 
+    #[cfg(test)]
     pub fn group(mut self, group: Group) -> Self {
         self.items.push(Item::Group(group));
         self
@@ -289,6 +288,7 @@ impl Group {
     }
 
     /// Rows in this group and every nested group.
+    #[cfg(test)]
     pub fn row_count(&self) -> usize {
         self.items
             .iter()
@@ -324,11 +324,6 @@ impl SummaryLine {
 
     pub fn live(mut self, key: LiveKey) -> Self {
         self.live = Some(key);
-        self
-    }
-
-    pub fn private(mut self) -> Self {
-        self.private = true;
         self
     }
 }
@@ -374,6 +369,7 @@ impl Section {
         }
     }
 
+    #[cfg(test)]
     pub fn not_implemented(id: SectionId) -> Self {
         Self::unavailable(id, NOT_IMPLEMENTED)
     }
@@ -388,6 +384,7 @@ impl Section {
         self
     }
 
+    #[cfg(test)]
     pub fn issue(mut self, reason: impl Into<String>) -> Self {
         self.issues.push(reason.into());
         self
@@ -415,6 +412,7 @@ impl Section {
         }
     }
 
+    #[cfg(test)]
     pub fn row_count(&self) -> usize {
         self.groups.iter().map(Group::row_count).sum()
     }

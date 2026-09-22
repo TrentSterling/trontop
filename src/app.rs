@@ -171,12 +171,17 @@ pub struct TrontopApp {
     affinity_draft: usize,
     run_command: String,
     tray: Option<TrayController>,
-    /// Started lazily on the first System page view; never in headless tests.
+    /// Started lazily on the first System or Sensors page view; never in
+    /// headless tests.
     specs: Option<crate::specs::Monitor>,
     specs_enabled: bool,
     specs_view: crate::specs::Snapshot,
     system_section: crate::specs::SectionId,
     reveal_private: bool,
+    /// Opt-in per save; resets after every System specs save.
+    specs_export_private: bool,
+    /// The running export job was started from the System page.
+    specs_export_pending: bool,
 }
 
 impl TrontopApp {
@@ -277,6 +282,8 @@ impl TrontopApp {
             specs_view: crate::specs::Snapshot::default(),
             system_section: crate::specs::SectionId::Summary,
             reveal_private: false,
+            specs_export_private: false,
+            specs_export_pending: false,
         }
     }
 
@@ -2789,6 +2796,7 @@ impl eframe::App for TrontopApp {
         self.process_icons.begin_frame(&ctx);
         self.poll_service_command();
         if let Some(result) = self.exporter.poll() {
+            self.specs_export_finished(&result);
             self.export_result = Some(result);
         }
         self.keyboard_shortcuts(&ctx);

@@ -21,12 +21,17 @@ pub enum Format {
     #[default]
     Json,
     Csv,
+    /// System page specs as plain text (Speccy's "Save as text").
+    SpecsText,
+    /// System page specs as JSON.
+    SpecsJson,
 }
 impl Format {
     pub fn extension(self) -> &'static str {
         match self {
-            Self::Json => "json",
+            Self::Json | Self::SpecsJson => "json",
             Self::Csv => "csv",
+            Self::SpecsText => "txt",
         }
     }
 }
@@ -42,6 +47,8 @@ pub struct Capture {
     pub options: Options,
     pub at: Instant,
     pub unix_ms: Option<u64>,
+    /// The System page's published specs, for the Specs formats only.
+    pub specs: Option<crate::specs::Snapshot>,
 }
 impl Capture {
     pub fn new(snapshot: SystemSnapshot, options: Options) -> Self {
@@ -53,6 +60,20 @@ impl Capture {
                 .duration_since(UNIX_EPOCH)
                 .ok()
                 .and_then(|d| u64::try_from(d.as_millis()).ok()),
+            specs: None,
+        }
+    }
+
+    /// A System specs capture: live values resolve against `snapshot` and the
+    /// specs bridge readings at this instant.
+    pub fn specs(
+        snapshot: SystemSnapshot,
+        specs: crate::specs::Snapshot,
+        options: Options,
+    ) -> Self {
+        Self {
+            specs: Some(specs),
+            ..Self::new(snapshot, options)
         }
     }
 }

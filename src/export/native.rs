@@ -47,6 +47,18 @@ unsafe fn choose(format: Format) -> windows::core::Result<Option<PathBuf>> {
                 w!("csv"),
                 w!("trontop-processes.csv"),
             ),
+            Format::SpecsText => (
+                w!("Trontop system specs (text)"),
+                w!("*.txt"),
+                w!("txt"),
+                w!("trontop-system-specs.txt"),
+            ),
+            Format::SpecsJson => (
+                w!("Trontop system specs (JSON)"),
+                w!("*.json"),
+                w!("json"),
+                w!("trontop-system-specs.json"),
+            ),
         };
         dialog.SetFileTypes(&[COMDLG_FILTERSPEC {
             pszName: label,

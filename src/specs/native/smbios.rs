@@ -43,6 +43,7 @@ impl Table {
     }
 
     /// A table from raw structure bytes; used by unit tests with synthetic data.
+    #[cfg(test)]
     pub fn from_structures(major: u8, minor: u8, data: Vec<u8>) -> Self {
         Self {
             major,
@@ -52,6 +53,7 @@ impl Table {
         }
     }
 
+    #[cfg(test)]
     pub fn at_least(&self, major: u8, minor: u8) -> bool {
         (self.major, self.minor) >= (major, minor)
     }
@@ -190,16 +192,8 @@ pub struct Structure<'a> {
 }
 
 impl<'a> Structure<'a> {
-    /// Formatted-area length from the header. Fields beyond it are absent
+    /// Fields beyond the formatted-area length from the header are absent
     /// (older SMBIOS versions), and every accessor returns None for them.
-    pub fn len(&self) -> usize {
-        self.formatted.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.formatted.len() <= 4
-    }
-
     pub fn bytes(&self, offset: usize, len: usize) -> Option<&'a [u8]> {
         self.formatted.get(offset..offset.checked_add(len)?)
     }

@@ -104,6 +104,23 @@ An abrupt exit or failed cleanup may leave a partial sibling temporary file, pos
 containing private data. No later launch silently deletes such files. They are not
 securely erased. Only an explicit completed result is labeled Saved.
 
+## System specs text and JSON (alpha.36)
+
+The System page's **Save text** and **Save JSON** use the same one-job export
+worker, native Save As picker, temporary-file replacement and 64 MiB limit. The
+page clones its published specs snapshot and the current sampler snapshot when
+the button is pressed; live values (clocks, temperatures, usage) resolve at that
+instant and carry their provider label. Text is UTF-8 with a BOM and CRLF, like
+Speccy's "Save as text", with each section's state and read age. JSON is
+`kind: trontop_system_specs`, schema 1, with every row's value or its
+`unavailable` reason, notes, live keys and section states.
+
+"Private values in saved files" defaults off and resets after every save.
+With it off, private rows (serials, UUIDs, MAC/IP addresses, product IDs, user
+and computer names, Bluetooth names) are written as excluded. Drive interface
+paths never appear in either format, even with private values on. Names of
+devices and installed software remain; this is not an anonymous report.
+
 ## Verification and remaining gate
 
 Ten new tests exercise serialization, metadata/privacy across sensor/inventory

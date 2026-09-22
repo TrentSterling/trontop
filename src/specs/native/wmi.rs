@@ -49,6 +49,7 @@ impl WmiValue {
         }
     }
 
+    #[cfg(test)]
     pub fn as_i64(&self) -> Option<i64> {
         match self {
             Self::Int(value) => Some(*value),
@@ -106,6 +107,7 @@ impl WmiRow {
         self.get(name)?.as_u64()
     }
 
+    #[cfg(test)]
     pub fn i64(&self, name: &str) -> Option<i64> {
         self.get(name)?.as_i64()
     }

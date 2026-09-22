@@ -103,8 +103,7 @@ fn system_page_renders_every_section_with_live_values_and_masked_private_rows() 
                     }
                     SectionId::Graphics => {
                         assert!(
-                            visible(&output, "Issue: Fixture monitor EDID could not be read")
-                                .is_some()
+                            visible(&output, "Fixture monitor EDID could not be read").is_some()
                         );
                         assert!(visible(&output, "2857 MHz").is_some());
                     }
@@ -134,7 +133,7 @@ fn system_reveal_copy_and_sub_navigation_use_only_local_input() {
     click_local_text(&ctx, &mut app, size, "Reveal private values");
     assert!(!app.reveal_private);
     let output = render(&ctx, &mut app, size);
-    let position = visible(&output, "Copy as text")
+    let position = visible(&output, "Copy all")
         .expect("copy control")
         .visual_bounding_rect()
         .center();
@@ -169,8 +168,200 @@ fn system_reveal_copy_and_sub_navigation_use_only_local_input() {
 }
 
 #[test]
-#[ignore = "offscreen GPU visual QA; writes test-only PNGs under target/ui-smoke, never opens a window"]
+fn system_specs_save_uses_the_export_worker_with_private_values_off() {
+    let (send, receive) = std::sync::mpsc::channel();
+    let ctx = egui::Context::default();
+    let mut app = populated(ThemeSettings::default());
+    theme::install(&ctx, app.theme);
+    app.exporter = crate::export::Exporter::with_backend(move |capture, _| {
+        let _ = send.send((
+            capture.options.format,
+            capture.options.private_details,
+            capture.specs.is_some(),
+        ));
+        crate::export::Outcome::Saved {
+            path: std::path::PathBuf::from(r"C:\fixture\trontop-system-specs.txt"),
+            bytes: 2048,
+            sequence: capture.snapshot.sequence,
+        }
+    });
+    let size = Vec2::new(1280.0, 900.0);
+    click_local_text(&ctx, &mut app, size, "Private values in saved files");
+    assert!(app.specs_export_private);
+    click_local_text(&ctx, &mut app, size, "Save text");
+    let (format, private, has_specs) = receive
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("save job");
+    assert_eq!(format, crate::export::Format::SpecsText);
+    assert!(private && has_specs);
+    // Private values are opt-in per save.
+    assert!(!app.specs_export_private);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.specs_export_pending && std::time::Instant::now() < deadline {
+        render(&ctx, &mut app, size);
+    }
+    let (message, error) = app.message.clone().expect("save outcome message");
+    assert!(
+        message.starts_with("System specs saved:") && !error,
+        "{message}"
+    );
+    click_local_text(&ctx, &mut app, size, "Save JSON");
+    let (format, private, _) = receive
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("second save job");
+    assert_eq!(format, crate::export::Format::SpecsJson);
+    assert!(!private, "private values default off");
+    assert!(app.specs.is_none());
+}
+
+#[test]
+fn system_summary_and_sections_stay_inside_small_windows() {
+    for size in [Vec2::new(900.0, 600.0), Vec2::new(1040.0, 640.0)] {
+        let ctx = egui::Context::default();
+        let mut app = populated(ThemeSettings::default());
+        theme::install(&ctx, app.theme);
+        for id in [SectionId::Summary, SectionId::Cpu, SectionId::Storage] {
+            app.system_section = id;
+            let output = render(&ctx, &mut app, size);
+            for (shape, _) in text_shapes(&output) {
+                let bounds = shape.visual_bounding_rect();
+                assert!(
+                    bounds.right() <= size.x + 0.5,
+                    "{id:?} at {size:?}: {:?} overflows to {}",
+                    shape.galley.job.text,
+                    bounds.right()
+                );
+            }
+            for label in ["Refresh", "Copy all", "Save text", "Save JSON"] {
+                assert!(visible(&output, label).is_some(), "{label} at {size:?}");
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "offscreen GPU visual QA with REAL read-only specs and sampler data; writes PNGs to TRONTOP_SPECS_SHOTS or target/ui-smoke/specs, never opens a window"]
 fn render_system_specs_visual_pass() {
+    let directory = std::env::var_os("TRONTOP_SPECS_SHOTS").map_or_else(
+        || std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-smoke/specs"),
+        std::path::PathBuf::from,
+    );
+    std::fs::create_dir_all(&directory).unwrap();
+    // Real, read-only collection on this test thread and the sampler's workers.
+    let specs = crate::specs::fixtures::collect_now();
+    let sampler = crate::sampler::Sampler::spawn(egui::Context::default(), None);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let mut snapshot = None;
+    while std::time::Instant::now() < deadline {
+        if let Some(latest) = sampler.latest_after(0) {
+            let ready = latest.cpu.clocks.is_some()
+                && latest
+                    .storage_sensors
+                    .drives
+                    .iter()
+                    .any(|d| d.last_success.is_some());
+            snapshot = Some(latest);
+            if ready {
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    let snapshot = snapshot.expect("sampler produced a snapshot");
+    drop(sampler);
+    println!(
+        "{}",
+        crate::specs::text(
+            &specs,
+            Some((&snapshot, &specs.bridge, std::time::Instant::now())),
+            false
+        )
+    );
+    let mut renderer = super::offscreen::Renderer::new();
+    for (dark, size, section, name) in [
+        (
+            true,
+            Vec2::new(1280.0, 900.0),
+            SectionId::Summary,
+            "summary",
+        ),
+        (true, Vec2::new(1280.0, 900.0), SectionId::Cpu, "cpu"),
+        (true, Vec2::new(1280.0, 900.0), SectionId::Memory, "ram"),
+        (
+            true,
+            Vec2::new(1280.0, 900.0),
+            SectionId::Graphics,
+            "graphics",
+        ),
+        (
+            true,
+            Vec2::new(1280.0, 900.0),
+            SectionId::Storage,
+            "storage",
+        ),
+        (
+            false,
+            Vec2::new(1280.0, 900.0),
+            SectionId::Motherboard,
+            "board-light",
+        ),
+        (
+            true,
+            Vec2::new(1040.0, 640.0),
+            SectionId::Summary,
+            "summary-small",
+        ),
+        (
+            true,
+            Vec2::new(1040.0, 640.0),
+            SectionId::Storage,
+            "storage-small",
+        ),
+        (
+            true,
+            Vec2::new(1280.0, 900.0),
+            SectionId::SensorBridge,
+            "sources",
+        ),
+        (
+            true,
+            Vec2::new(1280.0, 900.0),
+            SectionId::OperatingSystem,
+            "os",
+        ),
+    ] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, false);
+        app.page = Page::System;
+        app.snapshot = snapshot.clone();
+        app.specs_view = specs.clone();
+        app.system_section = section;
+        let mut output = egui::FullOutput::default();
+        for _ in 0..3 {
+            output.append(frame(&ctx, &mut app, size, vec![]));
+        }
+        assert!(
+            app.specs.is_none(),
+            "the page never starts workers in tests"
+        );
+        renderer.save(
+            &ctx,
+            output,
+            size,
+            &directory.join(format!("system-real-{name}.png")),
+        );
+    }
+    println!("PNGs written to {}", directory.display());
+}
+
+#[test]
+#[ignore = "offscreen GPU visual QA; writes test-only PNGs under target/ui-smoke, never opens a window"]
+fn render_system_specs_fixture_visual_pass() {
     let mut renderer = super::offscreen::Renderer::new();
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-smoke");
     std::fs::create_dir_all(&directory).unwrap();

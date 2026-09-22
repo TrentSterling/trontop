@@ -1,6 +1,7 @@
 # Trontop current state
 
-Last updated: 2026-09-06
+Last updated: 2026-09-22 (alpha.36 System specs page; the checklist below is
+the saved 2026-09-06 handoff)
 
 ## Thread shutdown: saved resume checklist
 
@@ -65,7 +66,45 @@ the final candidate hash before native acceptance; a later rebuild needs its own
 applicable checks. The CI artifact and local EXE are separate build outputs; do
 not assume their hashes match without comparing them.
 
-## Latest running candidate: alpha.35 GPU adapters and release handoff
+## Latest built candidate: alpha.36 System specs page (A33; A10/D01 bridge)
+
+Trent, 2026-09-22: "clone speccy, IN trontop, make trontOP OP". The nine
+parallel provider lanes returned nothing, so the integrator implemented every
+provider on `feat/system-specs` (scaffold aed2cee) and finished the page. Not
+launched: no window, input, focus change, driver, elevation, registry write or
+network request was used. Details: `docs/SYSTEM_SPECS.md`.
+
+- Providers: OS, CPU, RAM, Motherboard, Graphics, Storage, Optical Drives,
+  Audio, Peripherals, Network and Sensor Sources, all read-only, each with an
+  exact-name probe. Speccy's bugs on this PC are beaten (64-bit VRAM 15.9 GB, no
+  shader clock, per-DIMM SMBIOS, "NVMe (PCIe 3.0 x4)" with live temperature and
+  the NVMe health log, VT-x capability vs firmware vs Hyper-V, per-core-type
+  caches, full CPUID brand, Arrow Lake-S, LGA1851).
+- Page: section icons and status dots, Speccy Summary with colored live values
+  (missing ones are a muted `--` with the reason), Expand/Collapse all, Copy all,
+  section, group and row, wrapping long values, Save text/JSON through the export
+  worker with private values off by default and reset after each save.
+- Sensor bridge: LibreHardwareMonitor/OpenHardwareMonitor WMI and HWiNFO shared
+  memory, read-only, feeding CPU/board keys with source labels on the System and
+  Hardware sensors pages. None runs on the reference PC, so CPU and board
+  temperatures are explicitly Unavailable with that reason.
+- Probe timings (debug): OS 58 ms, CPU 2 ms, RAM 1 ms, board 121 ms, graphics
+  30 ms, storage 323 ms, devices 704 ms, network 12 ms, bridge 10 ms. Private
+  values masked in probe output; drive interface paths never shown or exported.
+- Gate on this tree: `cargo fmt --check` clean, `cargo test` 331 passed / 40
+  ignored, `cargo clippy --all-targets -- -D warnings` clean, `cargo build
+  --release` OK. `target/release/trontop.exe` **0.3.0-alpha.36**, 14,344,704
+  bytes, SHA-256 `9CEE0761C4F43FCE3942AC6305F5991949CD1A3A4DCE15C65CED89C60867EABF`
+  (unsigned; built before the commit, not preserved under `target/review`).
+- Visual QA: `render_system_specs_visual_pass` rendered ten PNGs from REAL data
+  (Summary, OS, CPU, RAM, Graphics, Storage, light Motherboard, Sensor Sources,
+  1040x640 Summary and Storage); reviewed, then fixed live-value truncation,
+  "Unavailable" noise beside titles, cut instruction-set rows and provider rows
+  that hid their reasons.
+- Remaining: Trent's review of the page (A33), the real Save As picker for specs
+  files (same gate as `docs/EXPORTS.md`), and D01.
+
+## Previous running candidate: alpha.35 GPU adapters and release handoff
 
 **Requested stopping point: build, launch, private GitHub check, then hand off.**
 Do not start another feature, polish or speculative bug-hunting cycle without

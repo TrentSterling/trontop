@@ -606,3 +606,51 @@ fn worker_returns_cancel_failure_success_and_allows_subsequent_jobs() {
     }
     assert_eq!(count.load(Ordering::Relaxed), 3);
 }
+
+#[test]
+fn system_specs_text_and_json_exclude_private_values_and_drive_paths() {
+    use crate::specs::fixtures;
+    let specs = |format, private_details| {
+        Capture::specs(
+            SystemSnapshot::default(),
+            fixtures::snapshot(),
+            Options {
+                format,
+                private_details,
+            },
+        )
+    };
+    let text = encoded(&specs(Format::SpecsText, false));
+    assert!(text.starts_with(b"\xEF\xBB\xBF"), "UTF-8 BOM for Notepad");
+    let text = String::from_utf8(text[3..].to_vec()).unwrap();
+    assert!(text.contains("\r\n") && !text.replace("\r\n", "").contains('\n'));
+    assert!(text.contains("Private values: hidden"));
+    assert!(text.contains("Serial number: [hidden]"));
+    assert!(text.contains("State: Complete"));
+    assert!(!text.contains(fixtures::PRIVATE_SERIAL));
+    assert!(!text.contains(fixtures::DRIVE_INTERFACE));
+    let json = encoded(&specs(Format::SpecsJson, false));
+    let document: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    assert_eq!(document["kind"], "trontop_system_specs");
+    assert_eq!(document["private_values"], "excluded");
+    let raw = String::from_utf8(json).unwrap();
+    assert!(!raw.contains(fixtures::PRIVATE_SERIAL));
+    assert!(!raw.contains(fixtures::DRIVE_INTERFACE));
+    assert!(raw.contains("\"excluded\": true"));
+    assert!(raw.contains("\"key\": \"DriveTemperature\""));
+    let private = String::from_utf8(encoded(&specs(Format::SpecsJson, true))).unwrap();
+    assert!(private.contains(fixtures::PRIVATE_SERIAL));
+    assert!(
+        !private.contains(fixtures::DRIVE_INTERFACE),
+        "interface paths never leave the app"
+    );
+    let missing = Capture::new(
+        SystemSnapshot::default(),
+        Options {
+            format: Format::SpecsText,
+            private_details: false,
+        },
+    );
+    let mut sink = Vec::new();
+    assert!(encode::write(&mut sink, &missing, &AtomicBool::new(false)).is_err());
+}

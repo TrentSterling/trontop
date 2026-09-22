@@ -254,8 +254,8 @@ impl TrontopApp {
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             widgets::status_pill(ui, "120 seconds", t.secondary);
-            widgets::hover_label(ui, RichText::new("CPU temperature: provider not connected").size(11.0).color(t.text_muted))
-                .on_hover_text("CPU package/core temperature needs a compatible hardware-sensor provider. Windows' standard temperature field is not populated on this machine. We do not substitute an ACPI thermal zone or invent a temperature. No driver is installed by Trontop.");
+            widgets::hover_label(ui, RichText::new("CPU temperature: not graphed; live on Hardware sensors when a provider runs").size(11.0).color(t.text_muted))
+                .on_hover_text("CPU package/core temperature comes only from an already-running LibreHardwareMonitor, OpenHardwareMonitor or HWiNFO (read-only). We do not substitute an ACPI thermal zone or invent a temperature. No driver is installed by Trontop.");
             if ui.small_button("Sensor details").clicked() { self.page = Page::Sensors; }
         });
         ui.add_space(8.0);

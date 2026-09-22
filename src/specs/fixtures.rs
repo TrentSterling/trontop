@@ -153,3 +153,36 @@ pub fn snapshot() -> Snapshot {
     });
     snapshot
 }
+
+/// REAL data for explicitly run `#[ignore]` visual QA: every provider called
+/// once on this thread (read-only), then published like the worker would.
+/// Never used by ordinary tests.
+pub fn collect_now() -> Snapshot {
+    let mut snapshot = Snapshot::default();
+    for entry in &mut snapshot.entries {
+        let Some(provider) = super::worker::provider(entry.id) else {
+            continue;
+        };
+        let at = Instant::now();
+        let section = provider(&Context::probe());
+        let state = match section.completeness() {
+            Completeness::Complete => SectionState::Complete,
+            Completeness::Partial => SectionState::Partial,
+            Completeness::Unavailable => SectionState::Unavailable,
+        };
+        entry.health = SectionHealth {
+            state,
+            collected_at: Some(at),
+            collected_wall: Some(SystemTime::now()),
+            duration: Some(at.elapsed()),
+            collecting_since: None,
+            issues: Vec::new(),
+        };
+        entry.section = Some(Arc::new(section));
+    }
+    let at = Instant::now();
+    let mut bridge = super::bridge::read_live(&Context::probe());
+    bridge.collected_at = Some(at);
+    snapshot.bridge = Arc::new(bridge);
+    snapshot
+}

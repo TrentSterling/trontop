@@ -13,6 +13,8 @@ cargo test shared_surfaces -- --nocapture
 cargo test render_offscreen_visual_pass -- --ignored --nocapture
 cargo test render_graph_wall_visual_pass -- --ignored --nocapture
 cargo test render_system_specs_visual_pass -- --ignored --nocapture
+cargo test render_system_specs_fixture_visual_pass -- --ignored --nocapture
+cargo test native_specs_cpu_read_only_probe -- --ignored --nocapture
 cargo test --release process_view_timing_probe -- --ignored --nocapture --test-threads=1
 cargo test --release process_tree_timing_probe -- --ignored --nocapture --test-threads=1
 ```
@@ -34,7 +36,17 @@ probe starts only the read-only Startup and Services workers and measures their
 publication path. It sends no service commands. See `INVENTORY_WORKERS.md`.
 The System page smoke tests render synthetic specs sections only and assert
 that no specs worker starts; its `native_specs_*_read_only_probe` tests are
-selected by exact name. See `SYSTEM_SPECS.md`.
+selected by exact name (one per section: os, cpu, memory, board, graphics,
+storage, devices, network, bridge). Alpha.36 adds a save test through an
+injected export backend (private values off by default and reset after each
+save) and a small-window overflow check at 900x600 and 1040x640.
+`render_system_specs_visual_pass` uses REAL read-only data: it calls every specs
+provider once on the test thread and runs one short-lived sampler for live
+values, then writes ten offscreen PNGs (Summary, OS, CPU, RAM, Graphics, Storage,
+light Motherboard, Sensor Sources, and 1040x640 Summary and Storage) to
+`TRONTOP_SPECS_SHOTS` or `target/ui-smoke/specs`. It opens no window and sends
+no input. `render_system_specs_fixture_visual_pass` renders the synthetic
+fixture instead. See `SYSTEM_SPECS.md`.
 
 ## Coverage
 

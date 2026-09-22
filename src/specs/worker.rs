@@ -43,12 +43,9 @@ impl Context {
     }
 
     /// For `#[ignore]` read-only probes: a 60 s budget that never stops.
+    #[cfg(test)]
     pub fn probe() -> Self {
         Self::new(Duration::from_secs(60), Arc::new(AtomicBool::new(false)))
-    }
-
-    pub fn started(&self) -> Instant {
-        self.started
     }
 
     pub fn remaining(&self) -> Duration {
@@ -396,11 +393,13 @@ mod tests {
 
     static RELEASE: AtomicBool = AtomicBool::new(false);
     static CPU_READS: AtomicUsize = AtomicUsize::new(0);
+    static MEMORY_READS: AtomicUsize = AtomicUsize::new(0);
 
     fn blocked(_: &Context) -> Section {
         while !RELEASE.load(Ordering::Acquire) {
             thread::sleep(Duration::from_millis(2));
         }
+        MEMORY_READS.fetch_add(1, Ordering::AcqRel);
         Section::new(SectionId::Memory).group(Group::new("Released").kv("A", Value::known("1")))
     }
 
@@ -472,19 +471,23 @@ mod tests {
         let memory = later.get(SectionId::Memory).unwrap();
         assert_eq!(memory.health.state, SectionState::Slow);
         assert!(memory.health.issues[0].contains("previous data"));
-        // Refresh requests coalesce into one queued read per worker.
+        // Refresh requests coalesce into one queued read per worker. The
+        // blocked worker makes this deterministic: twenty requests while its
+        // read is in flight queue exactly one more read.
         let before = CPU_READS.load(Ordering::Acquire);
         for _ in 0..20 {
             monitor.refresh();
         }
         let _ = wait_for(&mut monitor, |_| CPU_READS.load(Ordering::Acquire) > before);
-        thread::sleep(Duration::from_millis(50));
-        assert!(CPU_READS.load(Ordering::Acquire) <= before + 2);
+        assert_eq!(MEMORY_READS.load(Ordering::Acquire), 0);
         RELEASE.store(true, Ordering::Release);
         let released = wait_for(&mut monitor, |s| {
             s.get(SectionId::Memory)
                 .is_some_and(|e| e.section.is_some())
+                && MEMORY_READS.load(Ordering::Acquire) >= 2
         });
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(MEMORY_READS.load(Ordering::Acquire), 2);
         assert_eq!(
             released.get(SectionId::Memory).unwrap().health.state,
             SectionState::Complete

@@ -140,6 +140,8 @@ pub struct LiveValue {
     pub value: Value,
     /// Present only for fresh temperature readings; drives color bands.
     pub celsius: Option<f32>,
+    /// "Provider: sensor label" for bridge readings; None for sampler values.
+    pub source: Option<String>,
 }
 
 impl LiveValue {
@@ -147,6 +149,7 @@ impl LiveValue {
         Self {
             value: Value::Known(text),
             celsius: None,
+            source: None,
         }
     }
 
@@ -154,6 +157,7 @@ impl LiveValue {
         Self {
             value: Value::Known(LiveUnit::Celsius.format(celsius as f64)),
             celsius: Some(celsius),
+            source: None,
         }
     }
 
@@ -161,6 +165,7 @@ impl LiveValue {
         Self {
             value: Value::unavailable(reason),
             celsius: None,
+            source: None,
         }
     }
 }
@@ -226,10 +231,12 @@ fn from_bridge(key: &LiveKey, bridge: &BridgeReadings, now: Instant) -> Option<L
         .readings
         .iter()
         .find(|reading| &reading.key == key && reading.value.is_finite())?;
-    Some(match reading.unit {
+    let mut value = match reading.unit {
         LiveUnit::Celsius => LiveValue::celsius(reading.value as f32),
         unit => LiveValue::known(unit.format(reading.value)),
-    })
+    };
+    value.source = Some(format!("{}: {}", reading.source, reading.label));
+    Some(value)
 }
 
 /// None means the key is bridge-only.
@@ -440,6 +447,10 @@ mod tests {
         );
         assert_eq!(fresh.value, Value::known("61 °C"));
         assert_eq!(fresh.celsius, Some(61.4));
+        assert_eq!(
+            fresh.source.as_deref(),
+            Some("Fixture provider: CPU Package")
+        );
         let stale = resolve(
             &LiveKey::CpuPackageTemperature,
             &snapshot,

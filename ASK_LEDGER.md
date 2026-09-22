@@ -79,6 +79,32 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   identify the source/unit of every reading, and connect the agreed safe providers.
   Unsupported must be explicit, not guessed. Depends on D01; no driver installation
   is authorized merely by this item. AMD/Intel/other-controller limits must be listed.
+  Alpha.36 bridge outcome: a read-only sensor bridge now maps CPU package/core,
+  motherboard, package power and core voltage (with source labels) from an
+  already-running LibreHardwareMonitor or OpenHardwareMonitor (WMI) or HWiNFO
+  (shared memory) onto the System and Hardware sensors pages. None runs on the
+  reference PC, so CPU and board temperatures stay explicitly Unavailable there;
+  no driver is installed. The NVMe health log (wear, data written, hours, errors)
+  is now read without admin; ATA SMART still requires administrator. Still OPEN
+  until D01 is decided. Evidence: `docs/SYSTEM_SPECS.md` (Sensor Sources).
+
+## Required: Speccy-class system specifications
+
+- [ ] **A33: Speccy-class System specs page. REVIEW.** Trent, 2026-09-22: "clone
+  speccy, IN trontop, make trontOP OP". Alpha.36 fills every section from
+  read-only sources (OS, CPU, RAM, Motherboard, Graphics, Storage, Optical,
+  Audio, Peripherals, Network, Sensor Sources) with a Speccy-style Summary,
+  section icons, collapsible groups, live colored temperatures and clocks, copy
+  (all, section, group, row), TXT/JSON save with private values off by default,
+  and explicit Waiting/Slow/Partial/Unavailable states. It beats Speccy's bugs on
+  this PC (64-bit VRAM, no invented shader clock, per-DIMM SMBIOS, NVMe interface
+  and temperature, VT-x capability vs firmware vs hypervisor, per-core-type
+  caches, full CPUID brand). Evidence: `docs/SYSTEM_SPECS.md`, nine
+  `native_specs_*_read_only_probe` runs, `app::ui_smoke::system` tests, the
+  real-data `render_system_specs_visual_pass` PNGs and `docs/CURRENT_STATE.md`
+  (alpha.36). Remaining: Trent's visual review of the page, and the real Windows
+  Save As picker for specs files is compiled but not validated end to end (same
+  gate as `docs/EXPORTS.md`). CPU/board temperatures depend on A10/D01.
 
 ## Required: Tront look, readable everywhere
 
@@ -267,6 +293,11 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   provider/optional integration, or explicitly accept and document the limit.
   Read `docs/SENSORS_PLAN.md`. Do not substitute ACPI zones for CPU package sensors.
   September 6 source audit and read-only probes: `docs/HARDWARE_RESEARCH.md`.
+  Alpha.36 implements the "supported existing provider" option read-only: the
+  sensor bridge reads LibreHardwareMonitor/OpenHardwareMonitor WMI or HWiNFO
+  shared memory when Trent already runs one, and otherwise shows the reason CPU
+  and board temperatures are unavailable. Whether that is the accepted answer (or
+  the limit is accepted as documented) remains Trent's decision.
 - [ ] **D02: Drag investigation and cross-project rollout.** Trent requested the
   fix across egui apps, then questioned it and asked to park disruptive testing.
   Findings are saved. Resume only after approval for isolated measurement; port
