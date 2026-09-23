@@ -301,7 +301,7 @@ impl TrontopApp {
                     if !matches!(entry.health.state, SectionState::Complete) {
                         widgets::status_pill(
                             ui,
-                            &entry.health.state.label().to_uppercase(),
+                            &chip_label(entry.health.state).to_uppercase(),
                             state_color(entry.health.state, t),
                         );
                     }
@@ -360,11 +360,14 @@ impl TrontopApp {
                 ui,
                 RichText::new(id.title()).size(18.0).strong().color(t.text),
             );
-            widgets::status_pill(
-                ui,
-                &entry.health.state.label().to_uppercase(),
-                state_color(entry.health.state, t),
-            );
+            // Complete is the normal state and needs no chip.
+            if !matches!(entry.health.state, SectionState::Complete) {
+                widgets::status_pill(
+                    ui,
+                    &chip_label(entry.health.state).to_uppercase(),
+                    state_color(entry.health.state, t),
+                );
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let Some(section) = &entry.section else {
                     return;
@@ -423,15 +426,28 @@ impl TrontopApp {
                 }
             });
         });
-        let freshness = match (entry.health.collected_at, entry.health.duration) {
-            (Some(at), Some(duration)) => format!(
-                "Read {} in {:.1} ms. Automatic refresh every 5 minutes. Right-click a row to copy it.",
-                crate::diagnostics::age(Some(at), now),
-                duration.as_secs_f64() * 1000.0
+        let (freshness, hover) = match entry.health.collected_at {
+            Some(at) => (
+                read_ago(at, now),
+                format!(
+                    "{}Refreshes automatically every {} minutes, or use Refresh. Right-click a row to copy it.",
+                    entry
+                        .health
+                        .duration
+                        .map_or_else(String::new, |duration| format!(
+                            "The read took {:.1} ms. ",
+                            duration.as_secs_f64() * 1000.0
+                        )),
+                    crate::specs::CADENCE.as_secs() / 60
+                ),
             ),
-            _ => waiting_text(entry.health.state).into(),
+            None => (
+                waiting_text(entry.health.state).to_owned(),
+                "Nothing is shown until the first read completes.".to_owned(),
+            ),
         };
-        widgets::hover_label(ui, RichText::new(freshness).size(10.0).color(t.text_muted));
+        widgets::hover_label(ui, RichText::new(freshness).size(11.0).color(t.text_muted))
+            .on_hover_text(hover);
         let issues = entry
             .health
             .issues
@@ -760,6 +776,24 @@ fn waiting_text(state: SectionState) -> &'static str {
         SectionState::Slow => "The first read is slow. Nothing is estimated meanwhile.",
         SectionState::Stopped => "The collection worker stopped before its first read.",
         _ => "No data.",
+    }
+}
+
+/// "Read 22 s ago", in whole seconds or minutes.
+fn read_ago(at: Instant, now: Instant) -> String {
+    let seconds = now.saturating_duration_since(at).as_secs();
+    match seconds {
+        0 => "Read just now".into(),
+        1..120 => format!("Read {seconds} s ago"),
+        _ => format!("Read {} min ago", seconds / 60),
+    }
+}
+
+/// Chip text for a section that is not Complete.
+fn chip_label(state: SectionState) -> &'static str {
+    match state {
+        SectionState::Collecting => "Reading",
+        state => state.label(),
     }
 }
 

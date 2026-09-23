@@ -362,7 +362,8 @@ pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     style.text_styles = [
         (
             TextStyle::Heading,
-            FontId::new(24.0, FontFamily::Proportional),
+            // Dialog titles (egui title bars) share the 16 px dialog header size.
+            FontId::new(16.0, FontFamily::Proportional),
         ),
         (TextStyle::Body, FontId::new(14.0, FontFamily::Proportional)),
         (

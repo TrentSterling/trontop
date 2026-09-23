@@ -30,6 +30,9 @@ pub struct Studio {
     roll_sequence: u64,
 }
 
+/// The one-sentence Theme Studio intro.
+const HERO: &str = "Your palette, live across Trontop.";
+
 impl Studio {
     pub fn show(
         &mut self,
@@ -53,22 +56,22 @@ impl Studio {
         self.sync_hex(*settings);
         let t = theme::tokens(*settings);
         let mut close = false;
+        let width = 568.0_f32.min(ctx.content_rect().width() - 48.0);
         egui::Window::new("Trontop Theme Studio")
-            .open(open)
+            .title_bar(false)
+            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(0))
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-            .default_width(568.0)
-            .default_height((ctx.content_rect().height() - 100.0).clamp(320.0, 660.0))
-            .max_height((ctx.content_rect().height() - 80.0).max(240.0))
-            .vscroll(false).resizable(false)
+            .default_width(width)
+            .resizable(false)
             .show(ctx, |ui| {
+                ui.set_width(width);
+                if widgets::dialog_header(ui, "Theme Studio", t) {
+                    close = true;
+                }
+                widgets::dialog_body(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 7.0;
-                ui.horizontal(|ui| {
-                    widgets::tront_mark(ui, t.accent, t.secondary, 34.0);
-                    ui.vertical(|ui| {
-                        widgets::hover_label(ui, RichText::new("Your machine. Your palette.").size(19.0).strong().color(t.text));
-                        widgets::hover_label(ui, RichText::new("Four color pegs. Live throughout Trontop.").size(11.0).color(t.text_muted));
-                    });
-                });
+                widgets::hover_label(ui, RichText::new(HERO).size(13.0).color(t.text))
+                    .on_hover_text("Four color pegs make the background gradient; the two accent colors are independent. Changes apply live.");
                 ui.add_enabled_ui(editable, |ui| {
                   ui.horizontal(|ui| {
                     if widgets::action_button(ui, "Randomize", Vec2::new(112.0, 28.0), t.accent_dim, t)
@@ -94,7 +97,7 @@ impl Studio {
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .id_salt(("theme_body", self.tab))
-                    .max_height((ctx.content_rect().height() - 324.0).clamp(160.0, 471.0))
+                    .max_height((ctx.content_rect().height() - 290.0).clamp(160.0, 471.0))
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.tab {
                         0 => self.palette(ui, settings, t),
@@ -104,7 +107,7 @@ impl Studio {
                     });
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(Some(*settings) != self.baseline, egui::Button::new("Revert session")).on_hover_text("Restore the theme from when this editor opened.").clicked() {
+                    if ui.add_enabled(Some(*settings) != self.baseline, egui::Button::new("Revert session")).on_hover_text("Restore the theme from when this editor opened. Changes apply live, so use this before closing to undo them.").clicked() {
                         *settings = self.baseline.unwrap_or_default();
                         self.notice = None;
                     }
@@ -114,7 +117,10 @@ impl Studio {
                     });
                 });
                 });
-                widgets::hover_label(ui, RichText::new(if editable { "Changes apply live. Save status is in the app footer. Revert session before closing to undo." } else { "Loading saved settings. Theme editing waits so your saved palettes cannot be overwritten." }).size(10.0).color(t.text_muted));
+                if !editable {
+                    widgets::hover_label(ui, RichText::new("Loading saved settings. Theme editing waits so your saved palettes cannot be overwritten.").size(11.0).color(t.text_muted));
+                }
+                });
             });
         if close {
             *open = false;

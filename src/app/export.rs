@@ -1,6 +1,10 @@
 use super::*;
 use crate::export::{Capture, Format, Outcome};
 
+/// The one intro line under the Export header.
+pub(super) const EXPORT_INTRO: &str =
+    "A fixed capture when you press Save as; live sampling continues.";
+
 impl TrontopApp {
     pub(super) fn export_window(&mut self, ctx: &egui::Context) {
         if !self.show_export {
@@ -10,19 +14,20 @@ impl TrontopApp {
         if self.exporter.busy() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
-        let mut open = true;
-        // One region for the whole body, not a second nested scroll area that
-        // squeezes the "Limited details" box: the window sizes itself to its
-        // (now short, one-sentence-per-block) content instead of scrolling it.
-        // A `vscroll(true)`/wrapping `ScrollArea` here under-sizes the window
-        // and stays stuck there; this shape does not.
-        egui::Window::new("Export snapshot").open(&mut open)
+        let mut close = false;
+        let width = 580.0_f32.min(ctx.content_rect().width() - 48.0);
+        // One region for the whole body, not a nested scroll area: the window
+        // sizes itself to its short content instead of scrolling it.
+        egui::Window::new("Export snapshot")
+            .title_bar(false)
+            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(0))
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .default_width(580.0).resizable(false).collapsible(false)
-            .frame(egui::Frame::window(&ctx.style_of(ctx.theme())).inner_margin(theme::CARD_PAD))
+            .default_width(width).resizable(false)
             .show(ctx, |ui| {
-                widgets::hover_label(ui, RichText::new("Take the data with you").size(22.0).strong().color(t.text));
-                widgets::hover_label(ui, "A fixed capture when you press Save as; live sampling continues.");
+                ui.set_width(width);
+                close = widgets::dialog_header(ui, "Export snapshot", t);
+                widgets::dialog_body(ui, |ui| {
+                widgets::hover_label(ui, RichText::new(EXPORT_INTRO).size(13.0).color(t.text));
                 ui.add_space(theme::space::L);
                 ui.add_enabled_ui(!self.exporter.busy(), |ui| {
                     widgets::control_row(ui, "Format", false, t, |ui| {
@@ -51,6 +56,8 @@ impl TrontopApp {
                     .on_hover_text("No chart history, subtree totals or service-command annotations are included.");
                 ui.add_space(theme::space::L);
                 widgets::hover_frame(ui, widgets::surface(ui, t, false), |ui| {
+                    // Full content width, like every other block in this panel.
+                    ui.set_min_width(ui.available_width());
                     widgets::hover_label(ui, RichText::new(if self.export_options.private_details { "Private details included" } else { "Limited details; not anonymous" }).strong().color(t.text));
                     let (body, body_hover) = if self.export_options.private_details {
                         (
@@ -86,10 +93,11 @@ impl TrontopApp {
                         self.export_result = self.exporter.submit(capture, ctx.clone()).err().map(Outcome::Failed);
                     }
                 });
-                widgets::hover_label(ui, RichText::new("Closing this panel does not cancel an export in progress.").size(10.0).color(t.text_muted))
+                widgets::hover_label(ui, RichText::new("Closing this panel does not cancel an export in progress.").size(11.0).color(t.text_muted))
                     .on_hover_text("Nothing is uploaded or opened automatically.");
+                });
             });
-        if !open {
+        if close {
             self.show_export = false;
         }
     }

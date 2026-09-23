@@ -325,14 +325,14 @@ pub fn mini_meter_text(
         egui::pos2(rect.left(), text_y),
         egui::Align2::LEFT_CENTER,
         label,
-        FontId::proportional(10.0),
+        FontId::proportional(11.0),
         t.text_muted,
     );
     painter.text(
         egui::pos2(rect.right(), text_y),
         egui::Align2::RIGHT_CENTER,
         text,
-        FontId::monospace(10.0),
+        FontId::monospace(11.0),
         if value.is_some() {
             t.text
         } else {
@@ -654,7 +654,9 @@ pub fn paint_text(
     } else {
         rect.left()
     };
-    ui.painter_at(rect).galley(
+    // One pixel of slack: a right-aligned glyph's ink may overhang its
+    // advance width by a fraction of a pixel and must not be shaved off.
+    ui.painter_at(rect.expand2(Vec2::new(1.0, 0.0))).galley(
         egui::pos2(x, rect.center().y - galley.size().y * 0.5),
         galley,
         color,
@@ -1820,7 +1822,7 @@ pub fn inventory_status(
             ui,
             status_rect,
             status,
-            FontId::monospace(10.0),
+            FontId::proportional(11.0),
             t.ink(color),
             Align::Max,
         );
@@ -1973,6 +1975,83 @@ pub fn fill_last_row<T>(
             }
         });
     }
+}
+
+/// Height of the dialog header bar drawn by [`dialog_header`].
+pub const DIALOG_HEADER: f32 = 36.0;
+
+/// Dialog chrome: a header bar with a 16 px left-aligned title and a close
+/// button. egui's own title bar centers a Heading-sized title, so dialogs use
+/// `Window::title_bar(false)` with a zero-margin frame, call this first, and
+/// pad their body with [`dialog_body`]. Returns true when close is clicked.
+pub fn dialog_header(ui: &mut egui::Ui, title: &str, t: Tokens) -> bool {
+    let (bar, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), DIALOG_HEADER),
+        Sense::hover(),
+    );
+    let radius = ui.visuals().window_corner_radius;
+    ui.painter().rect_filled(
+        bar,
+        egui::CornerRadius {
+            nw: radius.nw,
+            ne: radius.ne,
+            sw: 0,
+            se: 0,
+        },
+        ui.visuals().widgets.open.weak_bg_fill,
+    );
+    ui.painter()
+        .hline(bar.x_range(), bar.bottom(), Stroke::new(1.0, t.border));
+    let close =
+        egui::Rect::from_center_size(bar.right_center() - Vec2::new(22.0, 0.0), Vec2::splat(26.0));
+    let title_rect = egui::Rect::from_min_max(
+        bar.min + Vec2::new(14.0, 0.0),
+        egui::pos2(close.left() - 8.0, bar.bottom()),
+    );
+    paint_text(
+        ui,
+        title_rect,
+        title,
+        FontId::proportional(16.0),
+        t.text,
+        egui::Align::Min,
+    );
+    let response = ui
+        .interact(close, ui.id().with("dialog_close"), Sense::click())
+        .on_hover_text("Close");
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), "Close")
+    });
+    if response.hovered() {
+        ui.painter().rect_filled(
+            close,
+            ui.visuals().widgets.hovered.corner_radius,
+            ui.visuals().widgets.hovered.weak_bg_fill,
+        );
+    }
+    Icon::Close.paint(
+        ui.painter(),
+        egui::Rect::from_center_size(close.center(), Vec2::splat(14.0)),
+        if response.hovered() {
+            t.text
+        } else {
+            t.text_muted
+        },
+    );
+    response.clicked()
+}
+
+/// Dialog body under [`dialog_header`], with the standard dialog padding.
+pub fn dialog_body<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::new()
+        .inner_margin(egui::Margin {
+            left: 14,
+            right: 14,
+            top: 10,
+            bottom: 12,
+        })
+        .show(ui, add)
+        .inner
 }
 
 #[cfg(test)]

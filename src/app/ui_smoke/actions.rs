@@ -65,11 +65,7 @@ fn process_action_confirmation_is_nonblocking_and_keeps_its_original_target() {
         // Ten navigation entries plus the pending-action footer legitimately
         // need scrolling at minimum size. Exercise that real local scroll path.
         let output = frame(&ctx, &mut app, size, vec![]);
-        if !text_shapes(&output).iter().any(|(text, clip)| {
-            text.galley.job.text == label
-                && text.pos.x < 196.0
-                && clip.contains_rect(text.visual_bounding_rect())
-        }) {
+        if nav_entry(&output, label).is_none() {
             frame(
                 &ctx,
                 &mut app,
@@ -88,7 +84,24 @@ fn process_action_confirmation_is_nonblocking_and_keeps_its_original_target() {
                 frame(&ctx, &mut app, size, vec![]);
             }
         }
-        click_local_text(&ctx, &mut app, size, label);
+        let output = frame(&ctx, &mut app, size, vec![]);
+        let position = nav_entry(&output, label).expect("visible nav entry");
+        for pressed in [true, false] {
+            frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![
+                    egui::Event::PointerMoved(position),
+                    egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
         assert!(app.page == page, "navigation blocked on {label}");
         assert!(app.process_actions.busy());
         frame(&ctx, &mut app, size, vec![]);

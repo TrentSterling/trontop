@@ -177,36 +177,84 @@ fn warm_up(g: &mut Gauntlet) {
     assert!(accepted > 0, "the sampler produced no snapshot");
 }
 
-fn pages_at(g: &mut Gauntlet, size: Vec2) {
-    const PAGE: usize = 4;
-    const DIALOG: usize = 16;
-    g.app.show_theme_editor = false;
-    g.app.show_diagnostics = false;
-    g.app.show_export = false;
-    g.app.selected_pid = None;
+/// How a gauntlet state is captured.
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    /// One window-sized frame.
+    Screen,
+    /// The whole scrolled page, also sliced.
+    Full,
+    /// A dialog over the page; the number identifies the window so the
+    /// harness lets a different one fade out first.
+    Dialog(u8),
+}
 
-    g.app.page = Page::Overview;
-    g.shoot(size, "overview", PAGE);
-    g.shoot_full(size, "overview-full", PAGE);
+/// One named UI state. `set` configures the app completely from the baseline,
+/// so a state never depends on the one before it.
+struct Step {
+    name: String,
+    kind: Kind,
+    set: Box<dyn Fn(&mut TrontopApp)>,
+}
 
-    g.app.page = Page::Graphs;
-    for (tab, label) in crate::app::graphs::Dashboard::gauntlet_tabs() {
-        g.app.graphs.set_gauntlet_view(tab, false);
-        g.shoot(size, &format!("graphs-{}", slug(label)), PAGE);
+impl Step {
+    fn new(name: impl Into<String>, kind: Kind, set: impl Fn(&mut TrontopApp) + 'static) -> Self {
+        Self {
+            name: name.into(),
+            kind,
+            set: Box::new(move |app| {
+                baseline(app);
+                set(app);
+            }),
+        }
     }
-    g.app.graphs.set_gauntlet_view(None, true);
-    g.shoot(size, "graphs-everything-bars", PAGE);
-    g.app.graphs.set_gauntlet_view(None, false);
-    g.shoot_full(size, "graphs-everything-full", PAGE);
+}
 
-    g.app.page = Page::Processes;
-    g.app.tree_mode = true;
-    g.shoot(size, "processes-tree", PAGE);
-    g.app.tree_mode = false;
-    g.shoot(size, "processes-flat", PAGE);
-    g.app.tree_mode = true;
+/// No dialog, no selection, default sub-views.
+fn baseline(app: &mut TrontopApp) {
+    app.show_theme_editor = false;
+    app.show_diagnostics = false;
+    app.show_export = false;
+    app.selected_pid = None;
+    app.tree_mode = true;
+    app.performance_device = PerformanceDevice::Cpu;
+    app.graphs.cpu_all_cores = false;
+    app.graphs.set_gauntlet_view(None, false);
+    app.system_section = SectionId::Summary;
+    app.theme_studio.tab = 0;
+}
 
-    g.app.page = Page::Performance;
+/// Every state the polish gauntlet photographs, in capture order. Device
+/// counts come from the current snapshot.
+fn steps(app: &TrontopApp) -> Vec<Step> {
+    let mut steps = vec![
+        Step::new("overview", Kind::Screen, |app| app.page = Page::Overview),
+        Step::new("overview-full", Kind::Full, |app| app.page = Page::Overview),
+    ];
+    for (tab, label) in crate::app::graphs::Dashboard::gauntlet_tabs() {
+        steps.push(Step::new(
+            format!("graphs-{}", slug(label)),
+            Kind::Screen,
+            move |app| {
+                app.page = Page::Graphs;
+                app.graphs.set_gauntlet_view(tab, false);
+            },
+        ));
+    }
+    steps.push(Step::new("graphs-everything-bars", Kind::Screen, |app| {
+        app.page = Page::Graphs;
+        app.graphs.set_gauntlet_view(None, true);
+    }));
+    steps.push(Step::new("graphs-everything-full", Kind::Full, |app| {
+        app.page = Page::Graphs;
+    }));
+    steps.push(Step::new("processes-tree", Kind::Screen, |app| {
+        app.page = Page::Processes;
+    }));
+    steps.push(Step::new("processes-flat", Kind::Screen, |app| {
+        app.page = Page::Processes;
+        app.tree_mode = false;
+    }));
     let mut devices = vec![
         (PerformanceDevice::Cpu, "cpu".to_string()),
         (PerformanceDevice::Memory, "memory".into()),
@@ -214,24 +262,29 @@ fn pages_at(g: &mut Gauntlet, size: Vec2) {
         (PerformanceDevice::GpuSensors, "gpu-sensors".into()),
         (PerformanceDevice::PhysicalDisks, "physical-disks".into()),
     ];
-    for index in 0..g.app.snapshot.disks.len() {
+    for index in 0..app.snapshot.disks.len() {
         devices.push((PerformanceDevice::Disk(index), format!("volume-{index}")));
     }
-    for index in 0..g.app.snapshot.networks.len() {
+    for index in 0..app.snapshot.networks.len() {
         devices.push((
             PerformanceDevice::Network(index),
             format!("network-{index}"),
         ));
     }
     for (device, name) in devices {
-        g.app.performance_device = device;
-        g.shoot(size, &format!("performance-{name}"), PAGE);
+        steps.push(Step::new(
+            format!("performance-{name}"),
+            Kind::Screen,
+            move |app| {
+                app.page = Page::Performance;
+                app.performance_device = device;
+            },
+        ));
     }
-    g.app.performance_device = PerformanceDevice::Cpu;
-    g.app.graphs.cpu_all_cores = true;
-    g.shoot(size, "performance-cpu-cores", PAGE);
-    g.app.graphs.cpu_all_cores = false;
-
+    steps.push(Step::new("performance-cpu-cores", Kind::Screen, |app| {
+        app.page = Page::Performance;
+        app.graphs.cpu_all_cores = true;
+    }));
     for (page, name) in [
         (Page::History, "history"),
         (Page::Startup, "startup"),
@@ -239,52 +292,166 @@ fn pages_at(g: &mut Gauntlet, size: Vec2) {
         (Page::Details, "details"),
         (Page::Services, "services"),
     ] {
-        g.app.page = page;
-        g.shoot(size, name, PAGE);
+        steps.push(Step::new(name, Kind::Screen, move |app| app.page = page));
     }
-
-    g.app.page = Page::Sensors;
-    g.shoot(size, "sensors", PAGE);
-    g.shoot_full(size, "sensors-full", PAGE);
-
-    g.app.page = Page::System;
+    steps.push(Step::new("sensors", Kind::Screen, |app| {
+        app.page = Page::Sensors;
+    }));
+    steps.push(Step::new("sensors-full", Kind::Full, |app| {
+        app.page = Page::Sensors;
+    }));
     for id in SectionId::ALL {
-        g.app.system_section = id;
-        g.shoot(size, &format!("system-{}", id.key()), PAGE);
+        steps.push(Step::new(
+            format!("system-{}", id.key()),
+            Kind::Screen,
+            move |app| {
+                app.page = Page::System;
+                app.system_section = id;
+            },
+        ));
     }
-    g.app.system_section = SectionId::Summary;
-    g.shoot_full(size, "system-summary-full", PAGE);
-
-    // Dialogs over Overview; they need a few frames to fade in.
-    g.app.page = Page::Overview;
-    g.app.show_theme_editor = true;
+    steps.push(Step::new("system-summary-full", Kind::Full, |app| {
+        app.page = Page::System;
+    }));
+    // Dialogs over Overview; Export over Processes. Display only: nothing is
+    // clicked, and the gauntlet exporter has no backend.
     for (tab, name) in ["studio", "appearance", "presets", "library"]
         .into_iter()
         .enumerate()
     {
-        g.app.theme_studio.tab = tab;
-        g.shoot(size, &format!("theme-{name}"), DIALOG);
+        steps.push(Step::new(
+            format!("theme-{name}"),
+            Kind::Dialog(0),
+            move |app| {
+                app.page = Page::Overview;
+                app.show_theme_editor = true;
+                app.theme_studio.tab = tab;
+            },
+        ));
     }
-    g.app.theme_studio.tab = 0;
-    g.app.show_theme_editor = false;
-    // Let the Studio window fade out before the next dialog.
+    steps.push(Step::new("about", Kind::Dialog(1), |app| {
+        app.page = Page::Overview;
+        app.show_diagnostics = true;
+    }));
+    steps.push(Step::new("export", Kind::Dialog(2), |app| {
+        app.page = Page::Processes;
+        app.show_export = true;
+    }));
+    steps
+}
+
+fn pages_at(g: &mut Gauntlet, size: Vec2) {
+    const PAGE: usize = 4;
+    const DIALOG: usize = 16;
+    let mut previous = Kind::Screen;
+    for step in steps(&g.app) {
+        // A dialog needs a few frames to fade in, and a different one must
+        // fade out first.
+        if matches!(previous, Kind::Dialog(_)) && previous != step.kind {
+            baseline(&mut g.app);
+            for _ in 0..DIALOG {
+                g.frame(size);
+            }
+        }
+        (step.set)(&mut g.app);
+        match step.kind {
+            Kind::Screen => g.shoot(size, &step.name, PAGE),
+            Kind::Full => g.shoot_full(size, &step.name, PAGE),
+            Kind::Dialog(_) => g.shoot(size, &step.name, DIALOG),
+        }
+        previous = step.kind;
+    }
+    baseline(&mut g.app);
     for _ in 0..DIALOG {
         g.frame(size);
     }
-    g.app.show_diagnostics = true;
-    g.shoot(size, "about", DIALOG);
-    g.app.show_diagnostics = false;
-    for _ in 0..DIALOG {
-        g.frame(size);
+}
+
+/// egui debug builds paint a 2 px red outline (clip `EVERYTHING`) when a
+/// widget rect keeps its place but changes id between frames, and a red
+/// outline plus "Double use of ... ID" text on a same-frame id clash.
+fn id_warnings(output: &egui::FullOutput) -> Vec<String> {
+    let mut found = Vec::new();
+    for clipped in &output.shapes {
+        if let egui::Shape::Rect(rect) = &clipped.shape
+            && clipped.clip_rect == egui::Rect::EVERYTHING
+            && rect.stroke.color == egui::Color32::RED
+            && rect.stroke.width >= 1.0
+        {
+            found.push(format!("id warning outline at {:?}", rect.rect));
+        }
     }
-    // Display only. Nothing is clicked, and this exporter has no backend.
-    g.app.page = Page::Processes;
-    g.app.show_export = true;
-    g.shoot(size, "export", DIALOG);
-    g.app.show_export = false;
-    for _ in 0..DIALOG {
-        g.frame(size);
+    for (text, _) in text_shapes(output) {
+        let text = &text.galley.job.text;
+        if text.contains("Double use of") || text.contains("changed id") {
+            found.push(text.clone());
+        }
     }
+    found
+}
+
+/// Flips the title-bar System state between Live and Stale, as a slow sample
+/// does in the running app. The status pill appears and disappears with it.
+fn set_system_stale(app: &mut TrontopApp, stale: bool) {
+    let at = Instant::now() + Duration::from_secs(3600);
+    let health = app
+        .snapshot
+        .diagnostics
+        .get_mut(crate::diagnostics::Provider::System);
+    health.record(
+        at,
+        Duration::from_micros(420),
+        crate::diagnostics::State::Live,
+        None,
+        None,
+    );
+    if stale {
+        health.record(
+            at,
+            Duration::from_micros(420),
+            crate::diagnostics::State::Unavailable,
+            None,
+            None,
+        );
+    }
+}
+
+#[test]
+fn gauntlet_states_paint_no_egui_id_warnings_in_debug_builds() {
+    let settings = ThemeSettings::default();
+    let ctx = egui::Context::default();
+    theme::install(&ctx, settings);
+    // The debug-build defaults, made explicit so the test is never vacuous.
+    ctx.all_styles_mut(|style| style.debug.warn_if_rect_changes_id = true);
+    ctx.options_mut(|options| options.warn_on_id_clash = true);
+    let mut app = app(settings, true);
+    let mut failures = Vec::new();
+    let mut checked = 0;
+    for (w, h) in SIZES {
+        let size = Vec2::new(w, h);
+        for step in steps(&app) {
+            (step.set)(&mut app);
+            set_system_stale(&mut app, false);
+            // Let the state settle; a page switch may legitimately move ids.
+            for _ in 0..3 {
+                frame(&ctx, &mut app, size, vec![]);
+            }
+            for stale in [false, true, false] {
+                set_system_stale(&mut app, stale);
+                let output = frame(&ctx, &mut app, size, vec![]);
+                for warning in id_warnings(&output) {
+                    failures.push(format!("{w}x{h} {} (stale {stale}): {warning}", step.name));
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 150, "only {checked} frames checked");
+    assert!(
+        failures.is_empty(),
+        "egui id warnings:\n{}",
+        failures.join("\n")
+    );
 }
 
 fn theme_spot_checks(g: &mut Gauntlet) {

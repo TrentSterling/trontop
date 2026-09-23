@@ -1030,13 +1030,7 @@ fn navigation_and_selection_accept_local_pointer_input() {
     let size = Vec2::new(1280.0, 760.0);
     for (page, _, name) in Page::ALL {
         let output = frame(&ctx, &mut app, size, vec![]);
-        let position = text_shapes(&output)
-            .into_iter()
-            .find(|(text, _)| text.galley.job.text == name && text.pos.x < 196.0)
-            .unwrap()
-            .0
-            .visual_bounding_rect()
-            .center();
+        let position = nav_entry(&output, name).expect("nav entry");
         for pressed in [true, false] {
             frame(
                 &ctx,
@@ -2074,6 +2068,21 @@ fn failed_inventory_cannot_replace_newer_command_observation_but_complete_read_c
 }
 
 /// Where the command bar drew the button labelled `label` in the last frame.
+/// Center of a visible sidebar page entry. Entry labels start past the icon
+/// (x > 30); section headings with the same words ("Processes", "System")
+/// sit at the left edge and are not buttons.
+fn nav_entry(output: &egui::FullOutput, label: &str) -> Option<egui::Pos2> {
+    text_shapes(output)
+        .into_iter()
+        .find(|(text, clip)| {
+            text.galley.job.text == label
+                && text.pos.x > 30.0
+                && text.pos.x < 196.0
+                && clip.contains_rect(text.visual_bounding_rect())
+        })
+        .map(|(text, _)| text.visual_bounding_rect().center())
+}
+
 fn command_rect(ctx: &egui::Context, label: &str) -> Option<egui::Rect> {
     ctx.data(|data| data.get_temp::<Vec<(String, egui::Rect)>>(command_rects_id()))
         .unwrap_or_default()
@@ -2100,11 +2109,18 @@ fn click_local_text_output(
     }
     // Compact command bars draw icon-only buttons with no text shape; fall
     // back to the button the command bar recorded under that label.
-    let position = text_shapes(&output)
-        .iter()
-        .find(|(text, clip)| {
+    // Page and dialog controls first: sidebar meter labels ("Memory") and
+    // section headings ("Processes") repeat words used by page controls.
+    let visible: Vec<_> = text_shapes(&output)
+        .into_iter()
+        .filter(|(text, clip)| {
             text.galley.job.text == label && clip.contains_rect(text.visual_bounding_rect())
         })
+        .collect();
+    let position = visible
+        .iter()
+        .find(|(text, _)| text.pos.x >= 196.0)
+        .or_else(|| visible.first())
         .map(|(text, _)| text.visual_bounding_rect().center())
         .or_else(|| command_rect(ctx, label).map(|rect| rect.center()))
         .unwrap_or_else(|| panic!("missing visible local control {label}"));
@@ -2278,6 +2294,68 @@ fn sidebar_gpu_meter_shows_measured_and_partial_readings_not_dashes() {
     assert!(partial.exact().is_none() && partial.value().is_some());
     assert!(partial.label().ends_with('+'));
     assert!(meter_text(&output, &partial.label()), "partial GPU meter");
+}
+
+#[test]
+fn sidebar_labels_are_readable_sentence_case_and_nothing_scrolls_at_1000x580() {
+    let ctx = egui::Context::default();
+    let settings = ThemeSettings::default();
+    theme::install(&ctx, settings);
+    let mut app = app(settings, true);
+    let size = Vec2::new(1000.0, 580.0);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let texts = text_shapes(&output);
+    let sidebar = |label: &str, left_edge: bool| {
+        texts
+            .iter()
+            .find(|(text, _)| {
+                text.galley.job.text == label
+                    && text.pos.x < 196.0
+                    && (text.pos.x < 30.0) == left_edge
+            })
+            .unwrap_or_else(|| panic!("missing sidebar text {label}"))
+    };
+    for heading in ["Monitor", "Processes", "System"] {
+        let (text, _) = sidebar(heading, true);
+        assert!(
+            text.galley.job.sections[0].format.font_id.size >= 11.0,
+            "{heading}"
+        );
+    }
+    for meter in ["CPU", "Memory", "GPU"] {
+        let (text, _) = sidebar(meter, true);
+        assert!(
+            text.galley.job.sections[0].format.font_id.size >= 11.0,
+            "{meter}"
+        );
+    }
+    for gone in ["MONITOR", "PROCESSES", "SYSTEM", "MEMORY"] {
+        assert!(
+            !texts
+                .iter()
+                .any(|(text, _)| text.galley.job.text == gone && text.pos.x < 196.0),
+            "{gone} still uppercase"
+        );
+    }
+    let (host, _) = texts
+        .iter()
+        .find(|(text, _)| text.galley.job.text.starts_with("HEADLESS-FIXTURE"))
+        .expect("host line");
+    assert!(host.galley.job.sections[0].format.font_id.size >= 10.0);
+    // Every page entry is fully visible above the meters, with a gap.
+    let footer_top = sidebar("CPU", true).0.visual_bounding_rect().top();
+    for (_, _, entry) in Page::ALL {
+        let (text, clip) = sidebar(entry, false);
+        let rect = text.visual_bounding_rect();
+        assert!(clip.contains_rect(rect), "{entry} clipped");
+        assert!(
+            rect.bottom() + 12.0 < footer_top,
+            "{entry} crowds the meters"
+        );
+    }
 }
 
 #[test]

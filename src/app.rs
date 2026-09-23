@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 const HISTORY_LENGTH: usize = widgets::HISTORY_WINDOW;
 /// Sidebar footer: three 20 px meters, host line and a 28 px Theme Studio button.
-const NAV_FOOTER_HEIGHT: f32 = 126.0;
+const NAV_FOOTER_HEIGHT: f32 = 122.0;
 
 mod diagnostics;
 mod disks;
@@ -87,7 +87,7 @@ impl Page {
     /// Sidebar groups, top to bottom. Every page appears exactly once.
     const NAV_GROUPS: [(&'static str, &'static [Self]); 3] = [
         (
-            "MONITOR",
+            "Monitor",
             &[
                 Self::Overview,
                 Self::Graphs,
@@ -96,10 +96,10 @@ impl Page {
             ],
         ),
         (
-            "PROCESSES",
+            "Processes",
             &[Self::Processes, Self::Details, Self::Users, Self::History],
         ),
-        ("SYSTEM", &[Self::Startup, Self::Services, Self::System]),
+        ("System", &[Self::Startup, Self::Services, Self::System]),
     ];
 
     /// The page name shown in the navigation and the command bar.
@@ -591,41 +591,50 @@ impl TrontopApp {
                             diagnostics::state_color(state, t),
                         );
                     }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if chrome_button(ui, Icon::Close, "Close", t, true).clicked() {
-                            self.request_close(ui.ctx());
-                        }
-                        let maximized = ui
-                            .ctx()
-                            .input(|input| input.viewport().maximized.unwrap_or(false));
-                        if chrome_button(
-                            ui,
-                            if maximized {
-                                Icon::Restore
-                            } else {
-                                Icon::Maximize
-                            },
-                            if maximized { "Restore" } else { "Maximize" },
-                            t,
-                            false,
-                        )
-                        .clicked()
-                        {
-                            ui.ctx()
-                                .send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-                        }
-                        if chrome_button(ui, Icon::Minimize, "Minimize", t, false).clicked() {
-                            ui.ctx()
-                                .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                        }
-                        widgets::hover_label(
-                            ui,
-                            RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-                                .monospace()
-                                .size(10.0)
-                                .color(t.text_muted),
-                        );
-                    });
+                    // An explicit id: the status pill before this group comes and
+                    // goes with the System state, and an auto id would shift the
+                    // window buttons' ids with it (egui's red debug outlines).
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .id(egui::Id::new("chrome_window_buttons"))
+                            .layout(Layout::right_to_left(Align::Center)),
+                        |ui| {
+                            if chrome_button(ui, Icon::Close, "Close", t, true).clicked() {
+                                self.request_close(ui.ctx());
+                            }
+                            let maximized = ui
+                                .ctx()
+                                .input(|input| input.viewport().maximized.unwrap_or(false));
+                            if chrome_button(
+                                ui,
+                                if maximized {
+                                    Icon::Restore
+                                } else {
+                                    Icon::Maximize
+                                },
+                                if maximized { "Restore" } else { "Maximize" },
+                                t,
+                                false,
+                            )
+                            .clicked()
+                            {
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(
+                                    !maximized,
+                                ));
+                            }
+                            if chrome_button(ui, Icon::Minimize, "Minimize", t, false).clicked() {
+                                ui.ctx()
+                                    .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                            }
+                            widgets::hover_label(
+                                ui,
+                                RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                                    .monospace()
+                                    .size(10.0)
+                                    .color(t.text_muted),
+                            );
+                        },
+                    );
                 });
                 let drag_rect = egui::Rect::from_min_max(
                     chrome_rect.min,
@@ -659,7 +668,7 @@ impl TrontopApp {
                     .inner_margin(egui::Margin {
                         left: 10,
                         right: 10,
-                        top: 12,
+                        top: 8,
                         bottom: 10,
                     })
                     .stroke(Stroke::new(1.0, t.border)),
@@ -686,17 +695,18 @@ impl TrontopApp {
                         let reveal = (self.page, ui.ctx().content_rect().height() as u32);
                         for (group, (heading, pages)) in Page::NAV_GROUPS.into_iter().enumerate() {
                             if group > 0 {
-                                ui.add_space(theme::space::S);
+                                ui.add_space(theme::space::XS);
                             }
+                            // Section headers: 11 px, muted, sentence case.
                             let (rect, _) = ui.allocate_exact_size(
-                                Vec2::new(ui.available_width(), 12.0),
+                                Vec2::new(ui.available_width(), 14.0),
                                 Sense::hover(),
                             );
                             ui.painter().text(
                                 rect.left_bottom() + Vec2::new(4.0, -1.0),
                                 egui::Align2::LEFT_BOTTOM,
                                 heading,
-                                FontId::proportional(9.0),
+                                FontId::proportional(11.0),
                                 t.text_muted,
                             );
                             for &page in pages {
@@ -745,11 +755,11 @@ impl TrontopApp {
         } else {
             "Waiting for the first system sample."
         });
-        ui.add_space(theme::space::S);
+        ui.add_space(theme::space::XS);
         let memory = (self.snapshot.memory_total_bytes > 0).then(|| memory_percent(&self.snapshot));
         widgets::mini_meter_text(
             ui,
-            "MEMORY",
+            "Memory",
             &memory.map_or_else(|| "--".into(), format::percent),
             memory,
             &self.memory_history,
@@ -765,7 +775,7 @@ impl TrontopApp {
         } else {
             "Waiting for the first system sample.".into()
         });
-        ui.add_space(theme::space::S);
+        ui.add_space(theme::space::XS);
         // Same reading as every other GPU surface: a partial sample shows its
         // lower bound as "3.1%+", and only a missing reading shows "--".
         let gpu = self.snapshot.gpu.reading();
@@ -795,7 +805,7 @@ impl TrontopApp {
             Layout::left_to_right(Align::Center),
             |ui| {
                 ui.add(
-                    egui::Label::new(RichText::new(line).size(9.0).color(t.text_muted))
+                    egui::Label::new(RichText::new(line).size(10.0).color(t.text_muted))
                         .truncate()
                         .selectable(false),
                 )

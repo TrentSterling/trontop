@@ -47,8 +47,8 @@ fn export_heading_sits_inside_the_dialog_frame_at_1000x580() {
     }
     let heading = text_shapes(&output)
         .into_iter()
-        .find(|(text, _)| text.galley.job.text == "Take the data with you")
-        .expect("export heading")
+        .find(|(text, _)| text.galley.job.text == crate::app::export::EXPORT_INTRO)
+        .expect("export intro")
         .0
         .visual_bounding_rect();
     let dialog = smallest_containing_rect(&output, heading.center());

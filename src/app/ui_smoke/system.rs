@@ -424,3 +424,54 @@ fn render_system_specs_fixture_visual_pass() {
         );
     }
 }
+
+#[test]
+fn complete_sections_show_no_state_chip_and_a_short_read_line() {
+    let ctx = egui::Context::default();
+    let settings = ThemeSettings::default();
+    theme::install(&ctx, settings);
+    let mut app = populated(settings);
+    let complete = app
+        .specs_view
+        .get(SectionId::Cpu)
+        .expect("cpu fixture")
+        .health
+        .clone();
+    for entry in &mut app.specs_view.entries {
+        if entry.section.is_none() {
+            entry.section = Some(std::sync::Arc::new(crate::specs::Section::not_implemented(
+                entry.id,
+            )));
+        }
+        entry.health = complete.clone();
+        entry.health.state = crate::specs::SectionState::Complete;
+    }
+    let size = Vec2::new(1000.0, 580.0);
+    for id in SectionId::ALL {
+        app.system_section = id;
+        let output = render(&ctx, &mut app, size);
+        for (text, _) in text_shapes(&output) {
+            let value = text.galley.job.text.to_uppercase();
+            assert!(
+                !value.contains("COMPLETE"),
+                "Complete state drawn on {id:?}: {}",
+                text.galley.job.text
+            );
+            assert!(
+                !text.galley.job.text.contains(" ms"),
+                "read duration belongs in the hover on {id:?}"
+            );
+        }
+        if id != SectionId::Summary {
+            let line = text_shapes(&output)
+                .into_iter()
+                .find(|(text, _)| text.galley.job.text.starts_with("Read "))
+                .unwrap_or_else(|| panic!("missing read line on {id:?}"))
+                .0;
+            assert!(
+                line.galley.job.text.ends_with("ago") || line.galley.job.text == "Read just now"
+            );
+            assert!(line.galley.job.sections[0].format.font_id.size >= 11.0);
+        }
+    }
+}
