@@ -17,23 +17,7 @@ impl TrontopApp {
                     .key
             });
         self.graphs.gpu_selected = Some(selected);
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Adapter").color(t.text_muted));
-            egui::ComboBox::from_id_salt("gpu-adapter-selector")
-                .width((ui.available_width() - 8.0).clamp(140.0, 420.0))
-                .selected_text(adapters.iter().find(|a| a.key == selected).unwrap().name())
-                .show_ui(ui, |ui| {
-                    for adapter in adapters {
-                        ui.selectable_value(
-                            &mut self.graphs.gpu_selected,
-                            Some(adapter.key),
-                            format!("{} [{}]", adapter.name(), adapter.key.label()),
-                        )
-                        .on_hover_text(adapter.key.label());
-                    }
-                });
-        });
-        let key = self.graphs.gpu_selected.unwrap();
+        let key = selected;
         let adapter = adapters.iter().find(|a| a.key == key).unwrap();
         let now = self.graphs.now();
         let age = adapter
@@ -44,6 +28,26 @@ impl TrontopApp {
         } else {
             crate::gpu_activity::Usage::Unavailable
         };
+        // Counter identity and status are provenance, not something to read at
+        // a glance; they live on the picker's hover, not their own text line.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("Adapter").color(t.text_muted));
+            egui::ComboBox::from_id_salt("gpu-adapter-selector")
+                .width((ui.available_width() - 8.0).clamp(140.0, 420.0))
+                .selected_text(adapter.name())
+                .show_ui(ui, |ui| {
+                    for adapter in adapters {
+                        ui.selectable_value(
+                            &mut self.graphs.gpu_selected,
+                            Some(adapter.key),
+                            format!("{} [{}]", adapter.name(), adapter.key.label()),
+                        )
+                        .on_hover_text(adapter.key.label());
+                    }
+                })
+                .response
+                .on_hover_text(format!("{}  |  {}", key.label(), activity.status()));
+        });
         ui.add_space(8.0);
         widgets::performance_heading(
             ui,
@@ -52,14 +56,6 @@ impl TrontopApp {
             &activity.label(),
             t.accent,
             t,
-        );
-        ui.add(
-            egui::Label::new(
-                RichText::new(format!("{}  |  {}", adapter.key.label(), activity.status()))
-                    .size(10.)
-                    .color(t.text_muted),
-            )
-            .wrap(),
         );
         if adapter.description.as_ref().is_some_and(|d| d.software) {
             widgets::hover_label(ui, "Software adapter; not a physical graphics card.");
