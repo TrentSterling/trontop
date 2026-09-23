@@ -48,11 +48,18 @@ impl TrontopApp {
             .devices
             .iter()
             .find(|d| Some(&d.instance) == self.selected_physical_disk.as_ref());
+        // A provider state ("Live") is not a metric; the hero value is the
+        // busiest disk's active time, the same field the rail tiles show.
+        let busiest = snapshot
+            .devices
+            .iter()
+            .filter_map(|d| d.readings[Metric::Active as usize].value)
+            .reduce(f64::max);
         widgets::performance_heading(
             ui,
             "Physical disks",
             "Windows PDH / independent 1 second sampler",
-            snapshot.state(now).label(),
+            &Metric::Active.format(busiest),
             t.good,
             t,
         );

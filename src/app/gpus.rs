@@ -90,7 +90,6 @@ impl TrontopApp {
             });
         }
         ui.add_space(8.0);
-        self.graphs.controls(ui, t);
         widgets::section_label(ui, "Engine histories", t);
         if adapter.engines.is_empty() {
             widgets::hover_label(

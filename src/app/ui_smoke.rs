@@ -715,6 +715,102 @@ fn search_selection_device_pages_and_dialogs_render_without_native_services() {
 }
 
 #[test]
+fn performance_rail_lists_devices_in_the_polish_gauntlet_order() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    let now = std::time::Instant::now();
+    app.snapshot.physical_disks = std::sync::Arc::new(crate::disk_activity::Snapshot {
+        generation: 2,
+        at: Some(now),
+        devices: vec![
+            crate::disk_activity::Device {
+                instance: "0 C: (fixture)".into(),
+                number: 0,
+                readings: [51.0, 3.0, 1.0, 10_000_000.0, 2_000_000.0].map(|v| {
+                    crate::disk_activity::Reading {
+                        value: Some(v),
+                        at: Some(now),
+                    }
+                }),
+            },
+            crate::disk_activity::Device {
+                instance: "1 D: (fixture)".into(),
+                number: 1,
+                readings: [12.0, 1.0, 0.0, 500_000.0, 100_000.0].map(|v| {
+                    crate::disk_activity::Reading {
+                        value: Some(v),
+                        at: Some(now),
+                    }
+                }),
+            },
+        ],
+        ..Default::default()
+    });
+    app.page = Page::Performance;
+    let output = frame(&ctx, &mut app, Vec2::new(1280.0, 900.0), vec![]);
+    let shapes = text_shapes(&output);
+    // CPU, Memory, GPU, GPU thermals, each physical disk, then mounted
+    // volumes, then network adapters, top to bottom.
+    let expected = [
+        "CPU",
+        "Memory",
+        "GPU",
+        "GPU thermals",
+        "Disk 0",
+        "Disk 1",
+        "Volume C:\\",
+        "Volume D:\\",
+        "Fixture Ethernet adapter",
+    ];
+    let mut previous_y = f32::MIN;
+    for label in expected {
+        // The rail sits in its own column, right of the nav sidebar and left
+        // of the content pane; "CPU"/"GPU" also appear as sidebar meter and
+        // content-pane heading text outside that column.
+        let y = shapes
+            .iter()
+            .find(|(s, _)| s.galley.job.text == label && s.pos.x > 210.0 && s.pos.x < 450.0)
+            .unwrap_or_else(|| panic!("rail label {label:?} missing"))
+            .0
+            .pos
+            .y;
+        assert!(
+            y > previous_y,
+            "{label:?} at y={y} is out of order (previous y={previous_y})"
+        );
+        previous_y = y;
+    }
+}
+
+#[test]
+fn network_performance_graph_label_carries_a_rate_unit() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Performance;
+    app.performance_device = PerformanceDevice::Network(0);
+    let output = frame(&ctx, &mut app, Vec2::new(1280.0, 900.0), vec![]);
+    let content = text_shapes(&output)
+        .into_iter()
+        .filter(|(s, _)| s.pos.x > 400.0)
+        .collect::<Vec<_>>();
+    assert!(
+        content
+            .iter()
+            .any(|(s, _)| s.galley.job.text.ends_with("B/s")),
+        "the graph's max label should carry a rate unit, matching the header rate"
+    );
+    assert!(
+        !content
+            .iter()
+            .any(|(s, _)| s.galley.job.text.starts_with("MAX ")
+                && !s.galley.job.text.ends_with("B/s")),
+        "a unitless MAX label means the graph and header rates mismatch again"
+    );
+}
+
+#[test]
 fn navigation_and_selection_accept_local_pointer_input() {
     let ctx = egui::Context::default();
     let mut app = app(ThemeSettings::default(), true);

@@ -1639,9 +1639,10 @@ impl TrontopApp {
         );
         ui.add_space(10.0);
         let available = ui.available_size();
+        let rail_width = if available.x < 900.0 { 180.0 } else { 210.0 };
         ui.horizontal_top(|ui| {
             ui.allocate_ui_with_layout(
-                Vec2::new(210.0, available.y),
+                Vec2::new(rail_width, available.y),
                 Layout::top_down(Align::Min),
                 |ui| {
                     egui::ScrollArea::vertical()
@@ -1678,7 +1679,6 @@ impl TrontopApp {
 
     fn performance_rail(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let gpu_value = self.snapshot.gpu.reading().label();
         if widgets::device_button(
             ui,
             self.performance_device == PerformanceDevice::Cpu,
@@ -1693,7 +1693,7 @@ impl TrontopApp {
         if widgets::device_button(
             ui,
             self.performance_device == PerformanceDevice::Memory,
-            "MEMORY",
+            "Memory",
             &format::percent(memory_percent(&self.snapshot)),
             &self.memory_history,
             t.secondary,
@@ -1701,38 +1701,86 @@ impl TrontopApp {
         ) {
             self.performance_device = PerformanceDevice::Memory;
         }
-        // Keep hardware temperatures near the top instead of below long disk lists.
+        let gpu_value = self.snapshot.gpu.reading().label();
+        if widgets::device_button(
+            ui,
+            self.performance_device == PerformanceDevice::Gpu,
+            "GPU",
+            &gpu_value,
+            &self.gpu_history,
+            theme::mix(t.accent, t.secondary, 0.5),
+            t,
+        ) {
+            self.performance_device = PerformanceDevice::Gpu;
+        }
+        // The hottest reporting adapter drives both the value and the
+        // sparkline; most machines have exactly one NVML-visible GPU.
         let hottest = self
             .snapshot
             .gpu_sensors
             .adapters
             .iter()
-            .filter_map(|a| a.temperature_c)
-            .max();
+            .filter(|a| a.temperature_c.is_some())
+            .max_by_key(|a| a.temperature_c);
+        // No inner spaces: the rail column is too narrow for "47 °C · 43 W"
+        // without clipping the unit off the end.
+        let thermal_value = hottest.map_or_else(
+            || "Unavailable".into(),
+            |a| {
+                format!(
+                    "{}·{}",
+                    a.temperature_c
+                        .map_or_else(|| "--°C".into(), |v| format!("{v}°C")),
+                    a.power_w
+                        .map_or_else(|| "--W".into(), |v| format!("{v:.0}W")),
+                )
+            },
+        );
+        let thermal_history = hottest
+            .and_then(|a| a.uuid.as_deref())
+            .and_then(|uuid| self.sensor_history.get(uuid))
+            .map_or_else(VecDeque::new, |history| {
+                history
+                    .points
+                    .iter()
+                    .map(|p| p.temperature_c.unwrap_or(f32::NAN))
+                    .collect()
+            });
         if widgets::device_button(
             ui,
             self.performance_device == PerformanceDevice::GpuSensors,
-            "GPU SENSORS",
-            &hottest.map_or_else(|| "Unavailable".into(), |v| format!("{v} °C")),
-            &VecDeque::new(),
+            "GPU thermals",
+            &thermal_value,
+            &thermal_history,
             t.secondary,
             t,
         ) {
             self.performance_device = PerformanceDevice::GpuSensors;
         }
-        if widgets::device_button(
-            ui,
-            self.performance_device == PerformanceDevice::PhysicalDisks,
-            "PHYSICAL DISKS",
-            self.snapshot
-                .physical_disks
-                .state(std::time::Instant::now())
-                .label(),
-            &VecDeque::new(),
-            t.good,
-            t,
-        ) {
-            self.performance_device = PerformanceDevice::PhysicalDisks;
+        for disk in &self.snapshot.physical_disks.devices {
+            let value = crate::disk_activity::Metric::Active
+                .format(disk.readings[crate::disk_activity::Metric::Active as usize].value);
+            let history = self
+                .physical_disk_history
+                .values
+                .get(&disk.instance)
+                .map_or_else(VecDeque::new, |h| {
+                    h[crate::disk_activity::Metric::Active as usize].clone()
+                });
+            let selected = self.performance_device == PerformanceDevice::PhysicalDisks
+                && self.selected_physical_disk.as_deref() == Some(disk.instance.as_str());
+            if widgets::device_button(
+                ui,
+                selected,
+                &format!("Disk {}", disk.number),
+                &value,
+                &history,
+                t.good,
+                t,
+            ) {
+                self.performance_device = PerformanceDevice::PhysicalDisks;
+                self.selected_physical_disk = Some(disk.instance.clone());
+            }
         }
         for (index, disk) in self.snapshot.disks.iter().enumerate() {
             let history = self
@@ -1743,7 +1791,7 @@ impl TrontopApp {
             if widgets::device_button(
                 ui,
                 self.performance_device == PerformanceDevice::Disk(index),
-                &format!("VOLUME {}", disk.mount),
+                &format!("Volume {}", disk.mount),
                 &format::rate(disk.read_bytes_per_sec + disk.write_bytes_per_sec),
                 &history,
                 t.good,
@@ -1768,7 +1816,7 @@ impl TrontopApp {
             if widgets::device_button(
                 ui,
                 self.performance_device == PerformanceDevice::Network(index),
-                "NETWORK",
+                &network.name,
                 &format::rate(network.received_bytes_per_sec + network.transmitted_bytes_per_sec),
                 &history,
                 t.secondary,
@@ -1776,17 +1824,6 @@ impl TrontopApp {
             ) {
                 self.performance_device = PerformanceDevice::Network(index);
             }
-        }
-        if widgets::device_button(
-            ui,
-            self.performance_device == PerformanceDevice::Gpu,
-            "GPU ADAPTERS",
-            &gpu_value,
-            &self.gpu_history,
-            theme::mix(t.accent, t.secondary, 0.5),
-            t,
-        ) {
-            self.performance_device = PerformanceDevice::Gpu;
         }
     }
 
@@ -1843,7 +1880,19 @@ impl TrontopApp {
             );
         });
         if self.graphs.cpu_total {
-            widgets::history_graph(ui, &self.cpu_history, t.accent, 270.0, Some(100.0), t);
+            widgets::history_graph_with_window(
+                ui,
+                &self.cpu_history,
+                t.accent,
+                270.0,
+                Some(100.0),
+                t,
+                (
+                    "120 SECONDS",
+                    self.cpu_history.capacity().max(self.cpu_history.len()),
+                ),
+                Some(&|v: f32| format!("{v:.0}%")),
+            );
         } else {
             self.graphs.ensure_sample(&self.snapshot);
             self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
@@ -1957,7 +2006,7 @@ impl TrontopApp {
         let percent = memory_percent(&self.snapshot);
         widgets::performance_heading(
             ui,
-            "MEMORY",
+            "Memory",
             &if self.snapshot.memory_total_bytes > 0 {
                 format::bytes(self.snapshot.memory_total_bytes)
             } else {
@@ -1973,7 +2022,21 @@ impl TrontopApp {
         );
         self.memory_counter_status(ui);
         ui.add_space(8.0);
-        widgets::history_graph(ui, &self.memory_history, t.secondary, 270.0, Some(100.0), t);
+        widgets::history_graph_with_window(
+            ui,
+            &self.memory_history,
+            t.secondary,
+            270.0,
+            Some(100.0),
+            t,
+            (
+                "120 SECONDS",
+                self.memory_history
+                    .capacity()
+                    .max(self.memory_history.len()),
+            ),
+            Some(&|v: f32| format!("{v:.0}%")),
+        );
         ui.add_space(12.0);
         let memory = self.snapshot.memory_details;
         let bytes = |value: Option<u64>| value.map_or_else(|| "--".into(), format::bytes);
@@ -2053,13 +2116,22 @@ impl TrontopApp {
         let total_rate = disk.read_bytes_per_sec + disk.write_bytes_per_sec;
         widgets::performance_heading(
             ui,
-            &format!("VOLUME {}", disk.mount),
+            &format!("Volume {}", disk.mount),
             &format!("{} | {}", disk.name, disk.kind),
             &format::rate(total_rate),
             t.good,
             t,
         );
-        widgets::history_graph(ui, &history, t.good, 270.0, None, t);
+        widgets::history_graph_with_window(
+            ui,
+            &history,
+            t.good,
+            270.0,
+            None,
+            t,
+            ("120 SECONDS", history.capacity().max(history.len())),
+            Some(&|v: f32| format::rate_mib(v)),
+        );
         ui.add_space(12.0);
         ui.columns(4, |columns| {
             widgets::metric(
@@ -2117,13 +2189,22 @@ impl TrontopApp {
         let rate = network.received_bytes_per_sec + network.transmitted_bytes_per_sec;
         widgets::performance_heading(
             ui,
-            "NETWORK",
             &network.name,
+            "Network adapter",
             &format::rate(rate),
             t.secondary,
             t,
         );
-        widgets::history_graph(ui, &history, t.secondary, 270.0, None, t);
+        widgets::history_graph_with_window(
+            ui,
+            &history,
+            t.secondary,
+            270.0,
+            None,
+            t,
+            ("120 SECONDS", history.capacity().max(history.len())),
+            Some(&|v: f32| format::rate_mib(v)),
+        );
         ui.add_space(12.0);
         ui.columns(4, |columns| {
             widgets::metric(

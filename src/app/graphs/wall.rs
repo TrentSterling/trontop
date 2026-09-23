@@ -157,7 +157,11 @@ pub(super) fn measured(chart: &Chart, now: Instant) -> bool {
         .any(|p| p.value.is_some() && p.at <= now && now.duration_since(p.at) <= WINDOW)
 }
 
-fn window_max(chart: &Chart, now: Instant) -> Option<f32> {
+/// The highest value a chart reported inside the window, or `None` when it
+/// never reported one. Used to fold engines that reported but stayed at
+/// exactly 0.0 away from busy ones, both on the wall and on a single
+/// adapter's Performance > GPU engine list.
+pub(super) fn window_max(chart: &Chart, now: Instant) -> Option<f32> {
     chart
         .points
         .iter()

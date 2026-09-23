@@ -146,6 +146,92 @@ fn adapter_selection_tracks_identity_and_memory_layout_survives_missing_values()
 }
 
 #[test]
+fn idle_engines_fold_into_one_muted_line_leaving_active_engines_as_cards() {
+    let mut app = graphs::populated(ThemeSettings::default());
+    let now = Instant::now();
+    let key = Key {
+        high: 0,
+        low: 0x300,
+        physical: 0,
+    };
+    for index in 0..=120 {
+        let at = now - Duration::from_secs(120 - index);
+        let mut snapshot = app.snapshot.clone();
+        snapshot.gpu.adapters = vec![Adapter {
+            key,
+            description: Some(Description {
+                name: "Fixture idle-engine GPU".into(),
+                vendor_id: 0x10de,
+                device_id: 0x1234,
+                dedicated_video: 8 * 1024 * 1024 * 1024,
+                dedicated_system: 0,
+                shared_limit: 16 * 1024 * 1024 * 1024,
+                software: false,
+            }),
+            description_current: true,
+            sampled_at: Some(at),
+            last_seen: Some(at),
+            activity: Usage::Measured(30.0),
+            engines: vec![
+                Engine {
+                    number: 0,
+                    kind: "3D".into(),
+                    usage: Usage::Measured(10.0 + ((index as f32 * 0.14).sin() + 1.0) * 25.0),
+                },
+                Engine {
+                    number: 1,
+                    kind: "Copy".into(),
+                    // Reported every sample, but never busy: this engine must
+                    // fold into the idle footer, not draw a flat 0% card.
+                    usage: Usage::Measured(0.0),
+                },
+            ],
+            ..Default::default()
+        }];
+        app.graphs.sample(&snapshot, at);
+        if index == 120 {
+            app.snapshot = snapshot;
+        }
+    }
+    app.graphs.fixed_now = Some(now);
+    app.page = Page::Performance;
+    app.performance_device = PerformanceDevice::Gpu;
+    app.graphs.gpu_selected = Some(key);
+    let ctx = egui::Context::default();
+    theme::install(&ctx, app.theme);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..3 {
+        output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(1280.0, 1200.0),
+                )),
+                ..Default::default()
+            },
+            |ui| app.gpu_performance(ui),
+        );
+    }
+    let text = text_shapes(&output);
+    assert!(
+        text.iter()
+            .any(|(t, _)| t.galley.job.text == "3D / engine 0"),
+        "the active engine keeps its own card"
+    );
+    assert!(
+        !text
+            .iter()
+            .any(|(t, _)| t.galley.job.text == "Copy / engine 1"),
+        "a silent engine must not draw a flat 0% card"
+    );
+    assert!(
+        text.iter()
+            .any(|(t, _)| t.galley.job.text == "1 idle engine"),
+        "the silent engine folds into one muted line"
+    );
+}
+
+#[test]
 #[ignore = "Offscreen GPU adapter review with synthetic readings; no desktop input"]
 fn render_gpu_adapter_visual_pass() {
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ui-smoke");

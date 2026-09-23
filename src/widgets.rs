@@ -877,13 +877,19 @@ pub fn performance_heading(
     hover_frame(ui, surface(ui, t, false), |ui| {
         ui.horizontal(|ui| {
             let width = ui.available_width();
-            let value_width = (width * 0.37).min(200.0);
+            // Measure the value's real width first, so a short reading (most
+            // Performance tiles) leaves the device name room to fit before it
+            // truncates, instead of always reserving a fixed 37%/200px chunk.
+            let value_galley =
+                ui.painter()
+                    .layout_no_wrap(value.into(), FontId::monospace(24.0), t.text);
+            let value_width = (value_galley.size().x + 4.0).min(width * 0.6);
             ui.allocate_ui_with_layout(
                 Vec2::new((width - value_width - 8.0).max(0.0), 47.0),
                 Layout::top_down(Align::Min),
                 |ui| {
                     ui.add(
-                        egui::Label::new(RichText::new(label).size(24.0).strong().color(t.text))
+                        egui::Label::new(RichText::new(label).size(18.0).strong().color(t.text))
                             .truncate(),
                     );
                     ui.add(

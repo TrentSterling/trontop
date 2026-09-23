@@ -4,17 +4,22 @@ use crate::gpu_sensors::{AdapterSensors, SensorHistory};
 impl TrontopApp {
     pub(super) fn gpu_sensor_performance(&self, ui: &mut egui::Ui) {
         let t = self.colors();
+        let snapshot = &self.snapshot.gpu_sensors;
         if self.page != Page::Sensors {
+            let hottest = snapshot
+                .adapters
+                .iter()
+                .filter_map(|a| a.temperature_c)
+                .max();
             widgets::performance_heading(
                 ui,
                 "GPU sensors",
-                "Read-only NVIDIA driver telemetry",
-                "NVML",
+                "NVML / read-only driver telemetry",
+                &hottest.map_or_else(|| "-- °C".into(), |v| format!("{v} °C")),
                 t.secondary,
                 t,
             );
         }
-        let snapshot = &self.snapshot.gpu_sensors;
         let placeholder = AdapterSensors {
             name: "Hardware sensors unavailable".into(),
             ..Default::default()

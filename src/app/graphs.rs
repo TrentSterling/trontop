@@ -75,12 +75,8 @@ impl Dashboard {
                 _ => false,
             })
             .collect();
-        let charts: Vec<_> = all
-            .iter()
-            .filter(|c| wall::measured(c, now))
-            .map(|c| wall::Card::single(c))
-            .collect();
-        if charts.len() < all.len() {
+        let measured: Vec<_> = all.iter().filter(|c| wall::measured(c, now)).collect();
+        if measured.len() < all.len() {
             let missing: Vec<_> = all
                 .iter()
                 .filter(|c| !wall::measured(c, now))
@@ -102,6 +98,18 @@ impl Dashboard {
                 t,
             );
         }
+        // Individual engine instances that stayed silent for the whole window
+        // fold into one muted line instead of flooding the tab with flat
+        // cards. VRAM cards (memory) are never idle-folded: a 0-byte reading
+        // is still a real value.
+        let (active, idle): (Vec<_>, Vec<_>) = if memory {
+            (measured, Vec::new())
+        } else {
+            measured
+                .into_iter()
+                .partition(|c| wall::window_max(c, now).unwrap_or(0.0) > 0.0)
+        };
+        let charts: Vec<_> = active.iter().map(|c| wall::Card::single(c)).collect();
         let cols = if ui.available_width() >= 480.0 { 2 } else { 1 };
         let width = ui.available_width();
         let mut height = 0.0;
@@ -129,6 +137,20 @@ impl Dashboard {
             }
             ui.add_space(theme::space::GAP);
         }
+        if !idle.is_empty() {
+            let names: Vec<&str> = idle.iter().map(|c| c.title.as_str()).collect();
+            widgets::gap_row(
+                ui,
+                &format!(
+                    "{} idle {}",
+                    idle.len(),
+                    if idle.len() == 1 { "engine" } else { "engines" }
+                ),
+                "Idle",
+                &names.join(", "),
+                t,
+            );
+        }
     }
     pub(super) fn now(&self) -> Instant {
         #[cfg(test)]
@@ -141,11 +163,6 @@ impl Dashboard {
         if self.history.charts.is_empty() {
             self.sample(snapshot, Instant::now());
         }
-    }
-
-    /// The Lines / Bars choice as one compact segmented control.
-    pub(super) fn controls(&mut self, ui: &mut egui::Ui, t: Tokens) {
-        style_toggle(ui, &mut self.style, t);
     }
 
     pub(super) fn cpu_grid(&self, ui: &mut egui::Ui, logical_count: usize, t: Tokens) {
