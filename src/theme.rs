@@ -13,6 +13,24 @@ pub(crate) use contrast::ratio as contrast_ratio;
 pub use contrast::{ink, readable_text, surface as text_surface};
 pub use gradient::{Stop, paint_gradient};
 
+/// Shared spacing scale. Every new layout uses these instead of ad-hoc numbers.
+/// Not every step is wired into a page yet; later polish-gauntlet packages
+/// pick up the rest as they rebuild each page's layout.
+#[allow(dead_code)]
+pub mod space {
+    pub const XS: f32 = 4.0;
+    pub const S: f32 = 6.0;
+    pub const M: f32 = 8.0;
+    pub const L: f32 = 12.0;
+    pub const XL: f32 = 16.0;
+    pub const GAP: f32 = 8.0;
+}
+
+/// Standard inner padding for compact cards (KPI tiles, gap rows, etc.). Used by
+/// [`crate::widgets::kpi_tile`], which later packages wire into pages.
+#[allow(dead_code)]
+pub const CARD_PAD: egui::Margin = egui::Margin::symmetric(10, 8);
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ThemeSettings {
     pub dark: bool,

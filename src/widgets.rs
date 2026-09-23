@@ -765,10 +765,14 @@ pub fn history_graph(
         fixed_max,
         t,
         ("120 SECONDS", history.capacity().max(history.len())),
+        None,
     );
 }
 
 /// Explicit window units for series sampled independently from the UI refresh.
+/// `unit_fmt`, when given, formats the top-left maximum label (e.g. a rate with
+/// its unit); `None` keeps the plain `MAX x` fallback.
+#[allow(clippy::too_many_arguments)]
 pub fn history_graph_with_window(
     ui: &mut egui::Ui,
     history: &VecDeque<f32>,
@@ -777,6 +781,7 @@ pub fn history_graph_with_window(
     fixed_max: Option<f32>,
     t: Tokens,
     window: (&str, usize),
+    unit_fmt: Option<&dyn Fn(f32) -> String>,
 ) {
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
@@ -845,17 +850,86 @@ pub fn history_graph_with_window(
         painter.text(
             rect.left_top() + Vec2::new(8.0, 7.0),
             egui::Align2::LEFT_TOP,
-            format!("MAX {:.1}", maximum),
+            match unit_fmt {
+                Some(format) => format(maximum),
+                None => format!("MAX {maximum:.1}"),
+            },
             FontId::monospace(9.0),
             t.text_muted,
         );
         painter.text(
             rect.left_bottom() + Vec2::new(8.0, -7.0),
             egui::Align2::LEFT_BOTTOM,
-            window.0,
+            "-120 s",
             FontId::monospace(9.0),
             t.text_muted,
         );
+        painter.text(
+            rect.right_bottom() - Vec2::new(8.0, 7.0),
+            egui::Align2::RIGHT_BOTTOM,
+            "now",
+            FontId::monospace(9.0),
+            t.text_muted,
+        );
+    }
+}
+
+/// A small background trend line: `values` yields one point per sample, in order.
+/// Fewer than two points draws nothing, never a flat single-point line. A `None`
+/// sample breaks the line instead of bridging across the gap.
+pub fn sparkline(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    values: impl Iterator<Item = Option<f32>>,
+    max: f32,
+    color: Color32,
+    t: Tokens,
+) {
+    let values: Vec<Option<f32>> = values.collect();
+    if values.len() < 2 {
+        return;
+    }
+    let max = max.max(0.001);
+    let denominator = (values.len() - 1).max(1) as f32;
+    let points: Vec<Option<egui::Pos2>> = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            value.filter(|v| v.is_finite()).map(|v| {
+                let x = egui::lerp(rect.left()..=rect.right(), index as f32 / denominator);
+                let y = rect.bottom() - (v.clamp(0.0, max) / max) * rect.height();
+                egui::pos2(x, y)
+            })
+        })
+        .collect();
+
+    let ink = t.ink(color);
+    let fill = t.surface(color);
+    let alpha = (255.0_f32 * 0.18).round() as u8;
+    let fill_color = Color32::from_rgba_unmultiplied(fill.r(), fill.g(), fill.b(), alpha);
+
+    let mut mesh = egui::Mesh::default();
+    for pair in points.windows(2) {
+        let [Some(first), Some(second)] = pair else {
+            continue;
+        };
+        let base = mesh.vertices.len() as u32;
+        mesh.colored_vertex(*first, fill_color);
+        mesh.colored_vertex(*second, fill_color);
+        mesh.colored_vertex(egui::pos2(second.x, rect.bottom()), Color32::TRANSPARENT);
+        mesh.colored_vertex(egui::pos2(first.x, rect.bottom()), Color32::TRANSPARENT);
+        mesh.add_triangle(base, base + 1, base + 2);
+        mesh.add_triangle(base, base + 2, base + 3);
+    }
+    if !mesh.indices.is_empty() {
+        painter.add(egui::Shape::mesh(mesh));
+    }
+
+    for run in points.split(Option::is_none) {
+        let run: Vec<_> = run.iter().flatten().copied().collect();
+        if run.len() > 1 {
+            painter.add(egui::Shape::line(run, Stroke::new(1.2, ink)));
+        }
     }
 }
 
@@ -907,24 +981,25 @@ pub fn device_button(
             egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0),
         );
         let max = history.iter().copied().fold(1.0_f32, f32::max);
-        let points = history
+        let windowed: Vec<f32> = history
             .iter()
             .rev()
             .take(30)
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
-            .enumerate()
-            .map(|(index, value)| {
-                let x = egui::lerp(graph.left()..=graph.right(), index as f32 / 29.0);
-                let y = graph.bottom() - (*value / max).clamp(0.0, 1.0) * graph.height();
-                egui::pos2(x, y)
-            })
-            .collect::<Vec<_>>();
-        if points.len() > 1 {
-            ui.painter()
-                .add(egui::Shape::line(points, Stroke::new(1.2, t.ink(color))));
-        }
+            .copied()
+            .collect();
+        sparkline(
+            ui.painter(),
+            graph,
+            windowed
+                .iter()
+                .map(|value| value.is_finite().then_some(*value)),
+            max,
+            color,
+            t,
+        );
     }
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, label)
@@ -932,6 +1007,144 @@ pub fn device_button(
     response
         .on_hover_text(format!("{label}: {value}"))
         .clicked()
+}
+
+/// Content for one [`kpi_tile`]. A later polish-gauntlet package wires this and
+/// `kpi_tile` into the Overview page's KPI row.
+#[allow(dead_code)]
+pub struct Kpi<'a> {
+    pub label: &'a str,
+    pub value: &'a str,
+    pub sub: &'a str,
+    pub hover: &'a str,
+    pub series: &'a [Option<f32>],
+    pub max: Option<f32>,
+    pub color: Color32,
+    /// `Some` only when the tile is not Live (e.g. "Cached", "Partial", "Stale").
+    pub state: Option<&'a str>,
+}
+
+/// Fixed height of a [`kpi_tile`], regardless of width.
+#[allow(dead_code)]
+pub const KPI_TILE_HEIGHT: f32 = 84.0;
+
+/// A raised, fixed-height at-a-glance tile: a label row, a big value, a small
+/// caption, and a background sparkline covering the right 45% of the tile.
+/// A later polish-gauntlet package wires this into the Overview page.
+#[allow(dead_code)]
+pub fn kpi_tile(
+    ui: &mut egui::Ui,
+    kpi: &Kpi<'_>,
+    settings: ThemeSettings,
+    t: Tokens,
+) -> egui::Response {
+    let response = ui.allocate_response(
+        Vec2::new(ui.available_width(), KPI_TILE_HEIGHT),
+        Sense::hover(),
+    );
+    let rect = response.rect;
+    let hovered = response.contains_pointer() && ui.is_enabled();
+    let fill = if hovered {
+        t.surface(theme::mix(theme::raised_color(settings), t.row_hover, 0.5))
+    } else {
+        theme::raised_color(settings)
+    };
+    ui.painter().rect(
+        rect,
+        settings.roundness,
+        fill,
+        Stroke::new(1.0, t.border),
+        egui::StrokeKind::Inside,
+    );
+
+    let pad = theme::CARD_PAD;
+    let content = egui::Rect::from_min_max(
+        rect.min + Vec2::new(f32::from(pad.left), f32::from(pad.top)),
+        rect.max - Vec2::new(f32::from(pad.right), f32::from(pad.bottom)),
+    );
+
+    // Sparkline sits behind rows 2 and 3, covering the right 45% of the tile.
+    let spark_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + rect.width() * 0.55, rect.top() + 30.0),
+        egui::pos2(content.right(), content.bottom()),
+    );
+    if spark_rect.width() > 2.0 && spark_rect.height() > 2.0 {
+        let max = kpi.max.unwrap_or_else(|| {
+            format::nice_top(kpi.series.iter().flatten().copied().fold(0.0_f32, f32::max))
+        });
+        sparkline(
+            ui.painter(),
+            spark_rect,
+            kpi.series.iter().copied(),
+            max,
+            kpi.color,
+            t,
+        );
+    }
+
+    // Row 1: label, plus a color dot or a state chip on the right.
+    let row1 = egui::Rect::from_min_size(content.min, Vec2::new(content.width(), 12.0));
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(row1)
+            .layout(Layout::left_to_right(Align::Center)),
+        |ui| {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(kpi.label.to_uppercase())
+                        .size(10.0)
+                        .strong()
+                        .color(t.text_muted),
+                )
+                .truncate(),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if let Some(state) = kpi.state {
+                    status_pill(ui, state, t.text_muted);
+                } else {
+                    let (dot, _) = ui.allocate_exact_size(Vec2::splat(6.0), Sense::hover());
+                    ui.painter().circle_filled(dot.center(), 3.0, kpi.color);
+                }
+            });
+        },
+    );
+
+    // Row 2: the big value.
+    let row2 = egui::Rect::from_min_size(
+        egui::pos2(content.left(), rect.top() + 20.0),
+        Vec2::new(content.width(), 24.0),
+    );
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(row2)
+            .layout(Layout::left_to_right(Align::Center)),
+        |ui| {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(kpi.value)
+                        .size(22.0)
+                        .monospace()
+                        .color(t.text),
+                )
+                .truncate(),
+            );
+        },
+    );
+
+    // Row 3: the caption.
+    let row3 = egui::Rect::from_min_max(egui::pos2(content.left(), rect.top() + 44.0), content.max);
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(row3)
+            .layout(Layout::left_to_right(Align::Center)),
+        |ui| {
+            ui.add(
+                egui::Label::new(RichText::new(kpi.sub).size(10.0).color(t.text_muted)).truncate(),
+            );
+        },
+    );
+
+    response.on_hover_text(kpi.hover)
 }
 
 pub fn metric(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
@@ -997,12 +1210,129 @@ pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: C
     .on_hover_text(format!("{label}: {caption}"));
 }
 
-pub fn section_label(ui: &mut egui::Ui, label: &str, t: Tokens) {
-    hover_label(
-        ui,
-        RichText::new(label).size(9.0).strong().color(t.text_muted),
+/// A section title: an accent bar, an 11 px sentence-case label, and an optional
+/// right-aligned link. Reserves 20 px of height plus `space::S` below it, and
+/// returns `true` when the link was clicked.
+pub fn section_header(ui: &mut egui::Ui, title: &str, link: Option<&str>, t: Tokens) -> bool {
+    let mut clicked = false;
+    let response = ui.allocate_response(Vec2::new(ui.available_width(), 20.0), Sense::hover());
+    let rect = response.rect;
+
+    let bar_height = 11.0;
+    let bar = egui::Rect::from_min_size(
+        egui::pos2(rect.left(), rect.center().y - bar_height / 2.0),
+        Vec2::new(3.0, bar_height),
     );
-    ui.add_space(7.0);
+    ui.painter().rect_filled(bar, 1.0, t.ink(t.accent));
+
+    let mut title_right = rect.right();
+    if let Some(link_text) = link {
+        let galley = ui.painter().layout_no_wrap(
+            link_text.into(),
+            FontId::proportional(11.0),
+            t.ink(t.accent),
+        );
+        let link_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - galley.size().x, rect.top()),
+            Vec2::new(galley.size().x, rect.height()),
+        );
+        title_right = link_rect.left() - 10.0;
+        let link_response = ui.interact(
+            link_rect,
+            ui.next_auto_id().with("section_header_link"),
+            Sense::click(),
+        );
+        if link_response.hovered() {
+            ui.painter().line_segment(
+                [link_rect.left_bottom(), link_rect.right_bottom()],
+                Stroke::new(1.0, t.ink(t.accent)),
+            );
+        }
+        clicked = link_response.clicked();
+        ui.painter().galley(
+            egui::pos2(link_rect.left(), rect.center().y - galley.size().y / 2.0),
+            galley,
+            t.ink(t.accent),
+        );
+    }
+
+    paint_text(
+        ui,
+        egui::Rect::from_min_max(
+            egui::pos2(bar.right() + 6.0, rect.top()),
+            egui::pos2(title_right, rect.bottom()),
+        ),
+        title,
+        FontId::proportional(11.0),
+        t.text_muted,
+        Align::Min,
+    );
+
+    ui.add_space(theme::space::S);
+    clicked
+}
+
+pub fn section_label(ui: &mut egui::Ui, label: &str, t: Tokens) {
+    section_header(ui, label, None, t);
+}
+
+/// The only allowed rendering of unavailable data: one compact 22 px row with a
+/// muted label and a muted pill giving a short reason (e.g. "Not reported"). The
+/// full reason shows on hover. Never a giant "Unavailable" card or empty plot.
+/// This is the ONLY allowed rendering of unavailable data from P3 onward; later
+/// polish-gauntlet packages wire it into pages that currently show empty states.
+#[allow(dead_code)]
+pub fn gap_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    short_reason: &str,
+    hover: &str,
+    t: Tokens,
+) -> egui::Response {
+    let response = ui.allocate_response(Vec2::new(ui.available_width(), 22.0), Sense::hover());
+    let rect = response.rect;
+
+    let galley = ui.painter().layout_no_wrap(
+        short_reason.into(),
+        FontId::proportional(10.0),
+        t.text_muted,
+    );
+    let pad = 6.0;
+    let pill_size = Vec2::new(galley.size().x + pad * 2.0, 16.0);
+    let pill_rect = egui::Rect::from_min_size(
+        egui::pos2(
+            rect.right() - pill_size.x,
+            rect.center().y - pill_size.y / 2.0,
+        ),
+        pill_size,
+    );
+    ui.painter().rect_filled(
+        pill_rect,
+        pill_size.y / 2.0,
+        t.surface(theme::mix(t.panel_raised, t.text_muted, 0.28)),
+    );
+    ui.painter().galley(
+        egui::pos2(
+            pill_rect.left() + pad,
+            pill_rect.center().y - galley.size().y / 2.0,
+        ),
+        galley,
+        t.text_muted,
+    );
+
+    paint_text(
+        ui,
+        egui::Rect::from_min_max(
+            rect.left_top(),
+            egui::pos2(pill_rect.left() - 8.0, rect.bottom()),
+        ),
+        label,
+        FontId::proportional(11.0),
+        t.text_muted,
+        Align::Min,
+    );
+
+    response.on_hover_text(format!("{label}: {hover}"))
 }
 
 /// Fixed-height metadata surface: changing freshness text must not move the table.
@@ -1129,9 +1459,166 @@ pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {
     history.push_back(value);
 }
 
+/// Column count for a responsive tile grid: 1 below 520 px, 2 below 760, 3 below
+/// 1100, otherwise 4. Later polish-gauntlet packages wire this into page grids.
+#[allow(dead_code)]
+pub fn tile_grid_columns(width: f32) -> usize {
+    if width < 520.0 {
+        1
+    } else if width < 760.0 {
+        2
+    } else if width < 1100.0 {
+        3
+    } else {
+        4
+    }
+}
+
+/// Lay out `items` in a [`tile_grid_columns`]-wide grid with no orphan cards: full
+/// rows use `ui.columns(columns)`, and the trailing partial row uses
+/// `ui.columns(chunk.len())` instead, so its cards stretch to fill the row rather
+/// than leaving empty gaps. Later polish-gauntlet packages wire this into pages.
+#[allow(dead_code)]
+pub fn fill_last_row<T>(
+    ui: &mut egui::Ui,
+    items: &[T],
+    columns: usize,
+    mut render: impl FnMut(&mut egui::Ui, &T),
+) {
+    let columns = columns.max(1);
+    for chunk in items.chunks(columns) {
+        ui.columns(chunk.len(), |cells| {
+            for (cell, item) in cells.iter_mut().zip(chunk) {
+                render(cell, item);
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sparkline_draws_nothing_for_fewer_than_two_points_and_breaks_on_gaps() {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings::default();
+        theme::install(&ctx, settings);
+        let t = theme::tokens(settings);
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(100.0, 40.0));
+
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            sparkline(
+                ui.painter(),
+                rect,
+                std::iter::once(Some(1.0)),
+                10.0,
+                t.accent,
+                t,
+            );
+        });
+        assert!(
+            output.shapes.is_empty(),
+            "fewer than two points must draw nothing, not a flat line"
+        );
+
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let values = [Some(1.0), Some(2.0), None, Some(3.0), Some(4.0)];
+            sparkline(ui.painter(), rect, values.into_iter(), 10.0, t.accent, t);
+        });
+        let paths: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Path(path) if !path.closed => Some(path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            paths.len(),
+            2,
+            "a None sample must split the line, not bridge it"
+        );
+    }
+
+    #[test]
+    fn kpi_tile_height_is_fixed_regardless_of_width() {
+        for width in [140.0_f32, 300.0] {
+            let ctx = egui::Context::default();
+            let settings = ThemeSettings::default();
+            theme::install(&ctx, settings);
+            let t = theme::tokens(settings);
+            let mut height = 0.0;
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(640.0, 480.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.scope_builder(
+                        egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
+                            egui::pos2(10.0, 10.0),
+                            Vec2::new(width, 200.0),
+                        )),
+                        |ui| {
+                            let response = kpi_tile(
+                                ui,
+                                &Kpi {
+                                    label: "CPU",
+                                    value: "37.2%",
+                                    sub: "12 cores",
+                                    hover: "CPU utilization",
+                                    series: &[Some(1.0), Some(2.0), Some(3.0)],
+                                    max: None,
+                                    color: t.accent,
+                                    state: None,
+                                },
+                                settings,
+                                t,
+                            );
+                            height = response.rect.height();
+                        },
+                    );
+                },
+            );
+            assert_eq!(
+                height, KPI_TILE_HEIGHT,
+                "kpi_tile must stay 84 px tall at width {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn gap_row_is_a_fixed_height_inline_row() {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings::default();
+        theme::install(&ctx, settings);
+        let t = theme::tokens(settings);
+        let mut height = 0.0;
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            height = gap_row(
+                ui,
+                "WD Black SN850",
+                "Needs sensor app",
+                "No SMART/NVMe temperature exposed by this drive.",
+                t,
+            )
+            .rect
+            .height();
+        });
+        assert_eq!(height, 22.0);
+    }
+
+    #[test]
+    fn tile_grid_columns_follows_width_breakpoints() {
+        assert_eq!(tile_grid_columns(400.0), 1);
+        assert_eq!(tile_grid_columns(600.0), 2);
+        assert_eq!(tile_grid_columns(900.0), 3);
+        assert_eq!(tile_grid_columns(1200.0), 4);
+    }
 
     #[test]
     fn inventory_formats_visible_rows_instead_of_the_entire_cache() {

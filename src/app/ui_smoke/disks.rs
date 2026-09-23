@@ -72,9 +72,11 @@ fn physical_disk_metrics_remain_aligned_across_missing_states_and_themes() {
                 let output = frame(&ctx, &mut app, size, vec![]);
                 let shapes = text_shapes(&output);
                 if size.y >= 760.0 {
+                    // The window legend is now the fixed "-120 s" / "now" pair
+                    // that matches the Graphs page cards, not the caller's text.
                     let legends: Vec<_> = shapes
                         .iter()
-                        .filter(|(s, _)| s.galley.job.text == "120 SAMPLES")
+                        .filter(|(s, _)| s.galley.job.text == "-120 s")
                         .collect();
                     assert_eq!(legends.len(), 3);
                     assert!(

@@ -26,6 +26,26 @@ pub fn rate(value: f64) -> String {
     }
 }
 
+/// Format a MiB/s rate with the same unit scaling and rounding as [`rate`].
+/// Performance histories for disks and network are stored in MiB/s. A later
+/// polish-gauntlet package wires this into disk/network graph card labels.
+#[allow(dead_code)]
+pub fn rate_mib(mib_per_s: f32) -> String {
+    rate(f64::from(mib_per_s) * 1_048_576.0)
+}
+
+/// Round an axis top up to a whole, readable step (1, 5, 50, 500, ...), so a KPI
+/// sparkline's implied scale reads as "450", never "447.35". Used by
+/// [`crate::widgets::kpi_tile`], which later packages wire into pages.
+#[allow(dead_code)]
+pub fn nice_top(value: f32) -> f32 {
+    if !value.is_finite() || value <= 1.0 {
+        return 1.0;
+    }
+    let step = (10_f32.powf(value.log10().floor()) / 2.0).max(1.0);
+    (value / step).ceil() * step
+}
+
 pub fn percent(value: f32) -> String {
     if value >= 10.0 {
         format!("{value:.1}%")
@@ -96,6 +116,19 @@ mod tests {
         assert_eq!(bytes(0), "0 B");
         assert_eq!(bytes(1024), "1.00 KB");
         assert_eq!(bytes(1024 * 1024), "1.00 MB");
+    }
+
+    #[test]
+    fn rate_mib_matches_rate_rounding() {
+        assert!(rate_mib(1.1).contains("MB/s"));
+        assert_eq!(rate_mib(0.0), "0 B/s");
+    }
+
+    #[test]
+    fn nice_top_rounds_axis_maximums_up_to_a_readable_step() {
+        assert_eq!(nice_top(447.35), 450.0);
+        assert_eq!(nice_top(58.1), 60.0);
+        assert_eq!(nice_top(0.0), 1.0);
     }
 
     #[test]

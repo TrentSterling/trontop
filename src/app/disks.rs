@@ -151,6 +151,7 @@ impl TrontopApp {
             Some(100.0),
             t,
             ("120 SAMPLES", HISTORY_LENGTH),
+            None,
         );
         ui.add_space(8.0);
         ui.columns(2, |columns| {
@@ -167,6 +168,7 @@ impl TrontopApp {
                     None,
                     t,
                     ("120 SAMPLES", HISTORY_LENGTH),
+                    None,
                 );
             }
         });

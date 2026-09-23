@@ -470,8 +470,28 @@ fn compact_history_long_names_keep_numeric_columns_aligned() {
         }
         app.rebuild_visible_processes();
         let size = Vec2::new(1040.0, 640.0);
-        let mut output = frame(&ctx, &mut app, size, vec![]);
         for _ in 0..5 {
+            frame(&ctx, &mut app, size, vec![]);
+        }
+        // The taller, more legible section header leaves the last of 12 rows
+        // just past the scroll area's edge; scroll it fully into view like a
+        // real user would before checking column alignment.
+        frame(
+            &ctx,
+            &mut app,
+            size,
+            vec![
+                egui::Event::PointerMoved(egui::pos2(size.x * 0.5, size.y * 0.6)),
+                egui::Event::MouseWheel {
+                    phase: egui::TouchPhase::Move,
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0.0, -400.0),
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let mut output = frame(&ctx, &mut app, size, vec![]);
+        for _ in 0..19 {
             output = frame(&ctx, &mut app, size, vec![]);
         }
         let mut right_edge = None;
