@@ -3,6 +3,62 @@ use crate::export::{Exporter, Format, Outcome};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// The smallest painted, *stroked* rectangle that contains `point`: for a
+/// point inside a dialog and nothing else, that is the dialog's own frame.
+/// Its drop shadow is the same size and painted first, but has no stroke, so
+/// filtering on `stroke.width > 0` tells the real frame from its shadow.
+fn smallest_containing_rect(output: &egui::FullOutput, point: egui::Pos2) -> egui::Rect {
+    fn visit(shape: &egui::Shape, point: egui::Pos2, best: &mut Option<egui::Rect>) {
+        match shape {
+            egui::Shape::Rect(r) => {
+                if r.stroke.width > 0.0
+                    && r.rect.contains(point)
+                    && best.is_none_or(|b: egui::Rect| r.rect.area() < b.area())
+                {
+                    *best = Some(r.rect);
+                }
+            }
+            egui::Shape::Vec(shapes) => {
+                for s in shapes {
+                    visit(s, point, best);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut best = None;
+    for clipped in &output.shapes {
+        visit(&clipped.shape, point, &mut best);
+    }
+    best.expect("no stroked background rectangle contains the point")
+}
+
+#[test]
+fn export_heading_sits_inside_the_dialog_frame_at_1000x580() {
+    let ctx = egui::Context::default();
+    let settings = ThemeSettings::default();
+    theme::install(&ctx, settings);
+    let mut app = app(settings, true);
+    app.show_export = true;
+    let size = Vec2::new(1000.0, 580.0);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let heading = text_shapes(&output)
+        .into_iter()
+        .find(|(text, _)| text.galley.job.text == "Take the data with you")
+        .expect("export heading")
+        .0
+        .visual_bounding_rect();
+    let dialog = smallest_containing_rect(&output, heading.center());
+    let inset = heading.left() - dialog.left();
+    assert!(
+        inset >= 8.0,
+        "export heading sits only {inset} px inside the dialog frame ({heading:?} in {dialog:?})"
+    );
+}
+
 #[test]
 fn export_requires_explicit_save_and_captures_options_and_unfiltered_snapshot() {
     let ctx = egui::Context::default();

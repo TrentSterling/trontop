@@ -6,6 +6,38 @@ use std::time::Instant;
 /// not a settled read) its freshness state suffixed on the chip itself.
 const CHIP_HEIGHT: f32 = 26.0;
 
+/// Startup table columns: `(header, fraction, minimum)`, last column flexible.
+const STARTUP_COLUMNS_WITH_FRESHNESS: [(&str, f32, f32); 4] = [
+    ("NAME", 0.24, 140.0),
+    ("COMMAND / FILE", 0.34, 170.0),
+    ("SOURCE", 0.27, 175.0),
+    ("FRESHNESS", 0.15, 90.0),
+];
+/// Same three columns, widths rebalanced across the space FRESHNESS gave up.
+const STARTUP_COLUMNS: [(&str, f32, f32); 3] = [
+    ("NAME", 0.28, 140.0),
+    ("COMMAND / FILE", 0.40, 170.0),
+    ("SOURCE", 0.32, 175.0),
+];
+const SERVICES_COLUMNS_WITH_FRESHNESS: [(&str, f32, f32); 5] = [
+    ("DISPLAY NAME", 0.22, 130.0),
+    ("SERVICE", 0.28, 150.0),
+    ("STATE", 0.14, 80.0),
+    ("PID", 0.10, 56.0),
+    ("FRESHNESS", 0.14, 90.0),
+];
+/// DISPLAY NAME / SERVICE / STATE / PID, widths rebalanced across the space
+/// FRESHNESS gave up.
+const SERVICES_COLUMNS: [(&str, f32, f32); 4] = [
+    ("DISPLAY NAME", 0.32, 150.0),
+    ("SERVICE", 0.38, 180.0),
+    ("STATE", 0.16, 90.0),
+    ("PID", 0.14, 70.0),
+];
+
+const STARTUP_CAVEAT: &str = "Read-only inventory; enabled/disabled state is not inferred.";
+const SERVICES_CAVEAT: &str = "Select a row for confirmed controls.";
+
 impl TrontopApp {
     pub(super) fn startup_inventory(&self, ui: &mut egui::Ui) {
         let t = self.colors();
@@ -25,29 +57,60 @@ impl TrontopApp {
             })
             .collect::<Vec<_>>();
         let shown = rows.len();
-        widgets::inventory_table(
-            ui,
-            "startup_grid",
-            ["NAME", "COMMAND / FILE", "SOURCE", "FRESHNESS"],
-            shown,
-            None,
-            |index| {
-                let (source, entry) = rows[index];
-                let freshness = source.row_state(entry, now).to_string();
-                let freshness_hover = format!(
-                    "{freshness}, observed {}",
-                    age(Some(entry.observed_at), now)
-                );
-                [
-                    (entry.row.name.clone(), entry.row.name.clone()),
-                    (entry.row.command.clone(), entry.row.command.clone()),
-                    (source.source.name().into(), source.source.name().into()),
-                    (freshness, freshness_hover),
-                ]
-            },
-            t,
-        );
-        widgets::hover_label(ui, RichText::new(format!("{shown} matching of {total} retained entries. Read-only inventory; enabled/disabled state is not inferred.")).size(10.0).color(t.text_muted));
+        // The FRESHNESS column only earns its place when it would say something
+        // other than "Live" for every row; an all-fresh table gives that width
+        // back to NAME, COMMAND / FILE and SOURCE instead.
+        let all_live = rows
+            .iter()
+            .all(|(source, entry)| source.row_state(entry, now) == "Live");
+        if all_live {
+            widgets::inventory_table(
+                ui,
+                "startup_grid",
+                STARTUP_COLUMNS,
+                shown,
+                None,
+                |index| {
+                    let (source, entry) = rows[index];
+                    [
+                        (entry.row.name.clone(), entry.row.name.clone()),
+                        (entry.row.command.clone(), entry.row.command.clone()),
+                        (source.source.name().into(), source.source.name().into()),
+                    ]
+                },
+                t,
+            );
+        } else {
+            widgets::inventory_table(
+                ui,
+                "startup_grid",
+                STARTUP_COLUMNS_WITH_FRESHNESS,
+                shown,
+                None,
+                |index| {
+                    let (source, entry) = rows[index];
+                    let freshness = source.row_state(entry, now).to_string();
+                    let freshness_hover = format!(
+                        "{freshness}, observed {}",
+                        age(Some(entry.observed_at), now)
+                    );
+                    [
+                        (entry.row.name.clone(), entry.row.name.clone()),
+                        (entry.row.command.clone(), entry.row.command.clone()),
+                        (source.source.name().into(), source.source.name().into()),
+                        (freshness, freshness_hover),
+                    ]
+                },
+                t,
+            );
+        }
+        let footer = if needle.is_empty() {
+            format!("{total} entries")
+        } else {
+            format!("{shown} shown")
+        };
+        widgets::hover_label(ui, RichText::new(footer).size(10.0).color(t.text_muted))
+            .on_hover_text(STARTUP_CAVEAT);
     }
 
     pub(super) fn service_inventory(&mut self, ui: &mut egui::Ui) {
@@ -78,69 +141,112 @@ impl TrontopApp {
         let selected = rows
             .iter()
             .position(|row| self.selected_service.as_ref() == Some(&row.name));
-        let clicked = widgets::inventory_table(
-            ui,
-            "services_grid",
-            ["DISPLAY NAME", "SERVICE", "STATE", "PID", "FRESHNESS"],
-            shown,
-            selected,
-            |index| {
-                let row = rows[index];
-                let (status, command_read) = self.service_status(row);
-                let pid = if status.pid == 0 {
-                    String::new()
-                } else {
-                    status.pid.to_string()
-                };
-                let pid_hover = if pid.is_empty() {
-                    "No PID reported".to_string()
-                } else {
-                    format!("PID {pid}")
-                };
-                let freshness_value = if command_read {
+        // Precompute each row's freshness once: it decides whether the
+        // FRESHNESS column earns its place, then feeds the table itself.
+        let freshness_values = rows
+            .iter()
+            .map(|row| {
+                let (_, command_read) = self.service_status(row);
+                if command_read {
                     "Command read".to_string()
                 } else if freshness == "Live" && !self.service_is_fresh(row) {
                     "Pre-command".to_string()
                 } else {
                     freshness.to_string()
-                };
-                [
-                    (row.display_name.clone(), row.display_name.clone()),
-                    (row.name.clone(), row.name.clone()),
-                    (
-                        status.state.label().to_string(),
-                        status.state.label().to_string(),
-                    ),
-                    (pid, pid_hover),
-                    (freshness_value.clone(), freshness_value),
-                ]
-            },
-            t,
-        );
+                }
+            })
+            .collect::<Vec<_>>();
+        let all_live = freshness_values.iter().all(|value| value == "Live");
+        let clicked = if all_live {
+            widgets::inventory_table(
+                ui,
+                "services_grid",
+                SERVICES_COLUMNS,
+                shown,
+                selected,
+                |index| {
+                    let row = rows[index];
+                    let (status, _) = self.service_status(row);
+                    let pid = if status.pid == 0 {
+                        String::new()
+                    } else {
+                        status.pid.to_string()
+                    };
+                    let pid_hover = if pid.is_empty() {
+                        "No PID reported".to_string()
+                    } else {
+                        format!("PID {pid}")
+                    };
+                    [
+                        (row.display_name.clone(), row.display_name.clone()),
+                        (row.name.clone(), row.name.clone()),
+                        (
+                            status.state.label().to_string(),
+                            status.state.label().to_string(),
+                        ),
+                        (pid, pid_hover),
+                    ]
+                },
+                t,
+            )
+        } else {
+            widgets::inventory_table(
+                ui,
+                "services_grid",
+                SERVICES_COLUMNS_WITH_FRESHNESS,
+                shown,
+                selected,
+                |index| {
+                    let row = rows[index];
+                    let (status, _) = self.service_status(row);
+                    let pid = if status.pid == 0 {
+                        String::new()
+                    } else {
+                        status.pid.to_string()
+                    };
+                    let pid_hover = if pid.is_empty() {
+                        "No PID reported".to_string()
+                    } else {
+                        format!("PID {pid}")
+                    };
+                    let freshness_value = freshness_values[index].clone();
+                    [
+                        (row.display_name.clone(), row.display_name.clone()),
+                        (row.name.clone(), row.name.clone()),
+                        (
+                            status.state.label().to_string(),
+                            status.state.label().to_string(),
+                        ),
+                        (pid, pid_hover),
+                        (freshness_value.clone(), freshness_value),
+                    ]
+                },
+                t,
+            )
+        };
         if let Some(index) = clicked {
             self.selected_service = Some(rows[index].name.clone());
         }
-        widgets::hover_label(
-            ui,
-            RichText::new(format!(
-                "{shown} matching of {} retained services. Select a row for confirmed controls.",
-                self.snapshot.services.len()
-            ))
-            .size(10.0)
-            .color(t.text_muted),
-        );
+        let footer = if needle.is_empty() {
+            format!("{} services", self.snapshot.services.len())
+        } else {
+            format!("{shown} shown")
+        };
+        widgets::hover_label(ui, RichText::new(footer).size(10.0).color(t.text_muted))
+            .on_hover_text(SERVICES_CAVEAT);
     }
 }
 
-/// Short chip label for a Startup source: the identical [`crate::startup::Source::name`]
-/// for the three that already fit, and a shorter form of the two longest
-/// names so five equal-width chips fit one row down to a 1000 px window.
+/// Short chip label for a Startup source, none of which truncate at a 1000 px
+/// window; the full [`crate::startup::Source::name`] is always on the chip's hover.
 pub(super) fn chip_label(source: crate::startup::Source) -> &'static str {
     use crate::startup::Source;
     match source {
-        Source::MachineRun32 => "32-bit Run key",
-        Source::UserFolder => "User Startup folder",
-        other => other.name(),
+        Source::UserRun => "User Run",
+        Source::MachineRun => "Machine Run",
+        Source::MachineRun32 => "32-bit Run",
+        Source::UserFolder => "User folder",
+        Source::MachineFolder => "Machine folder",
     }
 }
 

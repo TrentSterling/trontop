@@ -267,15 +267,15 @@ impl TrontopApp {
             .iter()
             .filter(|e| e.health.collecting_since.is_some())
             .count();
-        widgets::hover_label(
-            ui,
-            RichText::new(format!(
+        let footer = if busy == 0 {
+            format!("{read} of {} sections read", self.specs_view.entries.len())
+        } else {
+            format!(
                 "{read} of {} sections read\n{busy} reading now",
                 self.specs_view.entries.len()
-            ))
-            .size(10.0)
-            .color(t.text_muted),
-        );
+            )
+        };
+        widgets::hover_label(ui, RichText::new(footer).size(10.0).color(t.text_muted));
     }
 
     fn system_summary(&mut self, ui: &mut egui::Ui) {
@@ -505,9 +505,13 @@ impl TrontopApp {
                 )
                 .on_hover_text(format!("{}\nRight-click to copy this group.", group.title));
             if let Some(key) = &group.live {
+                // A group with no real live value shows nothing here, matching
+                // the Summary page: never a muted "--" beside every title.
                 let (text, color, hover) = self.headline_live(key, now, t);
-                ui.label(RichText::new(text).size(12.5).strong().color(color))
-                    .on_hover_text(hover);
+                if text != "--" {
+                    ui.label(RichText::new(text).size(12.5).strong().color(color))
+                        .on_hover_text(hover);
+                }
             }
             title
         })

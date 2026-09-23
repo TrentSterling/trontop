@@ -1740,10 +1740,15 @@ pub fn inventory_status(
 /// `values` returns one `(display, hover)` pair per column. Most columns hover
 /// their own display text; a column that wants to keep its cell short (e.g. a
 /// freshness word with the observation age on hover) gives a longer hover string.
+/// `columns` gives each column's header label plus its `(fraction, minimum)`
+/// width; the last column always becomes the flexible remainder (its fraction
+/// is ignored), so callers with the same `N` but different meanings (e.g.
+/// Services with and without a FRESHNESS column) pass their own widths instead
+/// of sharing one by column count alone.
 pub fn inventory_table<const N: usize>(
     ui: &mut egui::Ui,
     id: &str,
-    headers: [&str; N],
+    columns: [(&str, f32, f32); N],
     row_count: usize,
     selected: Option<usize>,
     mut values: impl FnMut(usize) -> [(String, String); N],
@@ -1758,19 +1763,7 @@ pub fn inventory_table<const N: usize>(
             .striped(true)
             .resizable(true)
             .cell_layout(Layout::left_to_right(Align::Center));
-        for index in 0..N {
-            let (fraction, minimum) = match N {
-                4 => [(0.24, 140.0), (0.34, 170.0), (0.27, 175.0), (0.15, 90.0)][index],
-                // DISPLAY NAME / SERVICE / STATE / PID (narrow) / FRESHNESS.
-                5 => [
-                    (0.22, 130.0),
-                    (0.28, 150.0),
-                    (0.14, 80.0),
-                    (0.10, 56.0),
-                    (0.14, 90.0),
-                ][index],
-                _ => (0.38, if index + 1 == N { 120.0 } else { 180.0 }),
-            };
+        for (index, &(_, fraction, minimum)) in columns.iter().enumerate() {
             table = table.column(if index + 1 == N {
                 egui_extras::Column::remainder()
                     .at_least(minimum)
@@ -1785,7 +1778,7 @@ pub fn inventory_table<const N: usize>(
             .min_scrolled_height(0.0)
             .max_scroll_height(height)
             .header(34.0, |mut header| {
-                for label in headers {
+                for &(label, _, _) in &columns {
                     table_column(&mut header, t, |ui| {
                         table_cell(
                             ui,
@@ -2003,7 +1996,12 @@ mod tests {
                 inventory_table(
                     ui,
                     "virtual_inventory",
-                    ["NAME", "COMMAND", "SOURCE", "FRESHNESS"],
+                    [
+                        ("NAME", 0.24, 140.0),
+                        ("COMMAND", 0.34, 170.0),
+                        ("SOURCE", 0.27, 175.0),
+                        ("FRESHNESS", 0.15, 90.0),
+                    ],
                     20_000,
                     None,
                     |index| {

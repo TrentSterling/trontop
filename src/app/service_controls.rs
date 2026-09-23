@@ -203,7 +203,7 @@ impl TrontopApp {
                         let phase = if self.service_controller.available() {
                             "Ready"
                         } else {
-                            "Unavailable"
+                            "Controls unavailable"
                         };
                         let detail = if self.service_controller.available() {
                             "Start may start required dependencies. Stop never recursively stops dependents; Restart can leave a service stopped if Start fails."

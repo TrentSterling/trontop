@@ -1852,6 +1852,63 @@ fn startup_and_services_tables_start_above_y_200_at_1000x580() {
     }
 }
 
+#[test]
+fn startup_and_services_hide_freshness_header_when_every_row_is_live() {
+    // The default fixture is Live end to end (every Startup source readable,
+    // every service inventory read Live): the common case, and the one where
+    // the FRESHNESS column must give its width back to the other columns.
+    for page in [Page::Startup, Page::Services] {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        app.page = page;
+        let size = Vec2::new(1000.0, 580.0);
+        let output = frame(&ctx, &mut app, size, vec![]);
+        let title = if page == Page::Startup {
+            "NAME"
+        } else {
+            "DISPLAY NAME"
+        };
+        assert!(
+            text_shapes(&output)
+                .iter()
+                .any(|(text, _)| text.galley.job.text == title),
+            "{page:?} lost its table header"
+        );
+        assert!(
+            !text_shapes(&output)
+                .iter()
+                .any(|(text, _)| text.galley.job.text == "FRESHNESS"),
+            "{page:?} still shows a FRESHNESS header while every row is Live"
+        );
+    }
+}
+
+#[test]
+fn startup_and_services_footers_never_say_retained() {
+    for page in [Page::Startup, Page::Services] {
+        for state in [0, 1, 2, 3, 4, 5, 6, 7] {
+            let ctx = egui::Context::default();
+            let settings = ThemeSettings::default();
+            theme::install(&ctx, settings);
+            let mut app = app(settings, true);
+            app.snapshot = fixture();
+            inventory_state_fixture(&mut app, page, state);
+            let size = Vec2::new(1000.0, 580.0);
+            let output = frame(&ctx, &mut app, size, vec![]);
+            assert!(
+                !text_shapes(&output).iter().any(|(text, _)| text
+                    .galley
+                    .job
+                    .text
+                    .contains("retained")),
+                "{page:?} state {state} still says \"retained\""
+            );
+        }
+    }
+}
+
 fn fixture_service_controls(app: &mut TrontopApp, ctx: &egui::Context) {
     // These fixtures exercise chronological action results. Unlike static page
     // screenshots, the inventory must not be dated an hour after the command.

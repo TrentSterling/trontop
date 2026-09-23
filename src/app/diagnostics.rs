@@ -79,6 +79,9 @@ impl TrontopApp {
                     });
                     ui.add_space(theme::space::S);
                 }
+                // Bottom breathing room so the last row is never flush against
+                // the window edge once scrolled all the way down.
+                ui.add_space(theme::space::L);
             });
         self.show_diagnostics &= open;
     }

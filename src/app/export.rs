@@ -11,12 +11,18 @@ impl TrontopApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
         let mut open = true;
+        // One region for the whole body, not a second nested scroll area that
+        // squeezes the "Limited details" box: the window sizes itself to its
+        // (now short, one-sentence-per-block) content instead of scrolling it.
+        // A `vscroll(true)`/wrapping `ScrollArea` here under-sizes the window
+        // and stays stuck there; this shape does not.
         egui::Window::new("Export snapshot").open(&mut open)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .default_width(580.0).resizable(false).collapsible(false)
+            .frame(egui::Frame::window(&ctx.style_of(ctx.theme())).inner_margin(theme::CARD_PAD))
             .show(ctx, |ui| {
                 widgets::hover_label(ui, RichText::new("Take the data with you").size(22.0).strong().color(t.text));
-                widgets::hover_label(ui, "A fixed capture when you press Save as. Live sampling continues.");
+                widgets::hover_label(ui, "A fixed capture when you press Save as; live sampling continues.");
                 ui.add_space(theme::space::L);
                 ui.add_enabled_ui(!self.exporter.busy(), |ui| {
                     widgets::control_row(ui, "Format", false, t, |ui| {
@@ -29,23 +35,35 @@ impl TrontopApp {
                     });
                 });
                 ui.add_space(theme::space::L);
-                egui::ScrollArea::vertical().id_salt("export_details")
-                    .max_height((ctx.content_rect().height() - 440.0).clamp(120.0, 160.0))
-                    .auto_shrink([false, false]).show(ui, |ui| {
-                let scope = if self.export_options.format == Format::Json {
-                    "System, processes, disks, network, sensors, users, Startup and Services. Provider freshness travels with the readings."
-                } else { "Every process, one row per PID. Raw counters, units and missing-GPU state. CSV text is escaped for spreadsheet import." };
-                widgets::hover_label(ui, scope);
-                widgets::hover_label(ui, RichText::new("All sampler rows, not the filtered view. No chart history, subtree totals or service-command annotations.").size(11.0).color(t.text_muted));
+                let (scope, scope_hover) = if self.export_options.format == Format::Json {
+                    (
+                        "Includes system, process, disk, network, sensor, user, Startup and Service data.",
+                        "Provider freshness travels with the readings.",
+                    )
+                } else {
+                    (
+                        "One row per process, with raw counters and units.",
+                        "Missing GPU state is flagged; CSV text is escaped for spreadsheet import.",
+                    )
+                };
+                widgets::hover_label(ui, scope).on_hover_text(scope_hover);
+                widgets::hover_label(ui, RichText::new("All sampler rows, not just the filtered view.").size(11.0).color(t.text_muted))
+                    .on_hover_text("No chart history, subtree totals or service-command annotations are included.");
                 ui.add_space(theme::space::L);
                 widgets::hover_frame(ui, widgets::surface(ui, t, false), |ui| {
                     widgets::hover_label(ui, RichText::new(if self.export_options.private_details { "Private details included" } else { "Limited details; not anonymous" }).strong().color(t.text));
-                    widgets::hover_label(ui, if self.export_options.private_details {
-                        "Includes accounts, host, executable paths, command lines, mount paths, adapter names and hardware IDs. Review before sharing."
+                    let (body, body_hover) = if self.export_options.private_details {
+                        (
+                            "Includes accounts, host, paths, commands, adapters and hardware IDs.",
+                            "Review before sharing outside this machine.",
+                        )
                     } else {
-                        "Excludes accounts, host, paths, commands and hardware IDs. Process/service/device names still identify installed software; this is not anonymous."
-                    });
-                });
+                        (
+                            "Excludes accounts, host, paths, commands and hardware IDs.",
+                            "Process, service and device names still identify installed software; this is not anonymous.",
+                        )
+                    };
+                    widgets::hover_label(ui, body).on_hover_text(body_hover);
                 });
                 ui.add_space(theme::space::L);
                 let (state, detail) = if self.exporter.busy() {
@@ -68,7 +86,8 @@ impl TrontopApp {
                         self.export_result = self.exporter.submit(capture, ctx.clone()).err().map(Outcome::Failed);
                     }
                 });
-                widgets::hover_label(ui, RichText::new("Closing this panel does not cancel an export. Nothing is uploaded or opened automatically.").size(10.0).color(t.text_muted));
+                widgets::hover_label(ui, RichText::new("Closing this panel does not cancel an export in progress.").size(10.0).color(t.text_muted))
+                    .on_hover_text("Nothing is uploaded or opened automatically.");
             });
         if !open {
             self.show_export = false;
