@@ -9,6 +9,8 @@ const MAX_VALUE_BYTES: usize = 1024 * 1024;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hive {
     LocalMachine,
+    /// The user the Trontop process runs as (for per-user settings).
+    CurrentUser,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -94,8 +96,8 @@ mod native {
     #[cfg(test)]
     use windows::Win32::System::Registry::RegEnumKeyExW;
     use windows::Win32::System::Registry::{
-        HKEY, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE, KEY_WOW64_64KEY,
-        REG_VALUE_TYPE, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
+        HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE,
+        KEY_WOW64_64KEY, REG_VALUE_TYPE, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
     };
     use windows::core::PCWSTR;
     #[cfg(test)]
@@ -123,6 +125,7 @@ mod native {
     fn open(hive: Hive, path: &str) -> Result<Option<Key>, NativeError> {
         let root = match hive {
             Hive::LocalMachine => HKEY_LOCAL_MACHINE,
+            Hive::CurrentUser => HKEY_CURRENT_USER,
         };
         let path = wide(path);
         let mut key = HKEY::default();

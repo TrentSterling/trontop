@@ -102,7 +102,12 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   caches, full CPUID brand). Evidence: `docs/SYSTEM_SPECS.md`, nine
   `native_specs_*_read_only_probe` runs, `app::ui_smoke::system` tests, the
   real-data `render_system_specs_visual_pass` PNGs and `docs/CURRENT_STATE.md`
-  (alpha.36). Remaining: Trent's visual review of the page, and the real Windows
+  (alpha.36). A four-lens verification pass (truth, perf, safety, parity) fixed
+  18 findings, including the Intel video BIOS, the HDD temperature reason, Wi-Fi
+  866.7 Mbps, Bluetooth PAN type, TRIM wording, HX-safe socket, budget-bounded
+  SetupDi, overflow and panic guards, the half-hidden System nav entry, and
+  Speccy's WinInet and Connections groups; evidence in `docs/CURRENT_STATE.md`.
+  Remaining: Trent's visual review of the page, and the real Windows
   Save As picker for specs files is compiled but not validated end to end (same
   gate as `docs/EXPORTS.md`). CPU/board temperatures depend on A10/D01.
 

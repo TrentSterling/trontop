@@ -120,7 +120,7 @@ impl PciId {
             match key.to_ascii_uppercase().as_str() {
                 "VEN" => vendor = u16::from_str_radix(value, 16).ok(),
                 "DEV" => device = u16::from_str_radix(value, 16).ok(),
-                "SUBSYS" if value.len() == 8 => {
+                "SUBSYS" if value.len() == 8 && value.is_ascii() => {
                     let device = u16::from_str_radix(&value[..4], 16).ok()?;
                     let vendor = u16::from_str_radix(&value[4..], 16).ok()?;
                     parsed.subsystem = Some((vendor, device));
@@ -331,6 +331,10 @@ mod tests {
         assert_eq!(pcie_link(Some(9), Some(4)), None);
         assert_eq!(PciId::parse(&[r"USB\VID_046D".to_string()]), None);
         assert_eq!(PciId::parse(&[r"PCI\VEN_ZZZZ&DEV_1".to_string()]), None);
+        // Eight bytes that split inside a UTF-8 character must not panic.
+        let odd = PciId::parse(&["PCI\\VEN_10DE&DEV_2C05&SUBSYS_a\u{e9}\u{e9}\u{e9}x".to_string()])
+            .unwrap();
+        assert_eq!(odd.subsystem, None);
     }
 
     #[test]

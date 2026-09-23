@@ -25,6 +25,13 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            // ERROR_INVALID_FUNCTION / ERROR_NOT_SUPPORTED: the storage driver
+            // does not implement the temperature property for this drive.
+            Self::Windows(code @ (1 | 50)) => write!(
+                f,
+                "Not reported by the drive's storage driver (code {code}); SMART temperature requires administrator"
+            ),
+            Self::Windows(5) => f.write_str("Requires administrator (code 5: access denied)"),
             Self::Windows(code) => write!(f, "Windows query unavailable (code {code})"),
             Self::Malformed => f.write_str("Invalid storage descriptor"),
             Self::Timeout => f.write_str("Query timed out; cancellation requested"),
@@ -539,6 +546,26 @@ mod tests {
             name: format!("Fixture {id}"),
         }
     }
+    #[test]
+    fn windows_errors_read_as_reasons() {
+        let unsupported = Error::Windows(1).to_string();
+        assert!(unsupported.starts_with("Not reported by the drive's storage driver"));
+        assert!(unsupported.contains("requires administrator"));
+        assert_eq!(
+            Error::Windows(50).to_string().replace("50", "1"),
+            unsupported
+        );
+        assert!(
+            Error::Windows(5)
+                .to_string()
+                .starts_with("Requires administrator")
+        );
+        assert_eq!(
+            Error::Windows(21).to_string(),
+            "Windows query unavailable (code 21)"
+        );
+    }
+
     fn values() -> Temperatures {
         Temperatures {
             sensors: vec![Temperature {

@@ -20,15 +20,15 @@ use windows::Win32::System::Com::{
 use windows::Win32::System::Variant::{VT_BLOB, VT_LPWSTR};
 use windows::core::Interface;
 
-pub(super) fn sound_devices() -> Result<Vec<DeviceInfo>, String> {
-    devices(&Query::new(Filter::Class(GUID_DEVCLASS_MEDIA))).map_err(|e| e.to_string())
+pub(super) fn sound_devices(ctx: &Context) -> Result<Vec<DeviceInfo>, String> {
+    devices(&Query::new(Filter::Class(GUID_DEVCLASS_MEDIA), ctx)).map_err(|e| e.to_string())
 }
 
-pub(super) fn inventory() -> Result<Inventory, String> {
+pub(super) fn inventory(ctx: &Context) -> Result<Inventory, String> {
     let list = devices(&Query {
         limit: 4096,
         extra: &[DEVPKEY_Device_Parent],
-        ..Query::new(Filter::All)
+        ..Query::new(Filter::All, ctx)
     })
     .map_err(|e| e.to_string())?;
     let parents = list

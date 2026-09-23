@@ -4,13 +4,84 @@ use super::*;
 use crate::specs::native::NativeError;
 use crate::specs::native::setupapi::{Filter, Query, devices};
 use windows::Win32::Devices::DeviceAndDriverInstallation::GUID_DEVCLASS_NET;
-use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, ERROR_SUCCESS};
+use windows::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, ERROR_NO_DATA, ERROR_SUCCESS};
 use windows::Win32::NetworkManagement::IpHelper::{
     GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_MULTICAST,
-    GetAdaptersAddresses, IP_ADAPTER_ADDRESSES_LH,
+    GetAdaptersAddresses, GetExtendedTcpTable, GetExtendedUdpTable, GetIfEntry2,
+    IP_ADAPTER_ADDRESSES_LH, MIB_IF_ROW2, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
 };
 use windows::Win32::NetworkManagement::Ndis::IfOperStatusUp;
 use windows::Win32::Networking::WinSock::SOCKET_ADDRESS;
+
+const AF_INET: u32 = 2;
+const AF_INET6: u32 = 23;
+const LARGEST_TABLE: u32 = 16 * 1024 * 1024;
+
+/// WinInet's per-user proxy values (read-only HKCU query).
+pub(super) fn proxy() -> Result<Proxy, String> {
+    use crate::specs::native::registry::{self, Hive};
+    const PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+    let read = |name| registry::read(Hive::CurrentUser, PATH, name).map_err(|e| e.to_string());
+    let text = |name| -> Result<Option<String>, String> {
+        Ok(read(name)?
+            .and_then(|v| v.text().map(|t| t.trim().to_string()))
+            .filter(|t| !t.is_empty()))
+    };
+    Ok(Proxy {
+        // WinInet treats a missing ProxyEnable as 0.
+        enabled: read("ProxyEnable")?.and_then(|v| v.as_u64()).unwrap_or(0) != 0,
+        server: text("ProxyServer")?,
+        bypass: text("ProxyOverride")?,
+        script: text("AutoConfigURL")?,
+    })
+}
+
+/// One GetExtended*Table call, sized by Windows. The bytes are a copy.
+fn owner_table(read: impl Fn(*mut std::ffi::c_void, &mut u32) -> u32) -> Result<Vec<u8>, String> {
+    let mut size = 0u32;
+    for _ in 0..4 {
+        let mut buffer = vec![0u64; (size as usize).div_ceil(8).max(1)];
+        let mut len = (buffer.len() * 8) as u32;
+        let status = read(buffer.as_mut_ptr().cast(), &mut len);
+        if status == ERROR_INSUFFICIENT_BUFFER.0 && len <= LARGEST_TABLE {
+            size = len;
+            continue;
+        }
+        if status != ERROR_SUCCESS.0 {
+            return Err(
+                NativeError::win32("GetExtendedTcpTable/GetExtendedUdpTable", status).to_string(),
+            );
+        }
+        return Ok(buffer
+            .iter()
+            .flat_map(|w| w.to_ne_bytes())
+            .take(len as usize)
+            .collect());
+    }
+    Err("the socket table kept changing".to_string())
+}
+
+/// The kernel's TCP and UDP socket tables, IPv4 and IPv6. Read-only; nothing
+/// is sent on the network.
+pub(super) fn connections() -> Result<Connections, String> {
+    let mut result = Connections::default();
+    for (family, v6) in [(AF_INET, false), (AF_INET6, true)] {
+        // SAFETY: `table` points at `size` writable, 8-byte aligned bytes.
+        let tcp = owner_table(|table, size| unsafe {
+            GetExtendedTcpTable(Some(table), size, false, family, TCP_TABLE_OWNER_PID_ALL, 0)
+        })?;
+        result
+            .tcp
+            .extend(parse_tcp(&tcp, v6).ok_or("malformed TCP table")?);
+        // SAFETY: as above.
+        let udp = owner_table(|table, size| unsafe {
+            GetExtendedUdpTable(Some(table), size, false, family, UDP_TABLE_OWNER_PID, 0)
+        })?;
+        result.udp += udp_count(&udp, v6).ok_or("malformed UDP table")?;
+    }
+    Ok(result)
+}
 
 /// IP_ADAPTER_DHCP_ENABLED in IP_ADAPTER_ADDRESSES::Flags.
 const DHCP_ENABLED: u32 = 0x4;
@@ -37,10 +108,22 @@ fn wide(text: windows::core::PWSTR) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
-pub(super) fn adapters() -> Result<Vec<Adapter>, String> {
+/// The adapter's physical medium (read-only GetIfEntry2 on its LUID).
+fn physical_medium(node: &IP_ADAPTER_ADDRESSES_LH) -> Option<i32> {
+    let mut row = MIB_IF_ROW2 {
+        InterfaceLuid: node.Luid,
+        ..Default::default()
+    };
+    // SAFETY: a writable row whose InterfaceLuid selects the interface.
+    let status = unsafe { GetIfEntry2(&mut row) };
+    (status == ERROR_SUCCESS).then_some(row.PhysicalMediumType.0)
+}
+
+pub(super) fn adapters(ctx: &Context) -> Result<Vec<Adapter>, String> {
     let flags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST;
     let mut size = 16 * 1024u32;
     let mut buffer = Vec::<u64>::new();
+    let mut filled = false;
     for _ in 0..4 {
         buffer = vec![0u64; (size as usize).div_ceil(8)];
         // SAFETY: the buffer holds `size` bytes, 8-byte aligned.
@@ -56,12 +139,20 @@ pub(super) fn adapters() -> Result<Vec<Adapter>, String> {
         if status == ERROR_BUFFER_OVERFLOW.0 && size <= 4 * 1024 * 1024 {
             continue;
         }
+        if status == ERROR_NO_DATA.0 {
+            return Ok(Vec::new());
+        }
         if status != ERROR_SUCCESS.0 {
             return Err(NativeError::win32("GetAdaptersAddresses", status).to_string());
         }
+        filled = true;
         break;
     }
-    let drivers = devices(&Query::new(Filter::Class(GUID_DEVCLASS_NET))).unwrap_or_default();
+    if !filled {
+        // Never walk a buffer Windows did not fill.
+        return Err("GetAdaptersAddresses: the adapter list kept changing".to_string());
+    }
+    let drivers = devices(&Query::new(Filter::Class(GUID_DEVCLASS_NET), ctx)).unwrap_or_default();
     let mut adapters = Vec::new();
     let mut current = buffer.as_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>();
     let mut guard = 0;
@@ -73,6 +164,7 @@ pub(super) fn adapters() -> Result<Vec<Adapter>, String> {
             alias: wide(node.FriendlyName).unwrap_or_else(|| "Network adapter".into()),
             description: wide(node.Description),
             kind: node.IfType,
+            medium: physical_medium(node),
             up: node.OperStatus == IfOperStatusUp,
             speed_bps: Some(node.TransmitLinkSpeed.max(node.ReceiveLinkSpeed)),
             mtu: Some(node.Mtu),

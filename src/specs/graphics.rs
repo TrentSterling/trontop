@@ -7,6 +7,7 @@
 //! current resolution, refresh rate; EDID serials private), live values via
 //! LiveKey::Gpu { adapter: GpuRef, metric }. Never invent a shader clock.
 use super::native::pci_vendor;
+use super::native::registry::RegValue;
 use super::{
     Context, GpuMetric, GpuRef, Group, LiveKey, Row, Section, SectionId, SummaryLine, Value,
 };
@@ -404,6 +405,19 @@ fn build(
     section
 }
 
+/// The video BIOS version from HardwareInformation.BiosString. NVIDIA writes
+/// REG_SZ, Intel writes REG_MULTI_SZ and some drivers write UTF-16 REG_BINARY.
+fn bios_text(value: RegValue) -> Option<String> {
+    let text = match value {
+        RegValue::Text(text) => text,
+        RegValue::MultiText(parts) => parts.into_iter().find(|p| !p.trim().is_empty())?,
+        RegValue::Binary(bytes) => super::native::utf16_bytes_until_nul(&bytes)?,
+        _ => return None,
+    };
+    let text = text.trim().trim_start_matches("Version").trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
 pub fn collect(ctx: &Context) -> Section {
     #[cfg(windows)]
     {
@@ -436,6 +450,21 @@ mod tests {
             }),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn bios_string_decodes_from_every_driver_value_kind() {
+        use crate::specs::native::registry::decode;
+        let utf16 = |t: &str| -> Vec<u8> { t.encode_utf16().flat_map(u16::to_le_bytes).collect() };
+        // REG_SZ (NVIDIA), REG_MULTI_SZ (Intel), UTF-16 REG_BINARY.
+        let sz = decode(1, &utf16("Version98.3.58.0.23\0")).unwrap();
+        assert_eq!(bios_text(sz).as_deref(), Some("98.3.58.0.23"));
+        let multi = decode(7, &utf16(" \0Intel Video BIOS\0\0")).unwrap();
+        assert_eq!(bios_text(multi).as_deref(), Some("Intel Video BIOS"));
+        let binary = decode(3, &utf16("1.2.3\0")).unwrap();
+        assert_eq!(bios_text(binary).as_deref(), Some("1.2.3"));
+        assert_eq!(bios_text(decode(7, &utf16("\0\0")).unwrap()), None);
+        assert_eq!(bios_text(RegValue::U32(1)), None);
     }
 
     #[test]

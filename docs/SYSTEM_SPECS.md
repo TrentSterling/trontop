@@ -120,9 +120,15 @@ paired devices (names private), cameras, Win32_Printer.
 **Network** (34 ms). GetAdaptersAddresses (no traffic), SetupDi network drivers.
 Connected adapters first with link speed and live throughput keyed by the alias
 (verified equal to the `sysinfo::Networks` name for the connected adapter).
-MAC, IP, gateway, DNS and DHCP server are private. Wi-Fi SSID/BSSID are not read:
-Windows treats them as location data and may prompt, and Trontop never triggers
-that prompt.
+MAC, IP, gateway, DNS and DHCP server are private. The adapter type uses the
+physical medium from GetIfEntry2, so a Bluetooth PAN adapter is not shown as
+Ethernet. Wi-Fi SSID/BSSID are not read: Windows treats them as location data and
+may prompt, and Trontop never triggers that prompt. As in Speccy, an "Internet
+options (WinInet)" group reads the current user's ProxyEnable, ProxyServer,
+ProxyOverride and AutoConfigURL (HKCU, read-only, values private), and a
+"Connections" group reads the kernel's socket tables with GetExtendedTcpTable and
+GetExtendedUdpTable (no packets sent): TCP counts by state, UDP endpoint count,
+and up to 40 established connections by PID with private endpoints.
 
 **Sensor Sources** (10 ms, bridge poll every 2 s while visible, 10 s when no
 provider, 30 s when hidden). Read-only access to providers the user already runs:

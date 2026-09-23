@@ -235,6 +235,23 @@ fn system_summary_and_sections_stay_inside_small_windows() {
             for label in ["Refresh", "Copy all", "Save text", "Save JSON"] {
                 assert!(visible(&output, label).is_some(), "{label} at {size:?}");
             }
+            // The left navigation's own entry for the active page, not the
+            // page heading: fully inside its clip and above the stats footer.
+            let nav = text_shapes(&output)
+                .into_iter()
+                .find(|(shape, _)| shape.galley.job.text == "System" && shape.pos.x < 196.0)
+                .expect("System navigation entry");
+            let bounds = nav.0.visual_bounding_rect();
+            assert!(
+                nav.1.contains_rect(bounds),
+                "System nav entry clipped at {size:?}: {bounds:?} in {:?}",
+                nav.1
+            );
+            let footer = visible(&output, "CPU").expect("footer CPU meter");
+            assert!(
+                bounds.bottom() < footer.visual_bounding_rect().top(),
+                "System nav entry overlaps the footer at {size:?}"
+            );
         }
     }
 }

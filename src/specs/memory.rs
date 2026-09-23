@@ -33,7 +33,7 @@ struct Dimm {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Array {
-    slots: Option<u16>,
+    slots: Option<u32>,
     max_bytes: Option<u64>,
     ecc: Option<&'static str>,
 }
@@ -146,14 +146,19 @@ fn array(table: &Table) -> Option<Array> {
     if arrays.is_empty() {
         return None;
     }
-    let slots = arrays.iter().filter_map(|s| s.word(0x0D)).sum::<u16>();
-    let max_bytes = arrays
+    // Firmware words and qwords: add in a wider type or checked, never wrap.
+    let slots = arrays
         .iter()
-        .map(|s| match s.dword(0x07)? {
-            0x8000_0000 => s.qword(0x0F),
-            kb => Some(u64::from(kb) * 1024),
-        })
-        .sum::<Option<u64>>();
+        .filter_map(|s| s.word(0x0D))
+        .map(u32::from)
+        .sum::<u32>();
+    let max_bytes = arrays.iter().try_fold(0u64, |total, s| {
+        let bytes = match s.dword(0x07)? {
+            0x8000_0000 => s.qword(0x0F)?,
+            kb => u64::from(kb) * 1024,
+        };
+        total.checked_add(bytes)
+    });
     Some(Array {
         slots: (slots > 0).then_some(slots),
         max_bytes: max_bytes.filter(|b| *b > 0),
@@ -255,7 +260,7 @@ fn build(
             let slots = array
                 .as_ref()
                 .and_then(|a| a.slots)
-                .map_or(dimms.len(), usize::from);
+                .map_or(dimms.len(), |n| n as usize);
             Value::known(format!("{} of {slots}", populated.len()))
         },
     ));
@@ -507,6 +512,21 @@ mod tests {
         assert_eq!(array.slots, Some(4));
         assert_eq!(array.max_bytes, Some(256 * 1024 * 1024 * 1024));
         assert_eq!(array.ecc, Some("None"));
+    }
+
+    #[test]
+    fn type_16_totals_from_hostile_firmware_do_not_overflow() {
+        let mut body = vec![0u8; 0x17 - 4];
+        body[0x05 - 4] = 0x03;
+        body[0x07 - 4..0x0B - 4].copy_from_slice(&0x8000_0000u32.to_le_bytes());
+        body[0x0D - 4..0x0F - 4].copy_from_slice(&0x8000u16.to_le_bytes());
+        body[0x0F - 4..0x17 - 4].copy_from_slice(&u64::MAX.to_le_bytes());
+        let mut data = structure(16, 0x10, &body, &[]);
+        data.extend(structure(16, 0x11, &body, &[]));
+        data.extend(structure(127, 0xFFFF, &[], &[]));
+        let array = array(&Table::from_structures(3, 7, data)).unwrap();
+        assert_eq!(array.slots, Some(0x10000));
+        assert_eq!(array.max_bytes, None, "an overflowing total is unavailable");
     }
 
     #[test]

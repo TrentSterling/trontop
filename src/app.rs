@@ -182,6 +182,8 @@ pub struct TrontopApp {
     specs_export_private: bool,
     /// The running export job was started from the System page.
     specs_export_pending: bool,
+    /// The page and window height the navigation last scrolled into view.
+    nav_revealed: Option<(Page, u32)>,
 }
 
 impl TrontopApp {
@@ -284,6 +286,7 @@ impl TrontopApp {
             reveal_private: false,
             specs_export_private: false,
             specs_export_pending: false,
+            nav_revealed: None,
         }
     }
 
@@ -656,9 +659,20 @@ impl TrontopApp {
                                 .color(t.text_muted),
                         );
                         ui.add_space(3.0);
+                        let reveal = (self.page, ui.ctx().content_rect().height() as u32);
                         for (page, _, label) in Page::ALL {
                             if widgets::nav_button(ui, self.page == page, page.icon(), label, t) {
                                 self.page = page;
+                            }
+                            // Short windows cannot fit every entry above the
+                            // footer: keep the active one in view, once per
+                            // page or height change (no per-frame scrolling).
+                            if page == reveal.0 && self.nav_revealed != Some(reveal) {
+                                ui.scroll_to_cursor_animation(
+                                    None,
+                                    egui::style::ScrollAnimation::none(),
+                                );
+                                self.nav_revealed = Some(reveal);
                             }
                         }
                     });

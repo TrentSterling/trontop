@@ -3,7 +3,7 @@
 //! opened with FILE_MAP_READ. Nothing is started, installed or elevated.
 use super::*;
 use crate::specs::native::{NativeError, wmi};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND, HANDLE};
 use windows::Win32::System::Memory::{
     FILE_MAP_READ, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS, MapViewOfFile,
     OpenFileMappingW, UnmapViewOfFile, VirtualQuery,
@@ -71,13 +71,18 @@ impl Drop for View {
 
 fn hwinfo() -> Result<Vec<Raw>, String> {
     // SAFETY: read-only open of a named section; no inheritance.
-    let mapping =
-        unsafe { OpenFileMappingW(FILE_MAP_READ.0, false, w!("Global\\HWiNFO_SENS_SM2")) }
-            .map(Mapping)
-            .map_err(|_| {
-                "not running (shared memory not published; enable Shared Memory Support in HWiNFO)"
-                    .to_string()
-            })?;
+    let mapping = unsafe {
+        OpenFileMappingW(FILE_MAP_READ.0, false, w!("Global\\HWiNFO_SENS_SM2"))
+    }
+    .map(Mapping)
+    .map_err(|error| {
+        if error.code() == ERROR_FILE_NOT_FOUND.to_hresult() {
+            "not running (shared memory not published; enable Shared Memory Support in HWiNFO)"
+                .to_string()
+        } else {
+            NativeError::from_windows("OpenFileMappingW", &error).to_string()
+        }
+    })?;
     // SAFETY: maps the whole section read-only.
     let view = View(unsafe { MapViewOfFile(mapping.0, FILE_MAP_READ, 0, 0, 0) });
     if view.0.Value.is_null() {
@@ -96,8 +101,18 @@ fn hwinfo() -> Result<Vec<Raw>, String> {
         return Err(NativeError::last_error("VirtualQuery").to_string());
     }
     let size = info.RegionSize.min(LARGEST_VIEW);
-    // SAFETY: RegionSize bytes are mapped and readable; copied before unmapping.
-    let bytes = unsafe { std::slice::from_raw_parts(view.0.Value.cast::<u8>(), size) }.to_vec();
+    // HWiNFO writes this memory from its own process, so no Rust reference to
+    // it is ever formed: the bytes are copied raw and parsed from the copy
+    // (bounds-checked; a torn copy can only mix two polls, never read out of
+    // bounds).
+    let mut bytes = Vec::<u8>::with_capacity(size);
+    // SAFETY: RegionSize bytes are mapped and readable, `bytes` has `size`
+    // bytes of capacity, the ranges cannot overlap, and u8 has no invalid
+    // bit patterns; copied before unmapping.
+    unsafe {
+        std::ptr::copy_nonoverlapping(view.0.Value.cast::<u8>(), bytes.as_mut_ptr(), size);
+        bytes.set_len(size);
+    }
     drop(view);
     drop(mapping);
     parse_hwinfo(&bytes)

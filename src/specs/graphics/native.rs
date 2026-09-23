@@ -19,6 +19,7 @@ use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, LUID};
 
 pub(super) fn collect(ctx: &Context) -> Section {
     let mut others = Vec::new();
+    let mut issue = None;
     let adapters = crate::gpu_adapters::dxgi_inventory().map(|inventory| {
         let extra = [
             PCIE_LINK_KEYS[0],
@@ -29,9 +30,12 @@ pub(super) fn collect(ctx: &Context) -> Section {
         ];
         let devices = setupapi::devices(&Query {
             extra: &extra,
-            ..Query::new(Filter::Class(GUID_DEVCLASS_DISPLAY))
+            ..Query::new(Filter::Class(GUID_DEVCLASS_DISPLAY), ctx)
         })
-        .unwrap_or_default();
+        .unwrap_or_else(|error| {
+            issue = Some(format!("Display driver details: {error}"));
+            Vec::new()
+        });
         let mut claimed = vec![false; devices.len()];
         let adapters = inventory
             .into_iter()
@@ -59,15 +63,7 @@ pub(super) fn collect(ctx: &Context) -> Section {
                                 .and_then(|v| v.as_u64())
                                 .filter(|v| *v > 0),
                             bios: hardware_value(&info.extra, "HardwareInformation.BiosString")
-                                .and_then(|v| match v {
-                                    registry::RegValue::Text(text) => Some(text),
-                                    registry::RegValue::Binary(bytes) => {
-                                        crate::specs::native::utf16_bytes_until_nul(&bytes)
-                                    }
-                                    _ => None,
-                                })
-                                .map(|t| t.trim().trim_start_matches("Version").trim().to_string())
-                                .filter(|t| !t.is_empty()),
+                                .and_then(bios_text),
                         }
                     })
                 });
@@ -97,7 +93,11 @@ pub(super) fn collect(ctx: &Context) -> Section {
     } else {
         monitors().map_err(|e| e.to_string())
     };
-    build(adapters, monitors, &others)
+    let mut section = build(adapters, monitors, &others);
+    if let Some(issue) = issue {
+        section.push_issue(issue);
+    }
+    section
 }
 
 /// DXGI can list one physical GPU under several LUIDs. An entry without its
@@ -165,6 +165,7 @@ fn header<T>(
 fn monitors() -> Result<Vec<Monitor>, NativeError> {
     let mut paths = Vec::<DISPLAYCONFIG_PATH_INFO>::new();
     let mut modes = Vec::<DISPLAYCONFIG_MODE_INFO>::new();
+    let mut filled = false;
     for _ in 0..3 {
         let (mut path_count, mut mode_count) = (0u32, 0u32);
         // SAFETY: writable counts.
@@ -174,8 +175,11 @@ fn monitors() -> Result<Vec<Monitor>, NativeError> {
         if status.0 != 0 {
             return Err(NativeError::win32("GetDisplayConfigBufferSizes", status.0));
         }
-        paths = vec![DISPLAYCONFIG_PATH_INFO::default(); path_count.min(64) as usize];
-        modes = vec![DISPLAYCONFIG_MODE_INFO::default(); mode_count.min(128) as usize];
+        if path_count > 1024 || mode_count > 2048 {
+            return Err(NativeError::Malformed("display configuration size"));
+        }
+        paths = vec![DISPLAYCONFIG_PATH_INFO::default(); path_count as usize];
+        modes = vec![DISPLAYCONFIG_MODE_INFO::default(); mode_count as usize];
         let (mut paths_len, mut modes_len) = (paths.len() as u32, modes.len() as u32);
         // SAFETY: arrays sized by the counts passed.
         let status = unsafe {
@@ -196,7 +200,14 @@ fn monitors() -> Result<Vec<Monitor>, NativeError> {
         }
         paths.truncate(paths_len as usize);
         modes.truncate(modes_len as usize);
+        filled = true;
         break;
+    }
+    if !filled {
+        // Never read path structures Windows did not fill.
+        return Err(NativeError::Unsupported(
+            "the display configuration kept changing while it was read",
+        ));
     }
     Ok(paths
         .iter()
@@ -233,8 +244,13 @@ fn monitors() -> Result<Vec<Monitor>, NativeError> {
             if unsafe { DisplayConfigGetDeviceInfo(&mut name.header) } == 0 {
                 let friendly = utf16_until_nul(&name.monitorFriendlyDeviceName);
                 monitor.name = (!friendly.trim().is_empty()).then(|| friendly.trim().to_string());
-                monitor.manufacturer = pnp_id(name.edidManufactureId);
-                monitor.product = Some(name.edidProductCodeId);
+                // SAFETY: `value` is the documented view of the flags union.
+                let flags = unsafe { name.flags.Anonymous.value };
+                // edidIdsValid (bit 0): the EDID IDs are meaningful only when set.
+                if flags & 1 != 0 {
+                    monitor.manufacturer = pnp_id(name.edidManufactureId);
+                    monitor.product = Some(name.edidProductCodeId);
+                }
                 monitor.connection = connection(name.outputTechnology.0);
             } else {
                 monitor.connection = connection(target.outputTechnology.0);

@@ -147,7 +147,7 @@ pub(super) fn collect(ctx: &Context) -> Section {
     let mut issues = Vec::new();
     let devices = match setupapi::devices(&Query {
         extra: &[DEVPKEY_Device_Parent],
-        ..Query::new(Filter::Interface(GUID_DEVINTERFACE_DISK))
+        ..Query::new(Filter::Interface(GUID_DEVINTERFACE_DISK), ctx)
     }) {
         Ok(devices) => devices,
         Err(error) => {
@@ -157,7 +157,7 @@ pub(super) fn collect(ctx: &Context) -> Section {
     };
     let pci = setupapi::devices(&Query {
         extra: &PCIE_LINK_KEYS,
-        ..Query::new(Filter::Enumerator("PCI"))
+        ..Query::new(Filter::Enumerator("PCI"), ctx)
     })
     .unwrap_or_default();
     let mut disks = Vec::new();
@@ -302,8 +302,8 @@ fn storage_wmi(ctx: &Context, disks: &mut [Disk], issues: &mut Vec<String>) -> V
     }
 }
 
-pub(super) fn optical() -> Result<Vec<(String, Vec<Row>)>, String> {
-    let devices = setupapi::devices(&Query::new(Filter::Class(GUID_DEVCLASS_CDROM)))
+pub(super) fn optical(ctx: &Context) -> Result<Vec<(String, Vec<Row>)>, String> {
+    let devices = setupapi::devices(&Query::new(Filter::Class(GUID_DEVCLASS_CDROM), ctx))
         .map_err(|e| e.to_string())?;
     Ok(devices
         .into_iter()

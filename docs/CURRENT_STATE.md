@@ -104,6 +104,48 @@ network request was used. Details: `docs/SYSTEM_SPECS.md`.
 - Remaining: Trent's review of the page (A33), the real Save As picker for specs
   files (same gate as `docs/EXPORTS.md`), and D01.
 
+### Verification fixes (same alpha.36 line, "System specs: verification fixes")
+
+Four review lenses (truth, perf, safety, parity) found 18 issues; all fixed:
+
+- Truth: the Intel iGPU video BIOS (REG_MULTI_SZ) now reads "Intel Video BIOS"
+  instead of a false "not reported"; the WD60EZAX temperature reason is "Not
+  reported by the drive's storage driver (code 1); SMART temperature requires
+  administrator" instead of a bare code; Wi-Fi link speed 866.7 Mbps (was
+  truncated to 866); the Bluetooth PAN adapter is "Bluetooth (PAN)" from its
+  physical medium (GetIfEntry2), not "Ethernet"; TRIM reads "Supported" / "Not
+  supported by the drive" (a capability, not a setting); the LGA socket and
+  "-S" codename are given only when the brand names a desktop part, since HX
+  laptops share the same CPUID models.
+- Perf: every SetupDi enumeration takes the section Context and stops at the
+  read budget (checked before the set is opened and before each device);
+  callers in board, devices, graphics, network and storage pass it through.
+- Safety: non-ASCII SUBSYS IDs no longer panic; SMBIOS type 16 slot and capacity
+  totals cannot overflow (an overflowing capacity is Unavailable);
+  GetAdaptersAddresses and QueryDisplayConfig never walk unfilled buffers; the
+  64/128 display path caps that could undersize the buffer are gone; EDID IDs
+  are used only when edidIdsValid is set; HWiNFO shared memory is copied raw
+  without forming a Rust reference, and a non-"not found" open error reports its
+  real reason; one unreadable disk interface is skipped instead of failing the
+  Storage section.
+- Parity: the left navigation scrolls the active page into view once per page
+  or window height change (no animation, no per-frame scroll), so "System" is
+  no longer half hidden under the stats footer at 900x600 and 1040x640; the
+  small-window test now asserts that nav entry specifically. Network adds
+  Speccy's WinInet proxy group (HKCU, values private) and a Connections group
+  (GetExtendedTcpTable/UdpTable counts plus up to 40 established connections by
+  PID, endpoints private).
+- Evidence: all 13 `native_specs_*_read_only_probe` tests rerun by exact name
+  (network: Wi-Fi 866.7 Mbps, Bluetooth (PAN), 240 TCP / 61 UDP; graphics: both
+  BIOS strings; storage: TRIM wording; CPU: Arrow Lake-S, LGA1851);
+  `render_system_specs_visual_pass` re-rendered and the PNGs reviewed (System nav
+  entry fully visible at 1040x640). Gate: `cargo fmt --check` clean, `cargo
+  test` 336 passed / 40 ignored, `cargo clippy --all-targets -- -D warnings`
+  clean, `cargo build --release` OK: `target/release/trontop.exe`
+  **0.3.0-alpha.36**, 14,370,304 bytes, SHA-256
+  `2B3338BE402E45692598BFEDD9E18734CD6851C4152DEDE50298D83331E9B9DD` (unsigned,
+  not launched).
+
 ## Previous running candidate: alpha.35 GPU adapters and release handoff
 
 **Requested stopping point: build, launch, private GitHub check, then hand off.**

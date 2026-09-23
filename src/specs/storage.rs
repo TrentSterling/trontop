@@ -328,13 +328,24 @@ fn disk_group(disk: &Disk, reliability: &Value) -> Group {
         "Removable",
         Value::known(if descriptor.removable { "Yes" } else { "No" }),
     ));
-    group.push_row(Row::new(
-        "TRIM",
-        Value::from_option(
-            disk.trim.map(|t| if t { "Enabled" } else { "Disabled" }),
-            NOT_REPORTED_DRIVE,
+    group.push_row(
+        Row::new(
+            "TRIM",
+            Value::from_option(
+                disk.trim.map(|t| {
+                    if t {
+                        "Supported"
+                    } else {
+                        "Not supported by the drive"
+                    }
+                }),
+                NOT_REPORTED_DRIVE,
+            ),
+        )
+        .note(
+            "DEVICE_TRIM_DESCRIPTOR: drive capability, not the fsutil DisableDeleteNotify setting",
         ),
-    ));
+    );
     group.push_row(Row::new(
         "Sector size",
         Value::from_option(
@@ -486,13 +497,13 @@ pub fn collect(ctx: &Context) -> Section {
 }
 
 pub fn collect_optical(ctx: &Context) -> Section {
-    let _ = ctx;
     #[cfg(windows)]
     {
-        build_optical(native::optical())
+        build_optical(native::optical(ctx))
     }
     #[cfg(not(windows))]
     {
+        let _ = ctx;
         build_optical(Err("read on Windows only".into()))
     }
 }
@@ -566,6 +577,7 @@ mod tests {
             media: Some(4),
             link: Some("PCIe 4.0 x4".into()),
             nvme: Some(NvmeHealth::default()),
+            trim: Some(true),
             partitions: vec![Partition {
                 number: 3,
                 letter: Some('C'),
@@ -593,6 +605,13 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("NVMe health log"), "{text}");
+        assert!(text.contains("TRIM: Supported"), "{text}");
+        let hdd = Disk {
+            trim: Some(false),
+            ..Default::default()
+        };
+        let hdd = crate::specs::probe_text(&[build(Ok(vec![hdd]), Value::known("-"), Vec::new())]);
+        assert!(hdd.contains("TRIM: Not supported by the drive"), "{hdd}");
         assert!(!text.contains("FIXTURE-DRIVE-SERIAL") && !text.contains("PRIVATE-FIXTURE"));
         let mut revealed = String::new();
         crate::specs::section_text(&mut revealed, &section, None, true);

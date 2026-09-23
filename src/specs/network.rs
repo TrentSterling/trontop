@@ -6,6 +6,11 @@
 //! private or dimmed accordingly), live throughput via
 //! LiveKey::NetworkThroughput { interface } matching the sampler's interface
 //! name. MAC and IP addresses are private. No internet requests.
+//!
+//! Also, as Speccy does: WinInet proxy settings (HKCU Internet Settings,
+//! addresses private) and the local TCP/UDP socket tables
+//! (GetExtendedTcpTable / GetExtendedUdpTable: a read of the kernel's own
+//! table, no packets sent; endpoints private).
 use super::{Context, Group, LiveKey, Row, Section, SectionId, SummaryLine, Value};
 
 #[cfg(windows)]
@@ -19,6 +24,8 @@ struct Adapter {
     alias: String,
     description: Option<String>,
     kind: u32,
+    /// NDIS_PHYSICAL_MEDIUM from GetIfEntry2, when it could be read.
+    medium: Option<i32>,
     up: bool,
     speed_bps: Option<u64>,
     mtu: Option<u32>,
@@ -31,6 +38,179 @@ struct Adapter {
     dhcp_server: Option<String>,
     suffix: Option<String>,
     driver: Option<String>,
+}
+
+/// NdisPhysicalMediumBluetooth: a Bluetooth PAN adapter emulates Ethernet
+/// (ifType 6), so the physical medium is the truthful type.
+const MEDIUM_BLUETOOTH: i32 = 10;
+
+fn adapter_type(adapter: &Adapter) -> String {
+    match adapter.medium {
+        Some(MEDIUM_BLUETOOTH) => "Bluetooth (PAN)".into(),
+        _ => if_type(adapter.kind),
+    }
+}
+
+/// WinInet proxy settings for the current user. Server names are private.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Proxy {
+    enabled: bool,
+    server: Option<String>,
+    bypass: Option<String>,
+    script: Option<String>,
+}
+
+/// One row of the kernel's TCP table.
+#[derive(Clone, Debug, PartialEq)]
+struct Connection {
+    /// MIB_TCP_STATE (2 LISTEN, 5 ESTABLISHED, ...).
+    state: u32,
+    local: String,
+    remote: String,
+    pid: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Connections {
+    tcp: Vec<Connection>,
+    udp: usize,
+}
+
+const TCP_LISTEN: u32 = 2;
+const TCP_ESTABLISHED: u32 = 5;
+/// Connection rows listed by name; the counts always cover every row.
+const LISTED_CONNECTIONS: usize = 40;
+
+/// The rows of a MIB_*TABLE_OWNER_PID buffer: a u32 count, then fixed-size
+/// rows from byte 4. None when the count does not fit the buffer.
+fn table_rows(bytes: &[u8], size: usize) -> Option<std::slice::ChunksExact<'_, u8>> {
+    let count = u32::from_le_bytes(bytes.get(..4)?.try_into().ok()?) as usize;
+    let end = count.checked_mul(size)?.checked_add(4)?;
+    Some(bytes.get(4..end)?.chunks_exact(size))
+}
+
+fn dword(row: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(row.get(at..at + 4)?.try_into().ok()?))
+}
+
+/// Ports sit in network byte order in the low word of their DWORD.
+fn port(row: &[u8], at: usize) -> Option<u16> {
+    Some(u16::from_be_bytes(row.get(at..at + 2)?.try_into().ok()?))
+}
+
+/// MIB_TCPTABLE_OWNER_PID (24-byte rows) or MIB_TCP6TABLE_OWNER_PID (56).
+fn parse_tcp(bytes: &[u8], v6: bool) -> Option<Vec<Connection>> {
+    let rows = table_rows(bytes, if v6 { 56 } else { 24 })?;
+    rows.map(|row| {
+        if v6 {
+            let ip = |at: usize| -> Option<std::net::Ipv6Addr> {
+                let octets: [u8; 16] = row.get(at..at + 16)?.try_into().ok()?;
+                Some(octets.into())
+            };
+            Some(Connection {
+                local: format!("[{}]:{}", ip(0)?, port(row, 20)?),
+                remote: format!("[{}]:{}", ip(24)?, port(row, 44)?),
+                state: dword(row, 48)?,
+                pid: dword(row, 52)?,
+            })
+        } else {
+            let ip = |at: usize| -> Option<std::net::Ipv4Addr> {
+                let octets: [u8; 4] = row.get(at..at + 4)?.try_into().ok()?;
+                Some(octets.into())
+            };
+            Some(Connection {
+                state: dword(row, 0)?,
+                local: format!("{}:{}", ip(4)?, port(row, 8)?),
+                remote: format!("{}:{}", ip(12)?, port(row, 16)?),
+                pid: dword(row, 20)?,
+            })
+        }
+    })
+    .collect()
+}
+
+/// The row count of MIB_UDPTABLE_OWNER_PID (12-byte rows) or
+/// MIB_UDP6TABLE_OWNER_PID (28).
+fn udp_count(bytes: &[u8], v6: bool) -> Option<usize> {
+    Some(table_rows(bytes, if v6 { 28 } else { 12 })?.len())
+}
+
+fn push_internet_groups(
+    section: &mut Section,
+    proxy: Result<Proxy, String>,
+    connections: Result<Connections, String>,
+) {
+    let mut group = Group::new("Internet options (WinInet)").collapsed();
+    match proxy {
+        Ok(proxy) => {
+            group.push_row(Row::known(
+                "Proxy",
+                if proxy.enabled { "Enabled" } else { "Disabled" },
+            ));
+            group.push_row(
+                Row::new(
+                    "Proxy server",
+                    Value::from_option(proxy.server, NONE_CONFIGURED),
+                )
+                .private(),
+            );
+            group.push_row(
+                Row::new(
+                    "Proxy bypass",
+                    Value::from_option(proxy.bypass, NONE_CONFIGURED),
+                )
+                .private(),
+            );
+            group.push_row(
+                Row::new(
+                    "Automatic configuration script",
+                    Value::from_option(proxy.script, NONE_CONFIGURED),
+                )
+                .private(),
+            );
+        }
+        Err(reason) => group.push_row(Row::unavailable("Proxy", reason)),
+    }
+    section.push_group(group);
+
+    let mut group = Group::new("Connections").collapsed();
+    match connections {
+        Ok(mut connections) => {
+            let count = |state| connections.tcp.iter().filter(|c| c.state == state).count();
+            let (established, listening) = (count(TCP_ESTABLISHED), count(TCP_LISTEN));
+            group.push_row(Row::known(
+                "TCP connections",
+                format!(
+                    "{} total: {established} established, {listening} listening, {} other",
+                    connections.tcp.len(),
+                    connections.tcp.len() - established - listening
+                ),
+            ));
+            group.push_row(Row::known("UDP endpoints", connections.udp.to_string()));
+            connections.tcp.retain(|c| c.state == TCP_ESTABLISHED);
+            connections.tcp.sort_by_key(|c| c.pid);
+            for connection in connections.tcp.iter().take(LISTED_CONNECTIONS) {
+                group.push_row(
+                    Row::known(
+                        format!("PID {}", connection.pid),
+                        format!("{} to {}", connection.local, connection.remote),
+                    )
+                    .private(),
+                );
+            }
+            if connections.tcp.len() > LISTED_CONNECTIONS {
+                group.push_row(Row::known(
+                    "Listed",
+                    format!(
+                        "first {LISTED_CONNECTIONS} of {} established connections",
+                        connections.tcp.len()
+                    ),
+                ));
+            }
+        }
+        Err(reason) => group.push_row(Row::unavailable("Connections", reason)),
+    }
+    section.push_group(group);
 }
 
 /// IANA ifType names for the types Windows adapters use.
@@ -53,7 +233,8 @@ fn speed_text(bps: u64) -> String {
             format!("{} Gbps", b / 1_000_000_000)
         }
         b if b >= 1_000_000_000 => format!("{:.1} Gbps", b as f64 / 1e9),
-        b if b >= 1_000_000 => format!("{} Mbps", b / 1_000_000),
+        b if b >= 1_000_000 && b.is_multiple_of(1_000_000) => format!("{} Mbps", b / 1_000_000),
+        b if b >= 1_000_000 => format!("{:.1} Mbps", b as f64 / 1e6),
         b => format!("{} kbps", b / 1000),
     }
 }
@@ -128,7 +309,7 @@ fn build(adapters: Result<Vec<Adapter>, String>) -> Section {
             "Adapter",
             Value::from_option(adapter.description.clone(), "not reported"),
         ));
-        group.push_row(Row::known("Type", if_type(adapter.kind)));
+        group.push_row(Row::known("Type", adapter_type(adapter)));
         group.push_row(Row::known(
             "Status",
             if adapter.up {
@@ -219,13 +400,23 @@ fn build(adapters: Result<Vec<Adapter>, String>) -> Section {
 }
 
 pub fn collect(ctx: &Context) -> Section {
-    let _ = ctx;
     #[cfg(windows)]
     {
-        build(native::adapters())
+        let mut section = build(native::adapters(ctx));
+        if !section.groups.is_empty() {
+            let proxy = native::proxy();
+            let connections = if ctx.should_stop() {
+                Err("read budget exhausted".to_string())
+            } else {
+                native::connections()
+            };
+            push_internet_groups(&mut section, proxy, connections);
+        }
+        section
     }
     #[cfg(not(windows))]
     {
+        let _ = ctx;
         build(Err("read on Windows only".into()))
     }
 }
@@ -252,6 +443,84 @@ mod tests {
         assert_eq!(mac_text(&[0; 6]), None);
         assert_eq!(speed_text(1_000_000_000), "1 Gbps");
         assert_eq!(speed_text(2_500_000_000), "2.5 Gbps");
+        assert_eq!(speed_text(866_700_000), "866.7 Mbps");
+        assert_eq!(speed_text(100_000_000), "100 Mbps");
+        let pan = Adapter {
+            kind: 6,
+            medium: Some(MEDIUM_BLUETOOTH),
+            ..Default::default()
+        };
+        assert_eq!(adapter_type(&pan), "Bluetooth (PAN)");
+        let wired = Adapter {
+            kind: 6,
+            medium: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(adapter_type(&wired), "Ethernet");
+    }
+
+    #[test]
+    fn socket_tables_parse_and_endpoints_stay_private() {
+        // MIB_TCPTABLE_OWNER_PID: count, then state, local addr/port,
+        // remote addr/port, PID (ports big-endian in their low word).
+        let mut v4 = 2u32.to_le_bytes().to_vec();
+        for (state, pid) in [(5u32, 4242u32), (2, 4)] {
+            v4.extend(state.to_le_bytes());
+            v4.extend([192, 0, 2, 44, 0x1F, 0x90, 0, 0]);
+            v4.extend([198, 51, 100, 7, 0x01, 0xBB, 0, 0]);
+            v4.extend(pid.to_le_bytes());
+        }
+        let tcp = parse_tcp(&v4, false).unwrap();
+        assert_eq!(tcp[0].local, "192.0.2.44:8080");
+        assert_eq!(tcp[0].remote, "198.51.100.7:443");
+        assert_eq!((tcp[0].state, tcp[0].pid), (5, 4242));
+        let mut v6 = 1u32.to_le_bytes().to_vec();
+        let mut row = vec![0u8; 56];
+        row[15] = 1;
+        row[20..22].copy_from_slice(&[0x13, 0x88]);
+        row[48..52].copy_from_slice(&2u32.to_le_bytes());
+        row[52..56].copy_from_slice(&9u32.to_le_bytes());
+        v6.extend(row);
+        let tcp6 = parse_tcp(&v6, true).unwrap();
+        assert_eq!(tcp6[0].local, "[::1]:5000");
+        assert_eq!((tcp6[0].state, tcp6[0].pid), (2, 9));
+        // A count larger than the buffer is rejected, never over-read.
+        assert_eq!(parse_tcp(&v4[..30], false), None);
+        assert_eq!(parse_tcp(&u32::MAX.to_le_bytes(), true), None);
+        assert_eq!(udp_count(&[3, 0, 0, 0], false), None);
+        assert_eq!(udp_count(&[0, 0, 0, 0], true), Some(0));
+
+        let mut section = Section::new(SectionId::Network);
+        push_internet_groups(
+            &mut section,
+            Ok(Proxy {
+                enabled: true,
+                server: Some("proxy.fixture.example:3128".into()),
+                ..Default::default()
+            }),
+            Ok(Connections {
+                tcp: tcp.into_iter().chain(tcp6).collect(),
+                udp: 7,
+            }),
+        );
+        let text = crate::specs::probe_text(std::slice::from_ref(&section));
+        assert!(text.contains("Proxy: Enabled"), "{text}");
+        assert!(
+            text.contains("TCP connections: 3 total: 1 established, 2 listening, 0 other"),
+            "{text}"
+        );
+        assert!(text.contains("UDP endpoints: 7"), "{text}");
+        assert!(text.contains("PID 4242"), "{text}");
+        for secret in ["proxy.fixture", "192.0.2.44", "198.51.100.7"] {
+            assert!(!text.contains(secret), "{secret} leaked: {text}");
+        }
+        let mut failed = Section::new(SectionId::Network);
+        push_internet_groups(&mut failed, Err("fixture".into()), Err("fixture".into()));
+        let text = crate::specs::probe_text(std::slice::from_ref(&failed));
+        assert!(
+            text.contains("Connections: Unavailable (fixture)"),
+            "{text}"
+        );
     }
 
     #[test]

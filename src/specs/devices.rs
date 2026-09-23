@@ -448,8 +448,7 @@ fn build_peripherals(
 pub fn collect_audio(ctx: &Context) -> Section {
     #[cfg(windows)]
     {
-        let _ = ctx;
-        build_audio(native::sound_devices(), native::endpoints())
+        build_audio(native::sound_devices(ctx), native::endpoints())
     }
     #[cfg(not(windows))]
     {
@@ -464,7 +463,7 @@ pub fn collect_audio(ctx: &Context) -> Section {
 pub fn collect_peripherals(ctx: &Context) -> Section {
     #[cfg(windows)]
     {
-        let inventory = native::inventory();
+        let inventory = native::inventory(ctx);
         let printers = if ctx.should_stop() {
             Err("read budget exhausted".into())
         } else {

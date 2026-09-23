@@ -176,6 +176,7 @@ pub use native::{Filter, Query, devices};
 mod native {
     use super::super::NativeError;
     use super::*;
+    use crate::specs::Context;
     use std::mem::size_of;
     use windows::Win32::Devices::DeviceAndDriverInstallation::{
         CM_DEVNODE_STATUS_FLAGS, CM_Get_DevNode_Status, CM_PROB, CR_SUCCESS, DIGCF_ALLCLASSES,
@@ -216,15 +217,18 @@ mod native {
         pub limit: usize,
         /// Additional unified properties to read into `DeviceInfo::extra`.
         pub extra: &'a [DEVPROPKEY],
+        /// The section's read budget, checked before every device.
+        pub ctx: &'a Context,
     }
 
     impl<'a> Query<'a> {
-        pub fn new(filter: Filter<'a>) -> Self {
+        pub fn new(filter: Filter<'a>, ctx: &'a Context) -> Self {
             Self {
                 filter,
                 present_only: true,
                 limit: 512,
                 extra: &[],
+                ctx,
             }
         }
     }
@@ -243,10 +247,16 @@ mod native {
         error.code() == HRESULT::from_win32(code.0)
     }
 
-    /// Enumerates matching devices. Individual missing properties are None;
-    /// only a failure to open or walk the set is an error.
+    /// Enumerates matching devices. Individual missing properties are None and
+    /// a device whose interface detail cannot be read is skipped; only a
+    /// failure to open or walk the set, or an exhausted read budget, is an error.
     pub fn devices(query: &Query<'_>) -> Result<Vec<DeviceInfo>, NativeError> {
         const API: &str = "SetupDiGetClassDevsW";
+        const EXHAUSTED: NativeError =
+            NativeError::Unsupported("read budget exhausted during device enumeration");
+        if query.ctx.should_stop() {
+            return Err(EXHAUSTED);
+        }
         let present = if query.present_only {
             DIGCF_PRESENT
         } else {
@@ -286,6 +296,9 @@ mod native {
         let mut devices = Vec::new();
         let mut index = 0u32;
         while devices.len() < query.limit {
+            if query.ctx.should_stop() {
+                return Err(EXHAUSTED);
+            }
             let mut data = SP_DEVINFO_DATA {
                 cbSize: size_of::<SP_DEVINFO_DATA>() as u32,
                 ..Default::default()
@@ -293,7 +306,7 @@ mod native {
             let mut interface_path = None;
             let step = match &query.filter {
                 Filter::Interface(guid) => {
-                    interface(set.0, guid, index, &mut data).map(|path| interface_path = Some(path))
+                    interface(set.0, guid, index, &mut data).map(|path| interface_path = path)
                 }
                 _ => {
                     // SAFETY: live set and writable, sized device data.
@@ -310,6 +323,9 @@ mod native {
                     break;
                 }
                 Err(error) => return Err(error),
+            }
+            if matches!(query.filter, Filter::Interface(_)) && interface_path.is_none() {
+                continue;
             }
             let mut device = read(set.0, &data, query.extra);
             device.interface_path = interface_path;
@@ -329,7 +345,7 @@ mod native {
         guid: &GUID,
         index: u32,
         data: &mut SP_DEVINFO_DATA,
-    ) -> Result<String, NativeError> {
+    ) -> Result<Option<String>, NativeError> {
         let mut interface = SP_DEVICE_INTERFACE_DATA {
             cbSize: size_of::<SP_DEVICE_INTERFACE_DATA>() as u32,
             ..Default::default()
@@ -347,13 +363,14 @@ mod native {
             .is_none_or(|e| !is(&e, ERROR_INSUFFICIENT_BUFFER))
             || !(8..=65536).contains(&required)
         {
-            return Err(NativeError::Malformed("device interface detail size"));
+            // This one interface is unreadable; the walk goes on.
+            return Ok(None);
         }
         // DWORD-aligned storage; cbSize is the fixed part; the path starts at byte 4.
         let mut buffer = vec![0u32; (required as usize).div_ceil(4)];
         buffer[0] = size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>() as u32;
         // SAFETY: buffer holds `required` bytes; device data is sized.
-        unsafe {
+        let detail = unsafe {
             SetupDiGetDeviceInterfaceDetailW(
                 set,
                 &interface,
@@ -362,8 +379,10 @@ mod native {
                 None,
                 Some(data),
             )
+        };
+        if detail.is_err() {
+            return Ok(None);
         }
-        .map_err(|e| NativeError::from_windows("SetupDiGetDeviceInterfaceDetailW", &e))?;
         let words = buffer
             .into_iter()
             .flat_map(|v| [v as u16, (v >> 16) as u16])
@@ -371,10 +390,7 @@ mod native {
             .take((required as usize - 4) / 2)
             .collect::<Vec<_>>();
         let path = super::super::utf16_until_nul(&words);
-        if path.is_empty() {
-            return Err(NativeError::Malformed("empty device interface path"));
-        }
-        Ok(path)
+        Ok((!path.is_empty()).then_some(path))
     }
 
     fn property(set: HDEVINFO, data: &SP_DEVINFO_DATA, key: &DEVPROPKEY) -> Option<PropertyValue> {
@@ -467,6 +483,19 @@ mod native {
         use windows::Win32::System::Ioctl::GUID_DEVINTERFACE_DISK;
 
         #[test]
+        fn an_exhausted_budget_stops_before_any_setupdi_call() {
+            let ctx = Context::new(
+                std::time::Duration::ZERO,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            );
+            let result = devices(&Query::new(Filter::All, &ctx));
+            assert_eq!(
+                result.map(|d| d.len()).map_err(|e| e.to_string()),
+                Err("read budget exhausted during device enumeration".into())
+            );
+        }
+
+        #[test]
         #[ignore = "Read-only SetupDi enumeration; no install, enable/disable, window or input"]
         fn native_specs_setupapi_read_only_probe() {
             for (label, filter) in [
@@ -475,7 +504,8 @@ mod native {
                 ("PCI enumerator", Filter::Enumerator("PCI")),
             ] {
                 let started = std::time::Instant::now();
-                let result = devices(&Query::new(filter));
+                let ctx = Context::probe();
+                let result = devices(&Query::new(filter, &ctx));
                 let elapsed = started.elapsed().as_secs_f64() * 1000.0;
                 match result {
                     Ok(list) => {

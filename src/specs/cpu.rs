@@ -257,11 +257,42 @@ impl Cpuid {
     }
 }
 
+/// Whether the brand string names a mobile part. Intel mobile model numbers
+/// end in H, HX, HK, HS, U, P, Y, V or G1..G7 (for example "275HX",
+/// "1165G7"); desktop ones end in nothing, K, KF, KS, F, S or T. None when the
+/// brand is missing or names no model number.
+fn mobile_part(brand: Option<&str>) -> Option<bool> {
+    let mut seen = false;
+    for token in brand?.split(|c: char| c.is_whitespace() || c == '-') {
+        let digits = token.bytes().take_while(u8::is_ascii_digit).count();
+        if digits < 3 {
+            continue;
+        }
+        seen = true;
+        let suffix = token[digits..].to_ascii_uppercase();
+        let mobile = matches!(
+            suffix.as_str(),
+            "H" | "HX" | "HK" | "HS" | "U" | "P" | "Y" | "V"
+        ) || (suffix.len() == 2
+            && suffix.starts_with('G')
+            && suffix.as_bytes()[1].is_ascii_digit());
+        if mobile {
+            return Some(true);
+        }
+    }
+    seen.then_some(false)
+}
+
 /// Codenames from Linux arch/x86/include/asm/intel-family.h (Intel family 6)
-/// and AMD's family numbering. Anything else is not guessed.
-fn codename(vendor: &str, family: u32, model: u32) -> Option<&'static str> {
+/// and AMD's family numbering. Anything else is not guessed. Model 0xC6 is
+/// both Arrow Lake-S and Arrow Lake-HX, so the suffix needs the brand.
+fn codename(vendor: &str, family: u32, model: u32, mobile: Option<bool>) -> Option<&'static str> {
     match (vendor, family, model) {
-        ("GenuineIntel", 6, 0xC6) => Some("Arrow Lake-S"),
+        ("GenuineIntel", 6, 0xC6) => Some(match mobile {
+            Some(false) => "Arrow Lake-S",
+            Some(true) => "Arrow Lake-HX",
+            None => "Arrow Lake",
+        }),
         ("GenuineIntel", 6, 0xC5) => Some("Arrow Lake-H"),
         ("GenuineIntel", 6, 0xB5) => Some("Arrow Lake-U"),
         ("GenuineIntel", 6, 0xBD) => Some("Lunar Lake"),
@@ -281,9 +312,18 @@ fn codename(vendor: &str, family: u32, model: u32) -> Option<&'static str> {
     }
 }
 
-/// Desktop sockets fixed by the CPU model (Intel ARK product data). Mobile
-/// models (BGA) and anything not listed are not guessed.
-fn model_socket(vendor: &str, family: u32, model: u32) -> Option<&'static str> {
+/// Desktop sockets fixed by the CPU model (Intel ARK product data). The same
+/// models also cover BGA laptop HX parts, so the socket is only given when the
+/// brand string names a desktop part. Anything not listed is not guessed.
+fn model_socket(
+    vendor: &str,
+    family: u32,
+    model: u32,
+    mobile: Option<bool>,
+) -> Option<&'static str> {
+    if mobile != Some(false) {
+        return None;
+    }
     match (vendor, family, model) {
         ("GenuineIntel", 6, 0xC6) => Some("LGA1851"),
         ("GenuineIntel", 6, 0x97 | 0xB7 | 0xBF) => Some("LGA1700"),
@@ -586,7 +626,8 @@ fn build(facts: Facts) -> Section {
         .clone()
         .map(|b| b.split_whitespace().collect::<Vec<_>>().join(" "));
     let (family, model, stepping) = cpuid.family_model_stepping();
-    let code = codename(&cpuid.vendor, family, model);
+    let mobile = mobile_part(brand.as_deref());
+    let code = codename(&cpuid.vendor, family, model, mobile);
     let topology = facts.topology.as_ref().ok();
     let title = brand.clone().unwrap_or_else(|| "Processor".into());
 
@@ -667,7 +708,10 @@ fn build(facts: Facts) -> Section {
         .filter(|name| {
             !name.eq_ignore_ascii_case("CPUSocket") && !name.eq_ignore_ascii_case("CPU 1")
         });
-    let socket = match (model_socket(&cpuid.vendor, family, model), board_socket) {
+    let socket = match (
+        model_socket(&cpuid.vendor, family, model, mobile),
+        board_socket,
+    ) {
         (Some(socket), Some(name)) => Some(format!("{socket} (board label \"{name}\")")),
         (Some(socket), None) => Some(socket.to_string()),
         (None, name) => name,
@@ -970,8 +1014,38 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(cpuid.family_model_stepping(), (6, 0xC6, 2));
-        assert_eq!(codename("GenuineIntel", 6, 0xC6), Some("Arrow Lake-S"));
-        assert_eq!(codename("GenuineIntel", 6, 0x01), None);
+        let desktop = mobile_part(Some("Intel(R) Core(TM) Ultra 9 285K"));
+        assert_eq!(desktop, Some(false));
+        assert_eq!(
+            codename("GenuineIntel", 6, 0xC6, desktop),
+            Some("Arrow Lake-S")
+        );
+        assert_eq!(
+            model_socket("GenuineIntel", 6, 0xC6, desktop),
+            Some("LGA1851")
+        );
+        // The same CPUID model ships as a BGA laptop part: no socket guess.
+        let laptop = mobile_part(Some("Intel(R) Core(TM) Ultra 9 275HX"));
+        assert_eq!(laptop, Some(true));
+        assert_eq!(
+            codename("GenuineIntel", 6, 0xC6, laptop),
+            Some("Arrow Lake-HX")
+        );
+        assert_eq!(model_socket("GenuineIntel", 6, 0xC6, laptop), None);
+        let raptor_hx = mobile_part(Some("13th Gen Intel(R) Core(TM) i9-13980HX"));
+        assert_eq!(model_socket("GenuineIntel", 6, 0xB7, raptor_hx), None);
+        assert_eq!(
+            mobile_part(Some("11th Gen Intel(R) Core(TM) i7-1165G7")),
+            Some(true)
+        );
+        assert_eq!(
+            mobile_part(Some("12th Gen Intel(R) Core(TM) i5-12600KF")),
+            Some(false)
+        );
+        assert_eq!(mobile_part(Some("Intel Core")), None);
+        assert_eq!(model_socket("GenuineIntel", 6, 0xC6, None), None);
+        assert_eq!(codename("GenuineIntel", 6, 0xC6, None), Some("Arrow Lake"));
+        assert_eq!(codename("GenuineIntel", 6, 0x01, desktop), None);
         let zen = Cpuid {
             signature: 0x00B4_0F40,
             ..Default::default()

@@ -363,7 +363,7 @@ pub fn collect(ctx: &Context) -> Section {
                 ..Default::default()
             }
         } else {
-            native_chipset()
+            native_chipset(ctx)
         };
         build(table.as_ref(), chipset, issues)
     }
@@ -377,7 +377,7 @@ pub fn collect(ctx: &Context) -> Section {
 /// Windows usually names these functions generically ("PCI standard ISA
 /// bridge"), so each carries its PCI vendor and device ID.
 #[cfg(windows)]
-fn native_chipset() -> Chipset {
+fn native_chipset(ctx: &Context) -> Chipset {
     use super::native::setupapi::{Filter, Query, devices};
     let describe = |d: &super::native::setupapi::DeviceInfo| {
         let name = d.name().unwrap_or("PCI device").to_string();
@@ -397,7 +397,7 @@ fn native_chipset() -> Chipset {
                 .starts_with(&format!("PCI\\CC_{code}"))
         })
     };
-    match devices(&Query::new(Filter::Enumerator("PCI"))) {
+    match devices(&Query::new(Filter::Enumerator("PCI"), ctx)) {
         Ok(list) => {
             let bridges = list
                 .iter()
