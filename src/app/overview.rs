@@ -7,18 +7,142 @@ use super::*;
 use crate::diagnostics::{Provider, State};
 use std::time::Instant;
 
-/// A Thermals and power tile: the KPI tile anatomy without the caption row.
-pub(super) const COMPACT_TILE_HEIGHT: f32 = 64.0;
-/// One Top CPU / Top memory row: a 22 px line plus its 2 px load bar.
+/// Base height of a Thermals and power tile: label row, value, then a
+/// full-width sparkline band. Taller windows grow the band.
+pub(super) const COMPACT_TILE_HEIGHT: f32 = 70.0;
+/// One Top CPU / Top memory row: the text line with its 2 px share bar
+/// drawn inside the same rect, just above the row bottom.
 pub(super) const PROCESS_ROW_HEIGHT: f32 = 24.0;
 /// Top process rows: always five (reserved while the first snapshot is
 /// pending), more when a taller window leaves room above the fold.
 const TOP_ROWS: usize = 5;
 const TOP_ROWS_MAX: usize = 10;
-/// Height kept below the process lists for the Cores strip and status line.
-const BELOW_PROCESSES: f32 = 104.0;
 /// Below this content width the KPI row splits into 3 then 2 tiles.
 const KPI_ONE_ROW_WIDTH: f32 = 700.0;
+/// A section header: its 20 px line plus `space::S` below it.
+const SECTION_HEADER: f32 = 26.0;
+/// The one-line gap row under the thermal tiles.
+const GAP_ROW: f32 = 22.0;
+/// The "data sources degraded" footer line.
+const FOOTER_LINE: f32 = 18.0;
+/// Core strip cells: 18 px at the base size, up to 28 px on tall windows.
+const CORE_CELL: f32 = 18.0;
+const CORE_CELL_MAX: f32 = 28.0;
+const CORE_GAP: f32 = 2.0;
+const CORE_MIN_WIDTH: f32 = 12.0;
+/// The most extra sparkline height one KPI or thermal tile takes.
+const KPI_GROWTH_MAX: f32 = 180.0;
+const THERMAL_GROWTH_MAX: f32 = 150.0;
+
+/// What the Overview stacks vertically at the current width, before sizing.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Shape {
+    pub kpi_rows: usize,
+    pub thermal_rows: usize,
+    pub gaps: bool,
+    pub stacked_lists: bool,
+    /// Rows of the core strip; 0 draws the one-line "Waiting" gap row.
+    pub core_rows: usize,
+    pub degraded: bool,
+}
+
+/// Sizes for one Overview frame: every pixel of spare height is spent on
+/// more process rows, then larger core cells, then taller sparkline bands.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Plan {
+    pub kpi_height: f32,
+    pub thermal_height: f32,
+    pub slots: usize,
+    pub core_cell: f32,
+}
+
+impl Plan {
+    const BASE: Plan = Plan {
+        kpi_height: widgets::KPI_TILE_HEIGHT,
+        thermal_height: COMPACT_TILE_HEIGHT,
+        slots: TOP_ROWS,
+        core_cell: CORE_CELL,
+    };
+
+    /// The page height `shape` takes with these sizes, matching the layout
+    /// in [`TrontopApp::overview_page`] exactly.
+    pub(super) fn height(&self, shape: &Shape) -> f32 {
+        use theme::space::{GAP, L, M, XS};
+        let rows = |count: usize, height: f32, gap: f32| {
+            if count == 0 {
+                0.0
+            } else {
+                count as f32 * height + (count - 1) as f32 * gap
+            }
+        };
+        let kpis = rows(shape.kpi_rows, self.kpi_height, GAP);
+        let mut thermals = SECTION_HEADER + rows(shape.thermal_rows, self.thermal_height, GAP);
+        if shape.gaps {
+            thermals += GAP_ROW + if shape.thermal_rows > 0 { XS } else { 0.0 };
+        }
+        let list = SECTION_HEADER + self.slots as f32 * PROCESS_ROW_HEIGHT;
+        let lists = if shape.stacked_lists {
+            2.0 * list + L
+        } else {
+            list
+        };
+        let cores = SECTION_HEADER
+            + if shape.core_rows == 0 {
+                GAP_ROW
+            } else {
+                rows(shape.core_rows, self.core_cell, CORE_GAP)
+            };
+        let footer = if shape.degraded { M + FOOTER_LINE } else { 0.0 };
+        kpis + L + thermals + L + lists + L + cores + footer + XS
+    }
+
+    pub(super) fn fit(viewport: f32, shape: &Shape) -> Plan {
+        let mut plan = Plan::BASE;
+        // One pixel of slack: content exactly as tall as the viewport still
+        // shows a scroll bar.
+        let mut spare = viewport - 1.0 - plan.height(shape);
+        if spare <= 0.0 {
+            return plan;
+        }
+        let per_slot = PROCESS_ROW_HEIGHT * if shape.stacked_lists { 2.0 } else { 1.0 };
+        let more = ((spare / per_slot).floor() as usize).min(TOP_ROWS_MAX - TOP_ROWS);
+        plan.slots += more;
+        spare -= more as f32 * per_slot;
+        if shape.core_rows > 0 {
+            let grow = (spare / shape.core_rows as f32)
+                .floor()
+                .clamp(0.0, CORE_CELL_MAX - CORE_CELL);
+            plan.core_cell += grow;
+            spare -= grow * shape.core_rows as f32;
+        }
+        // The rest: KPI bands take a little more than half, thermal bands the
+        // rest; each is capped so a huge window never draws a wall of line.
+        let (kpi_share, thermal_share) = if shape.thermal_rows > 0 {
+            (spare * 0.55, spare * 0.45)
+        } else {
+            (spare, 0.0)
+        };
+        plan.kpi_height += (kpi_share / shape.kpi_rows.max(1) as f32)
+            .floor()
+            .clamp(0.0, KPI_GROWTH_MAX);
+        if shape.thermal_rows > 0 {
+            plan.thermal_height += (thermal_share / shape.thermal_rows as f32)
+                .floor()
+                .clamp(0.0, THERMAL_GROWTH_MAX);
+        }
+        plan
+    }
+}
+
+/// Rows the core strip wraps into at `width`: cells never narrower than
+/// [`CORE_MIN_WIDTH`]. 0 when no logical processor is known yet.
+pub(super) fn core_rows(count: usize, width: f32) -> usize {
+    if count == 0 {
+        return 0;
+    }
+    let fit = (((width + CORE_GAP) / (CORE_MIN_WIDTH + CORE_GAP)).floor() as usize).max(1);
+    count.div_ceil(fit)
+}
 
 /// One Overview tile, owned so it can be built before the scroll area borrows
 /// the app.
@@ -29,6 +153,9 @@ pub(super) struct Tile {
     pub hover: String,
     pub series: Vec<Option<f32>>,
     pub max: Option<f32>,
+    /// `Some(span)` scales the sparkline to the observed min and max widened
+    /// to at least `span` (thermal tiles); `None` uses `0..max`.
+    pub span: Option<f32>,
     pub color: Color32,
     /// `Some` only when the tile is not Live.
     pub state: Option<&'static str>,
@@ -199,14 +326,37 @@ impl TrontopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(theme::space::GAP, 0.0);
-                // Row 1: KPI tiles.
-                let columns = if ui.available_width() >= KPI_ONE_ROW_WIDTH {
+                let width = ui.available_width();
+                let columns = if width >= KPI_ONE_ROW_WIDTH {
                     kpis.len()
                 } else {
                     3
                 };
+                let per_row = if width >= KPI_ONE_ROW_WIDTH {
+                    5
+                } else if width >= 520.0 {
+                    3
+                } else {
+                    2
+                };
+                // Balance rows (6 tiles read as 3 + 3, never 5 + 1).
+                let thermal_rows = thermals.len().div_ceil(per_row);
+                let per_row = thermals.len().div_ceil(thermal_rows.max(1)).max(1);
+                let plan = Plan::fit(
+                    viewport,
+                    &Shape {
+                        kpi_rows: kpis.len().div_ceil(columns),
+                        thermal_rows,
+                        gaps: !gaps.is_empty(),
+                        stacked_lists: width < 480.0,
+                        core_rows: core_rows(cores.logical_cores.min(256), width),
+                        degraded: !degraded.is_empty(),
+                    },
+                );
+
+                // Row 1: KPI tiles.
                 tile_grid(ui, &kpis, columns, |ui, tile| {
-                    widgets::kpi_tile(ui, &tile.kpi(), settings, t);
+                    widgets::kpi_tile_sized(ui, &tile.kpi(), plan.kpi_height, settings, t);
                 });
                 ui.add_space(theme::space::L);
 
@@ -214,18 +364,8 @@ impl TrontopApp {
                 if widgets::section_header(ui, "Thermals and power", Some("Sensor details"), t) {
                     open_page = Some(Page::Sensors);
                 }
-                let per_row = if ui.available_width() >= KPI_ONE_ROW_WIDTH {
-                    5
-                } else if ui.available_width() >= 520.0 {
-                    3
-                } else {
-                    2
-                };
-                // Balance rows (6 tiles read as 3 + 3, never 5 + 1).
-                let rows = thermals.len().div_ceil(per_row).max(1);
-                let per_row = thermals.len().div_ceil(rows).max(1);
                 tile_grid(ui, &thermals, per_row, |ui, tile| {
-                    compact_tile(ui, tile, settings, t);
+                    compact_tile(ui, tile, plan.thermal_height, settings, t);
                 });
                 if !gaps.is_empty() {
                     if !thermals.is_empty() {
@@ -251,9 +391,7 @@ impl TrontopApp {
                 ui.add_space(theme::space::L);
 
                 // Row 3: top processes, five rows or as many as fit above the fold.
-                let spare = viewport - ui.min_rect().height() - 26.0 - BELOW_PROCESSES;
-                let slots = ((spare / PROCESS_ROW_HEIGHT).floor().max(0.0) as usize)
-                    .clamp(TOP_ROWS, TOP_ROWS_MAX);
+                let slots = plan.slots;
                 let mut lists = |ui: &mut egui::Ui, memory: bool| {
                     let link = memory.then_some("All processes");
                     if widgets::section_header(
@@ -288,7 +426,7 @@ impl TrontopApp {
                         }
                     }
                 };
-                if ui.available_width() >= 480.0 {
+                if width >= 480.0 {
                     ui.columns(2, |columns| {
                         columns[0].spacing_mut().item_spacing.y = 0.0;
                         columns[1].spacing_mut().item_spacing.y = 0.0;
@@ -306,31 +444,36 @@ impl TrontopApp {
                 if widgets::section_header(ui, "Cores", Some("All cores"), t) {
                     open_cores = true;
                 }
-                core_strip(ui, cores, t);
+                core_strip(ui, cores, plan.core_cell, t);
                 if !degraded.is_empty() {
-                    ui.add_space(theme::space::L);
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = theme::space::S;
-                        let count = degraded.len();
-                        widgets::hover_label(
-                            ui,
-                            RichText::new(format!(
-                                "{count} data source{} degraded.",
-                                if count == 1 { "" } else { "s" }
-                            ))
-                            .size(11.0)
-                            .color(t.text_muted),
-                        )
-                        .on_hover_text(degraded.join("\n"));
-                        if ui
-                            .link(RichText::new("Details").size(11.0).color(t.ink(t.accent)))
-                            .clicked()
-                        {
-                            show_diagnostics = true;
-                        }
-                    });
+                    ui.add_space(theme::space::M);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(width, FOOTER_LINE),
+                        Layout::left_to_right(Align::Center),
+                        |ui| {
+                            ui.set_min_height(FOOTER_LINE);
+                            ui.spacing_mut().item_spacing.x = theme::space::S;
+                            let count = degraded.len();
+                            widgets::hover_label(
+                                ui,
+                                RichText::new(format!(
+                                    "{count} data source{} degraded.",
+                                    if count == 1 { "" } else { "s" }
+                                ))
+                                .size(11.0)
+                                .color(t.text_muted),
+                            )
+                            .on_hover_text(degraded.join("\n"));
+                            if ui
+                                .link(RichText::new("Details").size(11.0).color(t.ink(t.accent)))
+                                .clicked()
+                            {
+                                show_diagnostics = true;
+                            }
+                        },
+                    );
                 }
-                ui.add_space(theme::space::L);
+                ui.add_space(theme::space::XS);
             });
         if let Some(pid) = select_pid {
             self.selected_pid = Some(pid);
@@ -372,6 +515,7 @@ impl TrontopApp {
             hover: "Whole-machine CPU load, from Windows processor time. The line shows the last two minutes; the clock is the Windows performance-state average across all logical processors.".into(),
             series: finite(&self.cpu_history),
             max: Some(100.0),
+            span: None,
             color: t.accent,
             state: None,
         };
@@ -400,6 +544,7 @@ impl TrontopApp {
             ),
             series: finite(&self.memory_history),
             max: Some(100.0),
+            span: None,
             color: t.secondary,
             state: None,
         };
@@ -447,6 +592,7 @@ impl TrontopApp {
                 .as_ref()
                 .map_or_else(|| finite(&self.gpu_history), |view| view.values.clone()),
             max: Some(100.0),
+            span: None,
             color: theme::mix(t.accent, t.secondary, 0.5),
             state: if partial { Some("Partial") } else { None },
         };
@@ -479,6 +625,7 @@ impl TrontopApp {
             },
             series: finite(&self.overview_disk_total),
             max: None,
+            span: None,
             color: t.good,
             state: disks.and_then(|(_, partial)| partial.then_some("Partial")),
         };
@@ -504,6 +651,7 @@ impl TrontopApp {
             },
             series: finite(&self.overview_net_total),
             max: None,
+            span: None,
             color: t.secondary,
             state: None,
         };
@@ -536,9 +684,9 @@ impl TrontopApp {
         let power = crate::specs::LiveKey::Sensor {
             id: crate::specs::cpu::PACKAGE_POWER.into(),
         };
-        for (key, label, max) in [
-            (&package, "CPU package", Some(110.0)),
-            (&power, "CPU power", None),
+        for (key, label, span) in [
+            (&package, "CPU temperature", 10.0),
+            (&power, "CPU power", 20.0),
         ] {
             if let Some(reading) = bridge_reading(key) {
                 tiles.push(Tile {
@@ -547,7 +695,8 @@ impl TrontopApp {
                     sub: String::new(),
                     hover: format!("{}: {}", reading.source, reading.label),
                     series: Vec::new(),
-                    max,
+                    max: None,
+                    span: Some(span),
                     color: t.accent,
                     state: None,
                 });
@@ -598,9 +747,9 @@ impl TrontopApp {
             } else {
                 String::new()
             };
-            for (signal, label, max, unit) in [
-                (Signal::GpuTemperature(uuid), "GPU temp", Some(110.0), "°C"),
-                (Signal::GpuPower(uuid), "GPU power", None, "W"),
+            for (signal, label, span, unit) in [
+                (Signal::GpuTemperature(uuid), "GPU temperature", 10.0, "°C"),
+                (Signal::GpuPower(uuid), "GPU power", 20.0, "W"),
             ] {
                 let Some(SeriesView {
                     values,
@@ -637,7 +786,8 @@ impl TrontopApp {
                         }
                     ),
                     series: values,
-                    max,
+                    max: None,
+                    span: Some(span),
                     color: t.secondary,
                     state: chip(state),
                 });
@@ -697,7 +847,8 @@ impl TrontopApp {
                 sub: peak(&series).map_or_else(String::new, |p| format!("peak {p:.0} °C")),
                 hover,
                 series,
-                max: Some(100.0),
+                max: None,
+                span: Some(10.0),
                 color: t.good,
                 state: chip(drive.status(now)),
             });
@@ -763,16 +914,35 @@ fn paint_chip(ui: &egui::Ui, rect: egui::Rect, text: &str, t: Tokens) -> f32 {
     chip.left()
 }
 
-/// A 64 px Thermals and power tile: label (with the peak or a state chip on
-/// the right), a 20 px value and a background sparkline. Hover has provenance.
+/// The full-width sparkline band of a tile `rect` whose value line ends at
+/// `top`: under the value, inside the card padding.
+pub(super) fn spark_band(rect: egui::Rect, top: f32) -> egui::Rect {
+    let pad = theme::CARD_PAD;
+    egui::Rect::from_min_max(
+        egui::pos2(rect.left() + f32::from(pad.left), rect.top() + top),
+        egui::pos2(
+            rect.right() - f32::from(pad.right),
+            rect.bottom() - f32::from(pad.bottom),
+        ),
+    )
+}
+
+/// The value line of a thermal tile ends here; its band starts 4 px lower.
+const COMPACT_BAND_TOP: f32 = 50.0;
+
+/// A Thermals and power tile, at least [`COMPACT_TILE_HEIGHT`] tall: label
+/// (with the peak or a state chip on the right), a 20 px value and a
+/// full-width sparkline band below it, scaled around the observed range so a
+/// steady reading sits mid-band. Hover has provenance.
 fn compact_tile(
     ui: &mut egui::Ui,
     tile: &Tile,
+    height: f32,
     settings: ThemeSettings,
     t: Tokens,
 ) -> egui::Response {
     let response = ui.allocate_response(
-        Vec2::new(ui.available_width(), COMPACT_TILE_HEIGHT),
+        Vec2::new(ui.available_width(), height.max(COMPACT_TILE_HEIGHT)),
         Sense::hover(),
     );
     let rect = response.rect;
@@ -794,19 +964,23 @@ fn compact_tile(
             rect.min + Vec2::new(f32::from(pad.left), f32::from(pad.top)),
             rect.max - Vec2::new(f32::from(pad.right), f32::from(pad.bottom)),
         );
-        let spark = egui::Rect::from_min_max(
-            egui::pos2(rect.left() + rect.width() * 0.5, rect.top() + 24.0),
-            content.right_bottom(),
-        );
+        let spark = spark_band(rect, COMPACT_BAND_TOP);
         if spark.width() > 2.0 && spark.height() > 2.0 {
-            let max = tile.max.unwrap_or_else(|| {
-                format::nice_top(tile.series.iter().flatten().copied().fold(0.0, f32::max))
-            });
-            widgets::sparkline(
+            let (lo, hi) = match tile.span {
+                Some(span) => widgets::padded_range(&tile.series, span).unwrap_or((0.0, span)),
+                None => (
+                    0.0,
+                    tile.max.unwrap_or_else(|| {
+                        format::nice_top(tile.series.iter().flatten().copied().fold(0.0, f32::max))
+                    }),
+                ),
+            };
+            widgets::sparkline_range(
                 ui.painter(),
                 spark,
                 tile.series.iter().copied(),
-                max,
+                lo,
+                hi,
                 tile.color,
                 t,
             );
@@ -837,16 +1011,16 @@ fn compact_tile(
         widgets::paint_text(
             ui,
             egui::Rect::from_min_max(row1.min, egui::pos2(label_right, row1.bottom())),
-            &tile.label.to_uppercase(),
-            FontId::proportional(10.0),
+            &tile.label,
+            FontId::proportional(11.0),
             t.text_muted,
             Align::Min,
         );
         widgets::paint_text(
             ui,
             egui::Rect::from_min_max(
-                egui::pos2(content.left(), rect.top() + 22.0),
-                egui::pos2(content.right(), rect.top() + 48.0),
+                egui::pos2(content.left(), rect.top() + 20.0),
+                egui::pos2(content.right(), rect.top() + 46.0),
             ),
             &tile.value,
             FontId::monospace(20.0),
@@ -857,8 +1031,60 @@ fn compact_tile(
     response.on_hover_text(&tile.hover)
 }
 
+/// Where one Top CPU / Top memory row draws its parts, all inside `rect`.
+pub(super) struct RowLayout {
+    /// The text line: the row minus the strip kept for the share bar.
+    pub line: egui::Rect,
+    pub icon: egui::Rect,
+    pub name: egui::Rect,
+    pub value_left: f32,
+    /// The full-share extent of the bar: from the name's left edge to the
+    /// value's right edge, 2 px tall, 1 px above the row bottom.
+    pub track: egui::Rect,
+}
+
+impl RowLayout {
+    pub(super) fn new(rect: egui::Rect, value_width: f32) -> Self {
+        let line =
+            egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), rect.bottom() - 4.0));
+        let icon = egui::Rect::from_center_size(
+            egui::pos2(line.left() + 12.0, line.center().y),
+            Vec2::splat(16.0),
+        );
+        let value_right = line.right() - 6.0;
+        let value_left = value_right - value_width;
+        let name = egui::Rect::from_min_max(
+            egui::pos2(icon.right() + 8.0, line.top()),
+            egui::pos2(value_left - 10.0, line.bottom()),
+        );
+        let track = egui::Rect::from_min_max(
+            egui::pos2(name.left(), rect.bottom() - 3.0),
+            egui::pos2(value_right, rect.bottom() - 1.0),
+        );
+        Self {
+            line,
+            icon,
+            name,
+            value_left,
+            track,
+        }
+    }
+
+    /// The filled part of the share bar for `fraction` (0 to 1), at least
+    /// 2 px wide so a tiny nonzero share stays visible.
+    pub(super) fn bar(&self, fraction: f32) -> egui::Rect {
+        egui::Rect::from_min_size(
+            self.track.min,
+            Vec2::new(
+                (self.track.width() * fraction.clamp(0.0, 1.0)).max(2.0),
+                self.track.height(),
+            ),
+        )
+    }
+}
+
 /// One Top CPU / Top memory row: icon, name, right-aligned value and a 2 px
-/// bar proportional to `fraction`. PID and path show on hover; returns true
+/// share bar proportional to `fraction`, inside the row's own rect. PID and path show on hover; returns true
 /// when the row was clicked. `None` draws a reserved placeholder slot.
 fn process_row(
     ui: &mut egui::Ui,
@@ -882,55 +1108,42 @@ fn process_row(
     if row.is_some() && response.hovered() {
         ui.painter().rect_filled(rect, 3.0, t.row_hover);
     }
-    let line = egui::Rect::from_min_size(rect.min, Vec2::new(rect.width(), 22.0));
-    let icon = egui::Rect::from_center_size(
-        egui::pos2(line.left() + 12.0, line.center().y),
-        Vec2::splat(16.0),
-    );
-    if let Some(row) = row {
-        ui.scope_builder(egui::UiBuilder::new().max_rect(icon), |ui| {
-            icons.paint(
-                ui,
-                row.executable.as_deref(),
-                16.0,
-                t.text_muted,
-                Sense::hover(),
-            );
-        });
-    }
     let value_galley = ui
         .painter()
         .layout_no_wrap(value.into(), FontId::monospace(12.0), t.text);
-    let value_left = line.right() - 6.0 - value_galley.size().x;
+    let layout = RowLayout::new(rect, value_galley.size().x);
+    if let Some(row) = row {
+        // A child Ui that does not allocate in the parent: a scope here would
+        // move the list cursor back up to the icon's bottom edge.
+        let mut icon_ui = ui.new_child(egui::UiBuilder::new().max_rect(layout.icon));
+        icons.paint(
+            &mut icon_ui,
+            row.executable.as_deref(),
+            16.0,
+            t.text_muted,
+            Sense::hover(),
+        );
+    }
     ui.painter().galley(
-        egui::pos2(value_left, line.center().y - value_galley.size().y / 2.0),
+        egui::pos2(
+            layout.value_left,
+            layout.line.center().y - value_galley.size().y / 2.0,
+        ),
         value_galley,
         t.text,
     );
     widgets::paint_text(
         ui,
-        egui::Rect::from_min_max(
-            egui::pos2(icon.right() + 8.0, line.top()),
-            egui::pos2(value_left - 10.0, line.bottom()),
-        ),
+        layout.name,
         row.map_or("--", |r| r.name.as_str()),
         FontId::proportional(12.0),
         if row.is_some() { t.text } else { t.text_muted },
         Align::Min,
     );
-    let track = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + 4.0, rect.bottom() - 2.0),
-        egui::pos2(rect.right() - 4.0, rect.bottom()),
-    );
-    ui.painter()
-        .rect_filled(track, 1.0, theme::mix(t.graph_bg, t.border, 0.6));
     let fraction = fraction.clamp(0.0, 1.0);
     if fraction > 0.0 {
-        let fill = egui::Rect::from_min_size(
-            track.min,
-            Vec2::new((track.width() * fraction).max(2.0), track.height()),
-        );
-        ui.painter().rect_filled(fill, 1.0, t.ink(color));
+        ui.painter()
+            .rect_filled(layout.bar(fraction), 1.0, t.ink(color));
     }
     match row {
         Some(row) => {
@@ -951,7 +1164,7 @@ fn process_row(
 
 /// Every logical processor as one equal cell, shaded by load. Wraps into more
 /// rows when cells would be narrower than 12 px. The exact value is on hover.
-fn core_strip(ui: &mut egui::Ui, cpu: &crate::model::CpuInfo, t: Tokens) {
+fn core_strip(ui: &mut egui::Ui, cpu: &crate::model::CpuInfo, cell_height: f32, t: Tokens) {
     let count = cpu.logical_cores.min(256);
     if count == 0 {
         widgets::gap_row(
@@ -963,14 +1176,12 @@ fn core_strip(ui: &mut egui::Ui, cpu: &crate::model::CpuInfo, t: Tokens) {
         );
         return;
     }
-    const CELL: f32 = 18.0;
-    const GAP: f32 = 2.0;
-    const MIN_WIDTH: f32 = 12.0;
+    const GAP: f32 = CORE_GAP;
+    let cell_height = cell_height.clamp(CORE_CELL, CORE_CELL_MAX);
     let width = ui.available_width();
-    let fit = (((width + GAP) / (MIN_WIDTH + GAP)).floor() as usize).max(1);
-    let rows = count.div_ceil(fit);
+    let rows = core_rows(count, width);
     let per_row = count.div_ceil(rows);
-    let height = rows as f32 * CELL + (rows - 1) as f32 * GAP;
+    let height = rows as f32 * cell_height + (rows - 1) as f32 * GAP;
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
     if !ui.is_rect_visible(rect) {
         return;
@@ -981,9 +1192,9 @@ fn core_strip(ui: &mut egui::Ui, cpu: &crate::model::CpuInfo, t: Tokens) {
         egui::Rect::from_min_size(
             egui::pos2(
                 rect.left() + column as f32 * (cell_width + GAP),
-                rect.top() + row as f32 * (CELL + GAP),
+                rect.top() + row as f32 * (cell_height + GAP),
             ),
-            Vec2::new(cell_width, CELL),
+            Vec2::new(cell_width, cell_height),
         )
     };
     let usage = |index: usize| {

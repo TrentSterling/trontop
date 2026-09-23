@@ -1176,11 +1176,50 @@ pub fn sparkline(
     color: Color32,
     t: Tokens,
 ) {
+    sparkline_range(painter, rect, values, 0.0, max, color, t);
+}
+
+/// The y-range for a sparkline of a steady physical reading (temperature,
+/// power): the observed min and max, widened to at least `min_span` around
+/// their midpoint and padded by a tenth of the range, so a steady reading sits
+/// mid-band instead of drawing a flat line along an edge. Never below zero when
+/// every sample is non-negative. `None` without a finite sample.
+pub fn padded_range(values: &[Option<f32>], min_span: f32) -> Option<(f32, f32)> {
+    let mut finite = values.iter().flatten().copied().filter(|v| v.is_finite());
+    let first = finite.next()?;
+    let (mut lo, mut hi) = finite.fold((first, first), |(lo, hi), v| (lo.min(v), hi.max(v)));
+    let non_negative = lo >= 0.0;
+    let pad = (hi - lo) * 0.1;
+    lo -= pad;
+    hi += pad;
+    if hi - lo < min_span {
+        let mid = (hi + lo) / 2.0;
+        lo = mid - min_span / 2.0;
+        hi = mid + min_span / 2.0;
+    }
+    if non_negative && lo < 0.0 {
+        hi -= lo;
+        lo = 0.0;
+    }
+    Some((lo, hi))
+}
+
+/// [`sparkline`] over an explicit `lo..=hi` value range; values outside it are
+/// clamped to the band edges.
+pub fn sparkline_range(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    values: impl Iterator<Item = Option<f32>>,
+    lo: f32,
+    hi: f32,
+    color: Color32,
+    t: Tokens,
+) {
     let values: Vec<Option<f32>> = values.collect();
     if values.len() < 2 {
         return;
     }
-    let max = max.max(0.001);
+    let span = (hi - lo).max(0.001);
     let denominator = (values.len() - 1).max(1) as f32;
     let points: Vec<Option<egui::Pos2>> = values
         .iter()
@@ -1188,7 +1227,7 @@ pub fn sparkline(
         .map(|(index, value)| {
             value.filter(|v| v.is_finite()).map(|v| {
                 let x = egui::lerp(rect.left()..=rect.right(), index as f32 / denominator);
-                let y = rect.bottom() - (v.clamp(0.0, max) / max) * rect.height();
+                let y = rect.bottom() - ((v - lo).clamp(0.0, span) / span) * rect.height();
                 egui::pos2(x, y)
             })
         })
@@ -1311,9 +1350,7 @@ pub fn device_button(
         .clicked()
 }
 
-/// Content for one [`kpi_tile`]. A later polish-gauntlet package wires this and
-/// `kpi_tile` into the Overview page's KPI row.
-#[allow(dead_code)]
+/// Content for one [`kpi_tile`] on the Overview page's KPI row.
 pub struct Kpi<'a> {
     pub label: &'a str,
     pub value: &'a str,
@@ -1326,22 +1363,32 @@ pub struct Kpi<'a> {
     pub state: Option<&'a str>,
 }
 
-/// Fixed height of a [`kpi_tile`], regardless of width.
-#[allow(dead_code)]
+/// Base height of a [`kpi_tile`], regardless of width.
 pub const KPI_TILE_HEIGHT: f32 = 84.0;
 
 /// A raised, fixed-height at-a-glance tile: a label row, a big value, a small
 /// caption, and a full-width sparkline band along the bottom.
-/// A later polish-gauntlet package wires this into the Overview page.
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn kpi_tile(
     ui: &mut egui::Ui,
     kpi: &Kpi<'_>,
     settings: ThemeSettings,
     t: Tokens,
 ) -> egui::Response {
+    kpi_tile_sized(ui, kpi, KPI_TILE_HEIGHT, settings, t)
+}
+
+/// [`kpi_tile`] at `height` (at least [`KPI_TILE_HEIGHT`]): every extra pixel
+/// goes to the sparkline band, so a tall window shows more trend, not air.
+pub fn kpi_tile_sized(
+    ui: &mut egui::Ui,
+    kpi: &Kpi<'_>,
+    height: f32,
+    settings: ThemeSettings,
+    t: Tokens,
+) -> egui::Response {
     let response = ui.allocate_response(
-        Vec2::new(ui.available_width(), KPI_TILE_HEIGHT),
+        Vec2::new(ui.available_width(), height.max(KPI_TILE_HEIGHT)),
         Sense::hover(),
     );
     let rect = response.rect;
@@ -1393,13 +1440,8 @@ pub fn kpi_tile(
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
             ui.add(
-                egui::Label::new(
-                    RichText::new(kpi.label.to_uppercase())
-                        .size(10.0)
-                        .strong()
-                        .color(t.text_muted),
-                )
-                .truncate(),
+                egui::Label::new(RichText::new(kpi.label).size(11.0).color(t.text_muted))
+                    .truncate(),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if let Some(state) = kpi.state {
