@@ -820,8 +820,8 @@ impl History {
         }
         for network in &s.networks {
             for (index, (title, value)) in [
-                ("Receive", network.received_bytes_per_sec),
-                ("Send", network.transmitted_bytes_per_sec),
+                ("Download", network.received_bytes_per_sec),
+                ("Upload", network.transmitted_bytes_per_sec),
             ]
             .into_iter()
             .enumerate()

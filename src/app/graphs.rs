@@ -124,7 +124,14 @@ impl Dashboard {
             })
             .collect();
         let width = ui.available_width();
-        let cols = widgets::tile_grid_columns(width);
+        // Three engine cards at a two-column width read as three across,
+        // never two plus an orphan.
+        let cols = widgets::balanced_columns(
+            charts.len(),
+            widgets::tile_grid_columns(width),
+            width,
+            ENGINE_CARD_MIN,
+        );
         let mut height = 0.0;
         for (row, chunk) in charts.chunks(cols).enumerate() {
             let size = Vec2::new(width, height);
@@ -186,15 +193,15 @@ impl Dashboard {
         }
         keys
     }
-    /// Performance > network: one adapter's Receive and Send as two lines
+    /// Performance > network: one adapter's Download and Upload as two lines
     /// with a legend on a shared rate axis, the same history and drawing as
     /// the Graphs network card.
     pub(super) fn network_graph(&self, ui: &mut egui::Ui, name: &str, height: f32, t: Tokens) {
         self.two_line_graph(
             ui,
             [
-                (history::Id::Network(name.to_owned(), 0), "Receive"),
-                (history::Id::Network(name.to_owned(), 1), "Send"),
+                (history::Id::Network(name.to_owned(), 0), "Download"),
+                (history::Id::Network(name.to_owned(), 1), "Upload"),
             ],
             (
                 "Traffic history",
@@ -368,38 +375,15 @@ impl Dashboard {
 }
 
 impl TrontopApp {
-    /// `(short chip text, full reason)` when the sensor bridge publishes no CPU
-    /// temperature. Graphs never substitutes an ACPI zone or a guess.
-    fn cpu_temperature_gap(&self) -> Option<(&'static str, String)> {
-        let bridge = &self.specs_view.bridge;
-        let fresh = bridge.collected_at.is_some_and(|at| {
-            self.graphs.now().saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
-        });
-        let published = fresh
-            && bridge.readings.iter().any(|r| {
-                r.key == crate::specs::LiveKey::CpuPackageTemperature && r.value.is_finite()
-            });
-        if published {
-            return None;
-        }
-        const SOURCES: &str = "Trontop reads CPU temperature only from an already-running LibreHardwareMonitor, OpenHardwareMonitor or HWiNFO (read-only). It never substitutes an ACPI thermal zone or invents a value, and installs no driver. Click for Hardware sensors.";
-        Some(match (&bridge.status, fresh) {
-            _ if self.specs.is_none() => (
-                "CPU temp: not checked",
-                format!("CPU temperature: not checked yet. {SOURCES}"),
-            ),
-            (crate::specs::Value::Known(_), true) => (
-                "CPU temp: not reported",
-                format!("CPU temperature: the running sensor app does not report it. {SOURCES}"),
-            ),
-            (crate::specs::Value::Known(_), false) => (
-                "CPU temp: sensor app stopped",
-                format!("CPU temperature: the sensor app stopped responding. {SOURCES}"),
-            ),
-            (crate::specs::Value::Unavailable(reason), _) => (
-                "CPU temp: no sensor app",
-                format!("CPU temperature: no sensor app is running ({reason}). {SOURCES}"),
-            ),
+    /// `(chip text, full reason)` when the sensor bridge publishes no CPU
+    /// temperature, in the wording every page shares. Graphs never
+    /// substitutes an ACPI zone or a guess.
+    fn cpu_temperature_chip(&self) -> Option<(&'static str, String)> {
+        self.cpu_temperature_gap(self.graphs.now()).map(|gap| {
+            (
+                gap.label,
+                format!("{}\nClick for Hardware sensors.", gap.hover),
+            )
         })
     }
 
@@ -416,7 +400,7 @@ impl TrontopApp {
             false,
         );
         let previous_filter = self.graphs.filter;
-        let cpu_temperature = self.cpu_temperature_gap();
+        let cpu_temperature = self.cpu_temperature_chip();
         let mut chip_placed = false;
         let mut open_sensors = false;
         ui.horizontal(|ui| {
@@ -564,10 +548,7 @@ impl TrontopApp {
                 let n = wall.unreported.len();
                 footer(
                     ui,
-                    format!(
-                        "{n} {} not reported",
-                        if n == 1 { "signal" } else { "signals" }
-                    ),
+                    format!("{} not reported", signal_count(n)),
                     format!(
                         "Left off the wall because they produced no value in the last 2 minutes:\n{}",
                         wall.unreported.join("\n")
@@ -603,31 +584,20 @@ impl TrontopApp {
     }
 }
 
-/// One category tab. A framed (selected or hovered) button is one stroke
-/// width larger on every side than a frameless one, which dropped the active
-/// tab's text and every later tab by 1 px. A fixed outer size that fits the
-/// framed button keeps every label on one baseline and one position.
+/// The narrowest Performance GPU history card that still reads: title,
+/// value, state chip and a plot.
+const ENGINE_CARD_MIN: f32 = 170.0;
+
+/// "1 signal" / "N signals": the unreported count wording Graphs and the
+/// Overview gap line share.
+pub(super) fn signal_count(n: usize) -> String {
+    format!("{n} {}", if n == 1 { "signal" } else { "signals" })
+}
+
+/// One category tab in a fixed slot ([`widgets::stable_tab`]), so the
+/// selected pill never shifts the tabs after it.
 fn tab(ui: &mut egui::Ui, filter: &mut Option<Group>, value: Option<Group>, label: &str) {
-    let font = egui::TextStyle::Button.resolve(ui.style());
-    let text = ui
-        .painter()
-        .layout_no_wrap(label.into(), font, Color32::PLACEHOLDER)
-        .size();
-    let pad = ui.spacing().button_padding;
-    let stroke = ui
-        .visuals()
-        .widgets
-        .active
-        .bg_stroke
-        .width
-        .max(ui.visuals().widgets.hovered.bg_stroke.width)
-        .max(ui.visuals().selection.stroke.width);
-    let size = Vec2::new(
-        text.x + pad.x * 2.0 + stroke * 2.0,
-        (text.y + pad.y * 2.0 + stroke * 2.0).max(ui.spacing().interact_size.y),
-    );
-    let response = ui.add(egui::Button::selectable(*filter == value, label).min_size(size.ceil()));
-    if response.clicked() && *filter != value {
+    if widgets::stable_tab(ui, *filter == value, label).clicked() && *filter != value {
         *filter = value;
     }
 }
@@ -754,9 +724,10 @@ fn state_chip(state: &str, t: Tokens) -> Option<(&'static str, Color32)> {
 
 fn series_colors(card: &wall::Card<'_>, t: Tokens) -> Vec<Color32> {
     if card.series.len() > 1 {
-        if card.group == Group::Network {
-            // Receive/Send share one color rule with Performance > Wi-Fi:
-            // receive is the secondary token, send is the accent token.
+        if matches!(card.group, Group::Network | Group::Storage) {
+            // Download/Upload and Read/Write share one color rule with
+            // Performance (Wi-Fi and volumes): the first direction is the
+            // secondary token, the second the accent token.
             return vec![t.secondary, t.accent];
         }
         return vec![

@@ -73,6 +73,7 @@ impl TrontopApp {
                 1,
                 shown,
                 None,
+                None,
                 |index| {
                     let (source, entry) = rows[index];
                     [
@@ -90,6 +91,7 @@ impl TrontopApp {
                 STARTUP_COLUMNS_WITH_FRESHNESS,
                 1,
                 shown,
+                None,
                 None,
                 |index| {
                     let (source, entry) = rows[index];
@@ -121,7 +123,15 @@ impl TrontopApp {
         let t = self.colors();
         let now = Instant::now();
         self.service_controls(ui);
-        ui.add_space(theme::space::M);
+        ui.add_space(theme::space::XS);
+        // Running is the calm, good state; Stopped recedes; anything in
+        // between (starting, stopping, paused) is the one to notice.
+        let warn = ui.visuals().warn_fg_color;
+        let state_color = move |state: &str| match state {
+            "Running" => t.good,
+            "Stopped" => t.text_muted,
+            _ => warn,
+        };
         let health = self.snapshot.diagnostics.get(Provider::Services);
         let state = health.state(Provider::Services, now);
         let freshness = match state {
@@ -139,6 +149,10 @@ impl TrontopApp {
                 needle.is_empty()
                     || row.name.to_lowercase().contains(&needle)
                     || row.display_name.to_lowercase().contains(&needle)
+            })
+            .filter(|row| {
+                !self.services_running_only
+                    || self.service_status(row).0.state == crate::service_control::State::Running
             })
             .collect::<Vec<_>>();
         let shown = rows.len();
@@ -172,6 +186,7 @@ impl TrontopApp {
                 0,
                 shown,
                 selected,
+                Some((2, &state_color)),
                 |index| {
                     let row = rows[index];
                     let (status, _) = self.service_status(row);
@@ -205,6 +220,7 @@ impl TrontopApp {
                 0,
                 shown,
                 selected,
+                Some((2, &state_color)),
                 |index| {
                     let row = rows[index];
                     let (status, _) = self.service_status(row);
@@ -236,10 +252,10 @@ impl TrontopApp {
         if let Some(index) = clicked {
             self.selected_service = Some(rows[index].name.clone());
         }
-        let footer = if needle.is_empty() {
+        let footer = if needle.is_empty() && !self.services_running_only {
             format!("{} services", self.snapshot.services.len())
         } else {
-            format!("{shown} shown")
+            format!("{shown} of {} shown", self.snapshot.services.len())
         };
         widgets::hover_label(ui, RichText::new(footer).size(10.0).color(t.text_muted))
             .on_hover_text(SERVICES_CAVEAT);

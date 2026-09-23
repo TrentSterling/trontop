@@ -212,7 +212,7 @@ pub(super) fn disk_throughput(
     total.map(|total| (total, missing))
 }
 
-/// Receive and send bytes/s summed over the sampler's adapters (already
+/// Download and upload bytes/s summed over the sampler's adapters (already
 /// deduplicated by interface alias). `None` before the first usable system
 /// sample or when no adapter is reported.
 pub(super) fn network_throughput(snapshot: &SystemSnapshot) -> Option<(f64, f64)> {
@@ -233,8 +233,8 @@ pub(super) fn network_throughput(snapshot: &SystemSnapshot) -> Option<(f64, f64)
     }))
 }
 
-/// Receive and send on one short line in the unit of the larger rate, for
-/// example "in 0.52 · out 6.27 KB/s": the same measured values, only scaled
+/// Download and upload on one short line in the unit of the larger rate, for
+/// example "down 0.52 · up 6.27 KB/s": the same measured values, only scaled
 /// together so the caption fits a narrow KPI tile.
 pub(super) fn rate_pair(rx: f64, tx: f64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
@@ -255,7 +255,7 @@ pub(super) fn rate_pair(rx: f64, tx: f64) -> String {
         }
     };
     format!(
-        "in {} \u{b7} out {} {}/s",
+        "down {} \u{b7} up {} {}/s",
         number(rx),
         number(tx),
         UNITS[unit]
@@ -328,6 +328,7 @@ impl TrontopApp {
         let now = self.graphs.now();
         let kpis = self.overview_kpis(now, t);
         let (thermals, gaps) = self.overview_thermals(now, t);
+        let cpu_temp_gap = self.cpu_temperature_gap(now);
         let top_cpu = top_apps(&self.snapshot.processes, false);
         let top_memory = top_apps(&self.snapshot.processes, true);
         let degraded: Vec<&'static str> = Provider::ALL
@@ -377,7 +378,7 @@ impl TrontopApp {
                     &Shape {
                         kpi_rows: kpis.len().div_ceil(columns),
                         thermal_rows,
-                        gaps: !gaps.is_empty(),
+                        gaps: !gaps.is_empty() || cpu_temp_gap.is_some(),
                         stacked_lists: width < 480.0,
                         core_rows: core_rows(cores.logical_cores.min(256), width),
                         degraded: !degraded.is_empty(),
@@ -397,21 +398,12 @@ impl TrontopApp {
                 tile_grid(ui, &thermals, per_row, |ui, tile| {
                     compact_tile(ui, tile, plan.thermal_height, settings, t);
                 });
-                if !gaps.is_empty() {
+                if !gaps.is_empty() || cpu_temp_gap.is_some() {
                     if !thermals.is_empty() {
                         ui.add_space(theme::space::XS);
                     }
-                    let names = gaps
-                        .iter()
-                        .map(|gap| gap.label.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let reasons = gaps
-                        .iter()
-                        .map(|gap| format!("{}: {}", gap.label, gap.reason))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    gap_line(ui, &format!("Not reported: {names}"), &reasons, t);
+                    let (text, reasons) = thermal_gap_text(cpu_temp_gap.as_ref(), &gaps);
+                    gap_line(ui, &text, &reasons, t);
                 }
                 ui.add_space(theme::space::L);
 
@@ -667,7 +659,7 @@ impl TrontopApp {
             value: network.map_or_else(|| "--".into(), |(rx, tx)| format::rate(rx + tx)),
             sub: network.map_or_else(String::new, |(rx, tx)| {
                 format!(
-                    "receive {} \u{b7} send {}",
+                    "download {} \u{b7} upload {}",
                     format::rate(rx),
                     format::rate(tx)
                 )
@@ -675,7 +667,7 @@ impl TrontopApp {
             sub_short: network.map_or_else(String::new, |(rx, tx)| rate_pair(rx, tx)),
             hover: if let Some((rx, tx)) = network {
                 format!(
-                    "Receive {} + send {} across {}.",
+                    "Download {} + upload {} across {}.",
                     format::rate(rx),
                     format::rate(tx),
                     s.networks
@@ -741,24 +733,8 @@ impl TrontopApp {
                 });
             }
         }
-        if bridge_reading(&package).is_none() {
-            let reason = match (&bridge.status, fresh) {
-                _ if self.specs.is_none() => "not checked yet. Trontop reads CPU temperature only from LibreHardwareMonitor, OpenHardwareMonitor or HWiNFO when one is already running; open Sensor details to look for one".to_owned(),
-                (crate::specs::Value::Known(_), true) => {
-                    "the running sensor provider does not report it".to_owned()
-                }
-                (crate::specs::Value::Known(_), false) => {
-                    "the sensor provider stopped responding".to_owned()
-                }
-                (crate::specs::Value::Unavailable(reason), _) => {
-                    format!("needs LibreHardwareMonitor or HWiNFO running ({reason})")
-                }
-            };
-            gaps.push(Gap {
-                label: "CPU temperature".into(),
-                reason,
-            });
-        }
+        // A missing CPU temperature is not a gap here: it has its own shared
+        // wording (cpu_temperature_gap), the same on every page.
 
         // GPU temperature and board power from NVML, as graphed on Graphs.
         let identified = s
@@ -966,8 +942,39 @@ pub(super) fn top_apps(rows: &[ProcessRow], memory: bool) -> Vec<AppGroup<'_>> {
     apps
 }
 
-/// The one muted "Not reported: ..." line under the thermal tiles; every
-/// reason is on hover. Never a chip, a card or an empty plot.
+/// The gap line's text and hover: the shared CPU temperature wording first,
+/// then "N signal(s) not reported: names", counted exactly as the Graphs
+/// footer counts them (the CPU temperature has its own wording there too).
+pub(super) fn thermal_gap_text(
+    cpu: Option<&super::sensors::CpuTempGap>,
+    gaps: &[Gap],
+) -> (String, String) {
+    let mut parts = Vec::new();
+    let mut reasons = Vec::new();
+    if let Some(cpu) = cpu {
+        parts.push(cpu.label.to_owned());
+        reasons.push(cpu.hover.clone());
+    }
+    if !gaps.is_empty() {
+        let names = gaps
+            .iter()
+            .map(|gap| gap.label.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        parts.push(format!(
+            "{} not reported: {names}",
+            super::graphs::signal_count(gaps.len())
+        ));
+        reasons.extend(
+            gaps.iter()
+                .map(|gap| format!("{}: {}", gap.label, gap.reason)),
+        );
+    }
+    (parts.join("  \u{b7}  "), reasons.join("\n"))
+}
+
+/// The one muted gap line under the thermal tiles; every reason is on
+/// hover. Never a chip, a card or an empty plot.
 fn gap_line(ui: &mut egui::Ui, text: &str, reasons: &str, t: Tokens) {
     let response = ui.allocate_response(Vec2::new(ui.available_width(), GAP_ROW), Sense::hover());
     widgets::paint_text(

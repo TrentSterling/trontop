@@ -41,7 +41,10 @@ impl TrontopApp {
                             widgets::status_pill(ui, "CPU: provider stopped", t.danger);
                         }
                         (Value::Unavailable(_), _) => {
-                            widgets::status_pill(ui, "CPU: no sensor provider", t.text_muted);
+                            if let Some(gap) = self.cpu_temperature_gap(now) {
+                                widgets::status_pill(ui, gap.label, t.text_muted)
+                                    .on_hover_text(gap.hover);
+                            }
                         }
                     }
                     let drives = self
@@ -111,12 +114,7 @@ impl TrontopApp {
                 ui,
                 "CPU and motherboard sensors",
                 "Needs sensor app",
-                &format!(
-                    "{reason}. Trontop reads CPU and motherboard temperature only from an \
-                     already-running LibreHardwareMonitor, OpenHardwareMonitor or HWiNFO \
-                     (shared memory). It never substitutes an ACPI thermal zone or invents a \
-                     value, and installs no driver."
-                ),
+                &format!("No sensor app is running ({reason}).\n{CPU_TEMP_SOURCES}"),
                 t,
             );
             return;
@@ -614,4 +612,66 @@ fn sensor_graph(
     response.on_hover_text(format!(
         "120-second history; gaps mean no reading. Scale 0 to {maximum:.0} {unit}."
     ));
+}
+
+/// Why no CPU temperature is shown, in the one wording every page uses
+/// (Overview, Graphs, Hardware sensors, System).
+pub(super) struct CpuTempGap {
+    /// "CPU temp: needs sensor app": chips, pills and gap lines.
+    pub label: &'static str,
+    /// "Needs sensor app": a value cell whose row already says CPU temperature.
+    pub short: &'static str,
+    /// The reason plus which sensor apps Trontop can read.
+    pub hover: String,
+}
+
+/// The sensor apps named in every CPU temperature gap tooltip.
+pub(super) const CPU_TEMP_SOURCES: &str = "Trontop reads CPU temperature only from HWiNFO \
+     (with Shared Memory Support on) or LibreHardwareMonitor / OpenHardwareMonitor while one \
+     is already running. It never substitutes an ACPI thermal zone or invents a value, and \
+     installs no driver.";
+
+impl TrontopApp {
+    /// `None` while a fresh CPU package temperature is published; otherwise
+    /// the shared gap wording for the bridge state at `now`.
+    pub(super) fn cpu_temperature_gap(&self, now: Instant) -> Option<CpuTempGap> {
+        let bridge = &self.specs_view.bridge;
+        let fresh = bridge.collected_at.is_some_and(|at| {
+            now.saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
+        });
+        let published = fresh
+            && bridge.readings.iter().any(|r| {
+                r.key == crate::specs::LiveKey::CpuPackageTemperature && r.value.is_finite()
+            });
+        if published {
+            return None;
+        }
+        let (label, short, reason) = match (&bridge.status, fresh) {
+            _ if self.specs.is_none() => (
+                "CPU temp: not checked yet",
+                "Not checked yet",
+                "Sensor apps have not been checked yet.".to_owned(),
+            ),
+            (Value::Known(_), true) => (
+                "CPU temp: not in sensor app",
+                "Not in sensor app",
+                "The running sensor app does not publish a CPU package temperature.".to_owned(),
+            ),
+            (Value::Known(_), false) => (
+                "CPU temp: sensor app stopped",
+                "Sensor app stopped",
+                "The sensor app stopped responding.".to_owned(),
+            ),
+            (Value::Unavailable(reason), _) => (
+                "CPU temp: needs sensor app",
+                "Needs sensor app",
+                format!("No sensor app is running ({reason})."),
+            ),
+        };
+        Some(CpuTempGap {
+            label,
+            short,
+            hover: format!("{reason}\n{CPU_TEMP_SOURCES}"),
+        })
+    }
 }

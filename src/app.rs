@@ -117,11 +117,15 @@ impl Page {
             Self::Graphs => "Two minutes of every signal. Hover any graph for exact readings.",
             Self::Processes => "Everything running now. Parent rows include their children.",
             Self::Performance => "Pick a device on the left for its detail view.",
-            Self::History => "Which processes used the most CPU time and disk since they started.",
+            Self::History => {
+                "Processes ranked by CPU time since they started, with their total I/O."
+            }
             Self::Startup => "Programs Windows starts when you sign in. Read-only.",
             Self::Users => "Resource use per Windows account.",
             Self::Details => "Every process with all counters. Drag column edges to resize.",
-            Self::Services => "Windows services. Start, stop and restart ask first.",
+            // Services leads with its control row instead; the buttons'
+            // hover says that every command asks for confirmation first.
+            Self::Services => "",
             Self::Sensors => "Temperatures, power, clocks and fans.",
             Self::System => "What is inside this PC.",
         }
@@ -194,6 +198,8 @@ pub struct TrontopApp {
     selected_pid: Option<u32>,
     inspector_visible: bool,
     selected_service: Option<String>,
+    /// Services: show only running services (a view filter, not persisted).
+    services_running_only: bool,
     service_controller: crate::service_control::Controller,
     pending_service: Option<crate::service_control::Request>,
     service_event: Option<crate::service_control::Event>,
@@ -304,6 +310,7 @@ impl TrontopApp {
             selected_pid: None,
             inspector_visible: true,
             selected_service: None,
+            services_running_only: false,
             service_controller: crate::service_control::Controller::default(),
             pending_service: None,
             service_event: None,
@@ -1231,14 +1238,9 @@ impl TrontopApp {
         );
     }
 
-    /// One 30 px row: a Tree/Flat segmented toggle and the total process
-    /// count. This replaces the old CPU/MEMORY/GPU/UPTIME badge row, which
-    /// duplicated the sidebar meters and cost the table about 100 px of body
-    /// height. Tree mode's "parent rows include children" hint lives only in
-    /// the page intro now, not duplicated here too.
+    /// One 30 px row: the Tree/Flat toggle. The process count lives once,
+    /// in the footer under the table, never here as well.
     fn process_toolbar(&mut self, ui: &mut egui::Ui) {
-        let t = self.colors();
-        let count_text = format!("{} processes", self.snapshot.process_count);
         ui.allocate_ui_with_layout(
             Vec2::new(ui.available_width(), 30.0),
             Layout::left_to_right(Align::Center),
@@ -1250,14 +1252,15 @@ impl TrontopApp {
                 if ui.selectable_label(!self.tree_mode, "Flat").clicked() {
                     self.tree_mode = false;
                 }
-                widgets::hover_label(ui, RichText::new(count_text).size(10.0).color(t.text_muted));
             },
         );
     }
 
     fn process_table(&mut self, ui: &mut egui::Ui, detailed: bool) {
+        // Details shows every sortable column; Processes hides the account,
+        // state and lifetime CPU columns.
         let hidden_sort = if detailed {
-            self.sort_column == SortColumn::WriteRate
+            false
         } else {
             matches!(
                 self.sort_column,
@@ -1277,7 +1280,10 @@ impl TrontopApp {
                 .id_salt(("process_table_horizontal", detailed))
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    ui.set_min_width(if detailed { 900.0 } else { 660.0 });
+                    // The sum of every column minimum: at 1000 x 580 both
+                    // tables fit, so the horizontal bar only appears on an
+                    // even narrower window.
+                    ui.set_min_width(if detailed { DETAILS_MIN_WIDTH } else { 660.0 });
                     self.process_table_inner(ui, detailed);
                 });
         });
@@ -1300,7 +1306,24 @@ impl TrontopApp {
         // count footer below the table; Details has none since P5 folded its
         // footer into the page intro.
         let available_height = (ui.available_height() - 40.0).max(32.0);
+        let available_width = ui.available_width();
+        // Details: every numeric column grows with the window (up to 1.6x its
+        // base width) so a wide window spreads the counters out instead of
+        // parking one huge empty NAME gap in front of them. The table state
+        // is keyed by a 50 px width bucket, so a resized window refits while
+        // a column drag holds at a steady size.
+        let (scale, width_bucket) = if detailed {
+            details_column_scale(available_width)
+        } else {
+            (1.0, 0)
+        };
+        let fixed = |base: f32, minimum: f32| {
+            Column::initial((base * scale).round())
+                .at_least(minimum)
+                .clip(true)
+        };
         let mut table = TableBuilder::new(ui)
+            .id_salt(("process_table", detailed, width_bucket))
             .striped(true)
             .resizable(true)
             .vscroll(true)
@@ -1311,36 +1334,28 @@ impl TrontopApp {
             .min_scrolled_height(0.0)
             .max_scroll_height(available_height)
             // NAME is the flexible remainder column, not whichever numeric
-            // column happens to sit last: it grows with the window instead of
-            // leaving a truncated name next to a wide, mostly-empty tail
-            // column. It is not user-resizable (same as any last-column
-            // remainder), so PID and the rest keep their own drag handles.
+            // column happens to sit last. It is not user-resizable (same as
+            // any last-column remainder), so PID and the rest keep their own
+            // drag handles.
             .column(
                 Column::remainder()
-                    .at_least(120.0)
+                    .at_least(DETAILS_NAME_MIN)
                     .clip(true)
                     .resizable(false),
-            )
-            .column(Column::initial(56.0).at_least(50.0));
-        if detailed {
-            table = table
-                .column(Column::initial(48.0).at_least(42.0).clip(true))
-                .column(Column::initial(56.0).at_least(48.0));
-        }
-        table = table
-            .column(Column::initial(58.0).at_least(52.0))
-            .column(Column::initial(58.0).at_least(52.0))
-            .column(Column::initial(74.0).at_least(64.0))
-            .column(Column::initial(88.0).at_least(78.0))
-            // WRITE / CPU TIME: a fixed numeric column now that NAME owns the
-            // flexible remainder, not a wide mostly-empty tail. CPU TIME is
-            // always exactly "HH:MM:SS", which needs less room than READ's
-            // and WRITE's variable-length rate strings.
-            .column(
-                Column::initial(if detailed { 74.0 } else { 88.0 })
-                    .at_least(if detailed { 64.0 } else { 78.0 })
-                    .clip(true),
             );
+        if detailed {
+            for (base, minimum) in DETAILS_COLUMNS {
+                table = table.column(fixed(base, minimum));
+            }
+        } else {
+            table = table
+                .column(Column::initial(56.0).at_least(50.0))
+                .column(Column::initial(58.0).at_least(52.0))
+                .column(Column::initial(58.0).at_least(52.0))
+                .column(Column::initial(74.0).at_least(64.0))
+                .column(Column::initial(88.0).at_least(78.0))
+                .column(Column::initial(88.0).at_least(78.0).clip(true));
+        }
 
         table
             .header(34.0, |mut header| {
@@ -1420,17 +1435,24 @@ impl TrontopApp {
                 );
                 widgets::table_header(
                     &mut header,
-                    if detailed { "CPU TIME" } else { "WRITE" },
-                    if detailed {
-                        SortColumn::CpuTime
-                    } else {
-                        SortColumn::WriteRate
-                    },
+                    "WRITE",
+                    SortColumn::WriteRate,
                     self.sort_column,
                     self.sort_direction,
                     &mut requested_sort,
                     t,
                 );
+                if detailed {
+                    widgets::table_header(
+                        &mut header,
+                        "CPU TIME",
+                        SortColumn::CpuTime,
+                        self.sort_column,
+                        self.sort_direction,
+                        &mut requested_sort,
+                        t,
+                    );
+                }
             })
             .body(|body| {
                 body.rows(32.0, visible_count, |mut row| {
@@ -1554,19 +1576,20 @@ impl TrontopApp {
                     if detailed {
                         widgets::table_column(&mut row, t, |ui| {
                             // Same display mapping as the Users page: an
-                            // unreadable owner reads "Not readable", never
+                            // unreadable owner reads "Protected", never
                             // the raw "Unknown account" model value.
                             let (display_name, unreadable) = account_display(&process.user);
-                            let mut response = widgets::table_label(
+                            let response = widgets::table_label(
                                 ui,
-                                RichText::new(display_name).size(11.0).color(t.text_muted),
-                            );
-                            if unreadable {
-                                response = response.on_hover_text(
-                                    "Windows did not let Trontop read the owner of this \
-                                     process (usually a system service; needs admin).",
-                                );
-                            }
+                                RichText::new(display_name)
+                                    .size(TABLE_TEXT_SIZE)
+                                    .color(t.text_muted),
+                            )
+                            .on_hover_text(if unreadable {
+                                PROTECTED_OWNER_HOVER.to_string()
+                            } else {
+                                format!("Account: {}", process.user)
+                            });
                             if response.clicked() {
                                 clicked_pid = Some(process.pid);
                             }
@@ -1583,7 +1606,9 @@ impl TrontopApp {
                             };
                             if widgets::table_cell(
                                 ui,
-                                RichText::new(state_label).size(11.0).color(color),
+                                RichText::new(state_label)
+                                    .size(TABLE_TEXT_SIZE)
+                                    .color(color),
                             ) {
                                 clicked_pid = Some(process.pid);
                             }
@@ -1633,18 +1658,27 @@ impl TrontopApp {
                         }
                     });
                     widgets::table_column(&mut row, t, |ui| {
-                        let value = if detailed {
-                            format::millis(process.accumulated_cpu_millis)
-                        } else {
-                            format::rate(display.totals.write_bytes_per_sec)
-                        };
                         if widgets::table_cell(
                             ui,
-                            RichText::new(value).monospace().color(t.text_muted),
+                            RichText::new(format::rate(display.totals.write_bytes_per_sec))
+                                .monospace()
+                                .color(t.text_muted),
                         ) {
                             clicked_pid = Some(process.pid);
                         }
                     });
+                    if detailed {
+                        widgets::table_column(&mut row, t, |ui| {
+                            if widgets::table_cell(
+                                ui,
+                                RichText::new(format::millis(process.accumulated_cpu_millis))
+                                    .monospace()
+                                    .color(t.text_muted),
+                            ) {
+                                clicked_pid = Some(process.pid);
+                            }
+                        });
+                    }
                     if row.response().clicked() && toggled_pid != Some(process.pid) {
                         clicked_pid = Some(process.pid);
                     }
@@ -2303,7 +2337,7 @@ Counters: {state}."
             t.secondary,
             t,
         )
-        .on_hover_text("Receive plus send throughput for this adapter.");
+        .on_hover_text("Download plus upload throughput for this adapter.");
         let height = widgets::fit_height(ui, 84.0, 160.0, 360.0);
         self.graphs.network_graph(ui, &network.name, height, t);
         ui.add_space(theme::space::L);
@@ -2312,24 +2346,24 @@ Counters: {state}."
                 .iter_mut()
                 .zip([
                     (
-                        "Receive",
+                        "Download",
                         format::rate(network.received_bytes_per_sec),
-                        "Bytes received per second.",
+                        "Bytes downloaded (received) per second.",
                     ),
                     (
-                        "Send",
+                        "Upload",
                         format::rate(network.transmitted_bytes_per_sec),
-                        "Bytes sent per second.",
+                        "Bytes uploaded (sent) per second.",
                     ),
                     (
-                        "Received",
+                        "Downloaded",
                         format::bytes(network.total_received_bytes),
-                        "Total received, as reported by Windows.",
+                        "Total downloaded since Windows started counting, as reported by Windows.",
                     ),
                     (
-                        "Sent",
+                        "Uploaded",
                         format::bytes(network.total_transmitted_bytes),
-                        "Total sent, as reported by Windows.",
+                        "Total uploaded since Windows started counting, as reported by Windows.",
                     ),
                 ])
                 .enumerate()
@@ -2448,7 +2482,7 @@ Counters: {state}."
                         let user = &users[row.index()];
                         // Windows sometimes will not disclose the owner of a system
                         // service's processes without admin rights; that gap reads
-                        // as "Not readable", never a guessed account name. Details
+                        // as "Protected", never a guessed account name. Details
                         // uses the same mapping (account_display) for its USER column.
                         let (display_name, unreadable) = account_display(&user.name);
                         let share = user.process_count as f32 / total_processes * 100.0;
@@ -2473,10 +2507,7 @@ Counters: {state}."
                                 RichText::new(display_name).strong().color(t.text),
                             );
                             if unreadable {
-                                response.on_hover_text(
-                                    "Windows did not let Trontop read the owner of these \
-                                     processes (usually system services; needs admin).",
-                                );
+                                response.on_hover_text(PROTECTED_OWNER_HOVER);
                             }
                         });
                         widgets::table_column(&mut row, t, |ui| {
@@ -3215,16 +3246,55 @@ fn process_state_label(status: &str) -> String {
 }
 
 /// Windows sometimes will not disclose the owner of a system service's
-/// processes without admin rights; that gap displays as "Not readable",
+/// processes without admin rights; that gap displays as "Protected",
 /// never a guessed account name. Shared by the Users and Details/Processes
 /// USER columns. The raw model value ("Unknown account") is untouched; this
 /// is display-only. Returns `(display_name, unreadable)`.
 fn account_display(name: &str) -> (&str, bool) {
     if name == "Unknown account" {
-        ("Not readable", true)
+        ("Protected", true)
     } else {
         (name, false)
     }
+}
+
+/// Hover text for a "Protected" owner, shared by Users and Details.
+const PROTECTED_OWNER_HOVER: &str = "Protected: Windows did not let Trontop read the owner \
+     of this process. Usually a system service; reading it needs admin rights.";
+
+/// One text size for every Details text cell (USER, STATE), matching the
+/// 12 px monospace numeric cells beside them.
+const TABLE_TEXT_SIZE: f32 = 12.0;
+
+/// Details columns after NAME: `(base width, minimum)` for PID, USER, STATE,
+/// CPU, GPU, MEMORY, READ, WRITE and CPU TIME. Each base width fits its
+/// longest common value plus the 16 px cell padding unclipped: a six digit
+/// PID, "Protected", "100.0%", "12.7 GiB", a nine character rate ("1023
+/// MB/s") and an eight character CPU time ("09:16:55").
+const DETAILS_COLUMNS: [(f32, f32); 9] = [
+    (62.0, 60.0),
+    (70.0, 68.0),
+    (64.0, 62.0),
+    (58.0, 56.0),
+    (58.0, 56.0),
+    (76.0, 74.0),
+    (84.0, 82.0),
+    (84.0, 82.0),
+    (76.0, 74.0),
+];
+const DETAILS_NAME_MIN: f32 = 120.0;
+/// Every Details column minimum plus NAME: the width below which the table
+/// scrolls sideways (just under a 1000 px window's 752 px table area).
+const DETAILS_MIN_WIDTH: f32 = 750.0;
+
+/// `(scale, width bucket)` for the Details numeric columns at `width`: NAME
+/// keeps about 28% of the table (at least 180 px) and the numeric columns
+/// share the rest, growing to at most 1.6x their base width.
+fn details_column_scale(width: f32) -> (f32, u32) {
+    let base: f32 = DETAILS_COLUMNS.iter().map(|(base, _)| base).sum();
+    let name = (width * 0.28).max(180.0);
+    let scale = ((width - name) / base).clamp(1.0, 1.6);
+    (scale, (width / 50.0).round().max(0.0) as u32)
 }
 
 fn memory_percent(snapshot: &SystemSnapshot) -> f32 {

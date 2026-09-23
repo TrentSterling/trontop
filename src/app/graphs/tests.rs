@@ -771,7 +771,7 @@ fn network_and_disk_io_are_one_card_per_device_with_a_summed_headline() {
     assert_eq!(
         network.cards[0].value(),
         Some((5_000.0, false)),
-        "receive plus send"
+        "download plus upload"
     );
     // Each disk's cards group together in reading order: Disk 0 first, then
     // Disk 1, never all read/write cards followed by all active-time cards.
@@ -958,10 +958,10 @@ fn network_legend_and_colors_match_performance_page() {
     let card = &wall.cards[0];
     assert_eq!(
         card.series.iter().map(|s| s.label).collect::<Vec<_>>(),
-        ["Receive", "Send"],
+        ["Download", "Upload"],
         "Graphs uses the same full words as Performance > Wi-Fi, not In/Out"
     );
-    // Receive is the secondary (teal) token, Send is the accent (purple)
+    // Download is the secondary (teal) token, Upload is the accent (purple)
     // token: the same order `network_graph` hardcodes for Performance.
     let settings = ThemeSettings::default();
     let t = theme::tokens(settings);

@@ -86,12 +86,19 @@ impl Studio {
                     }
                   });
                   ui.horizontal(|ui| {
+                    // Fixed tab slots: the selected pill never shifts its neighbors.
                     for (i, name) in ["Palette", "Appearance", "Presets", "My themes"].iter().enumerate() {
-                        ui.selectable_value(&mut self.tab, i, *name);
+                        if widgets::stable_tab(ui, self.tab == i, name).clicked() {
+                            self.tab = i;
+                        }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.selectable_value(&mut settings.dark, false, "Light");
-                        ui.selectable_value(&mut settings.dark, true, "Dark");
+                        if widgets::stable_tab(ui, !settings.dark, "Light").clicked() {
+                            settings.dark = false;
+                        }
+                        if widgets::stable_tab(ui, settings.dark, "Dark").clicked() {
+                            settings.dark = true;
+                        }
                     });
                 });
                 ui.separator();

@@ -696,7 +696,14 @@ impl TrontopApp {
                 };
                 (text, color, hover)
             }
-            Value::Unavailable(reason) => ("Unavailable".into(), t.text_muted, reason),
+            // A missing CPU temperature reads in the wording every page
+            // shares ("Needs sensor app"), never a bare "Unavailable".
+            Value::Unavailable(reason) => match (key, self.cpu_temperature_gap(now)) {
+                (LiveKey::CpuPackageTemperature, Some(gap)) => {
+                    (gap.short.into(), t.text_muted, gap.hover)
+                }
+                _ => ("Unavailable".into(), t.text_muted, reason),
+            },
         }
     }
 
@@ -704,7 +711,11 @@ impl TrontopApp {
     /// with the reason on hover, so titles do not repeat "Unavailable".
     fn headline_live(&self, key: &LiveKey, now: Instant, t: Tokens) -> (String, Color32, String) {
         let (text, color, hover) = self.live_parts(key, now, t);
-        if color == t.text_muted && text == "Unavailable" {
+        // A missing CPU temperature is absent here too: its "Needs sensor
+        // app" wording belongs on the labeled row, not beside the CPU name.
+        let cpu_temp_gap =
+            *key == LiveKey::CpuPackageTemperature && self.cpu_temperature_gap(now).is_some();
+        if color == t.text_muted && (text == "Unavailable" || cpu_temp_gap) {
             ("--".into(), t.text_muted, format!("Unavailable: {hover}"))
         } else {
             (text, color, hover)

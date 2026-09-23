@@ -44,9 +44,9 @@ impl TrontopApp {
     }
 
     /// One 34 px toolbar: [Start][Stop][Restart], the selected service (or a
-    /// muted placeholder), a right-aligned status line, and [Refresh]. This
-    /// replaces four stacked status blocks; the retired detail lines (service
-    /// identity, inventory age) move to hover text on the name and Refresh.
+    /// muted prompt), then right-aligned a status only when there is one to
+    /// report, the Running only filter and [Refresh]. Identity and inventory
+    /// age live in hover text on the name and Refresh.
     pub(super) fn service_controls(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         let now = Instant::now();
@@ -102,7 +102,7 @@ impl TrontopApp {
                         .inner;
                     if response
                         .on_hover_text(refusal.unwrap_or(
-                            "Review a confirmation before any service command is sent.",
+                            "Start, stop and restart ask for confirmation first. Start may start required dependencies; Stop never stops dependents; Restart can leave a service stopped if Start fails.",
                         ))
                         .clicked()
                         && let Some(row) = &row
@@ -117,42 +117,50 @@ impl TrontopApp {
                     }
                 }
                 ui.add_space(theme::space::M);
-                let name = row.as_ref().map_or_else(
-                    || "Select a service".to_string(),
-                    |row| row.display_name.clone(),
-                );
-                let name_hover = row.as_ref().map_or_else(
-                    || "Select a row below for confirmed controls.".to_string(),
-                    |row| {
-                        let (status, command_read) = self.service_status(row);
-                        format!(
-                            "{} / {} / {}{}",
-                            row.name,
-                            status.state.label(),
-                            if status.pid == 0 {
-                                "no PID".into()
+                let available = self.service_controller.available();
+                // One muted message at a time: the selection (or its prompt)
+                // while controls work, or a single "Controls unavailable"
+                // with the reason on hover when they cannot.
+                if available || row.is_some() {
+                    let name = row.as_ref().map_or_else(
+                        || "Select a service".to_string(),
+                        |row| row.display_name.clone(),
+                    );
+                    let name_hover = row.as_ref().map_or_else(
+                        || "Select a row below to enable Start, Stop and Restart.".to_string(),
+                        |row| {
+                            let (status, command_read) = self.service_status(row);
+                            format!(
+                                "{} / {} / {}{}",
+                                row.name,
+                                status.state.label(),
+                                if status.pid == 0 {
+                                    "no PID".into()
+                                } else {
+                                    format!("PID {}", status.pid)
+                                },
+                                if command_read {
+                                    " / latest command read"
+                                } else if !self.service_is_fresh(row) {
+                                    " / cached inventory; refresh before controlling"
+                                } else {
+                                    ""
+                                }
+                            )
+                        },
+                    );
+                    ui.add(
+                        egui::Label::new(RichText::new(name).size(12.0).color(
+                            if row.is_some() {
+                                t.text
                             } else {
-                                format!("PID {}", status.pid)
+                                t.text_muted
                             },
-                            if command_read {
-                                " / latest command read"
-                            } else if !self.service_is_fresh(row) {
-                                " / cached inventory; refresh before controlling"
-                            } else {
-                                ""
-                            }
-                        )
-                    },
-                );
-                ui.add(
-                    egui::Label::new(RichText::new(name).size(12.0).color(if row.is_some() {
-                        t.text
-                    } else {
-                        t.text_muted
-                    }))
-                    .truncate(),
-                )
-                .on_hover_text(name_hover);
+                        ))
+                        .truncate(),
+                    )
+                    .on_hover_text(name_hover);
+                }
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let refresh = ui
@@ -176,13 +184,18 @@ impl TrontopApp {
                     {
                         sampler.request_service_refresh();
                     }
+                    ui.checkbox(
+                        &mut self.services_running_only,
+                        RichText::new("Running only").size(12.0),
+                    )
+                    .on_hover_text("Show only services that are running now.");
                     ui.add_space(theme::space::S);
-                    let (phase_text, color, detail) = if history_blocked {
-                        (
-                            "Command history is full or incomplete. Refresh list before another command to this service.".to_string(),
+                    let status = if history_blocked {
+                        Some((
+                            "Command history is full. Refresh first.".to_string(),
                             t.text_muted,
-                            String::new(),
-                        )
+                            "Command history for this service is full or incomplete. Refresh the list before sending it another command.".to_string(),
+                        ))
                     } else if let Some(event) = &self.service_event {
                         let phase =
                             format!("{}: {} - {}", event.action.label(), event.name, event.phase);
@@ -198,30 +211,23 @@ impl TrontopApp {
                         } else {
                             t.text_muted
                         };
-                        (phase, color, detail)
+                        Some((phase.clone(), color, format!("{phase}\n{detail}")))
+                    } else if !available {
+                        Some((
+                            "Controls unavailable".to_string(),
+                            t.text_muted,
+                            "The service command worker is unavailable, so Start, Stop and Restart are off. The list stays readable.".to_string(),
+                        ))
                     } else {
-                        let phase = if self.service_controller.available() {
-                            "Ready"
-                        } else {
-                            "Controls unavailable"
-                        };
-                        let detail = if self.service_controller.available() {
-                            "Start may start required dependencies. Stop never recursively stops dependents; Restart can leave a service stopped if Start fails."
-                        } else {
-                            "The service command worker is unavailable; inventory remains readable."
-                        };
-                        (phase.to_string(), t.text_muted, detail.to_string())
+                        None
                     };
-                    let hover = if detail.is_empty() {
-                        phase_text.clone()
-                    } else {
-                        format!("{phase_text}\n{detail}")
-                    };
-                    ui.add(
-                        egui::Label::new(RichText::new(phase_text).size(11.0).color(color))
-                            .truncate(),
-                    )
-                    .on_hover_text(hover);
+                    if let Some((text, color, hover)) = status {
+                        ui.add(
+                            egui::Label::new(RichText::new(text).size(11.0).color(color))
+                                .truncate(),
+                        )
+                        .on_hover_text(hover);
+                    }
                 });
             },
         );

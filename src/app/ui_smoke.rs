@@ -1689,10 +1689,11 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
 }
 
 #[test]
-fn details_user_column_shows_not_readable_for_unknown_account_without_touching_the_model() {
+fn details_user_column_shows_protected_for_unknown_account_without_touching_the_model() {
     // Details shares the Users page's display mapping: an unreadable owner
-    // reads "Not readable", never the raw "Unknown account" sentinel value,
-    // and the underlying model field is left untouched.
+    // reads the short, untruncated "Protected" (reason on hover), never the
+    // raw "Unknown account" sentinel value, and the underlying model field
+    // is left untouched.
     for dark in [true, false] {
         let settings = ThemeSettings {
             dark,
@@ -1717,8 +1718,8 @@ fn details_user_column_shows_not_readable_for_unknown_account_without_touching_t
         assert!(
             text_shapes(&output)
                 .iter()
-                .any(|(text, _)| text.galley.job.text == "Not readable"),
-            "Details USER column should read 'Not readable' for an unknown account"
+                .any(|(text, _)| text.galley.job.text == "Protected" && !text.galley.elided),
+            "Details USER column should read 'Protected' in full for an unknown account"
         );
         assert!(
             !text_shapes(&output)

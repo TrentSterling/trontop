@@ -476,7 +476,7 @@ fn graph_wall_visible_rows_match_full_layout_through_scroll_and_scale() {
                     );
                 }
                 // Every composed card is laid out on the reference path; 256
-                // adapters fold Receive and Send into one card each.
+                // adapters fold Download and Upload into one card each.
                 assert_eq!(reference.graphs.laid_out_cards, reference.graphs.wall_cards);
                 assert!(reference.graphs.wall_cards > 200);
                 assert!(
@@ -776,4 +776,55 @@ fn graph_tabs_and_style_toggle_fit_one_row_at_the_smallest_window() {
     }
     assert!(row("Everything").left() < row("All cores").left());
     assert!(row("All cores").right() < row("Lines").left());
+}
+
+#[test]
+fn graphs_tab_row_never_shifts_when_the_selected_pill_changes() {
+    let size = Vec2::new(1280.0, 800.0);
+    let mut app = populated(ThemeSettings::default());
+    app.page = Page::Graphs;
+    let ctx = egui::Context::default();
+    theme::install(&ctx, app.theme);
+    let tabs = [
+        "Everything",
+        "Load",
+        "Memory",
+        "Thermal & power",
+        "GPU",
+        "Disks",
+        "Network",
+        "All cores",
+    ];
+    let positions = |output: &egui::FullOutput| {
+        tabs.map(|tab| {
+            text_shapes(output)
+                .into_iter()
+                .find(|(text, _)| text.galley.job.text == tab && text.pos.y < 160.0)
+                .map(|(text, _)| text.visual_bounding_rect().left())
+                .unwrap_or_else(|| panic!("missing tab {tab}"))
+        })
+    };
+    let mut output = egui::FullOutput::default();
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let baseline = positions(&output);
+    for tab in tabs {
+        click_local_text_output(&ctx, &mut app, size, tab);
+        for _ in 0..3 {
+            output = frame(&ctx, &mut app, size, vec![]);
+        }
+        let now = positions(&output);
+        for (index, (a, b)) in baseline.iter().zip(&now).enumerate() {
+            // The selected pill's own text may sit a sub-pixel off; every
+            // other tab must not move at all.
+            if tabs[index] != tab {
+                assert!(
+                    (a - b).abs() < 0.01,
+                    "{} moved from {a} to {b} with {tab} selected",
+                    tabs[index]
+                );
+            }
+        }
+    }
 }

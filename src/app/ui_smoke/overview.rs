@@ -150,12 +150,26 @@ fn drive_without_sensors_is_a_gap_row_not_a_tile() {
     let texts = text_shapes(&output);
     let gap_lines: Vec<_> = texts
         .iter()
-        .filter(|(text, _)| text.galley.job.text.starts_with("Not reported:"))
+        .filter(|(text, _)| text.galley.job.text.contains("not reported:"))
         .collect();
     assert_eq!(gap_lines.len(), 1, "one gap line");
+    let line = &gap_lines[0].0.galley.job.text;
     assert!(
-        gap_lines[0].0.galley.job.text.contains("WDC WD60EZAX"),
+        line.contains("WDC WD60EZAX"),
         "the silent drive is listed on the gap line"
+    );
+    // Counted the way the Graphs footer counts: the CPU temperature has its
+    // own shared wording, not a slot in the "N signals" count.
+    assert!(
+        line.contains(&format!(
+            "{} not reported:",
+            super::super::graphs::signal_count(gaps.len())
+        )),
+        "gap line count must match the listed gaps: {line}"
+    );
+    assert!(
+        gaps.iter().all(|gap| gap.label != "CPU temperature"),
+        "CPU temperature is not counted as a gap"
     );
     // One element: no separate "N missing" or reason chip beside it.
     assert!(
@@ -540,8 +554,8 @@ fn thermal_band_range_keeps_a_steady_reading_mid_band() {
 #[test]
 fn network_short_caption_shares_one_unit() {
     use super::super::overview::rate_pair;
-    assert_eq!(rate_pair(2_058.0, 6_420.0), "in 2.01 \u{b7} out 6.27 KB/s");
-    assert_eq!(rate_pair(532.0, 1_229.0), "in 0.52 \u{b7} out 1.20 KB/s");
-    assert_eq!(rate_pair(180.0, 146.0), "in 180 \u{b7} out 146 B/s");
-    assert_eq!(rate_pair(0.0, 0.0), "in 0 \u{b7} out 0 B/s");
+    assert_eq!(rate_pair(2_058.0, 6_420.0), "down 2.01 \u{b7} up 6.27 KB/s");
+    assert_eq!(rate_pair(532.0, 1_229.0), "down 0.52 \u{b7} up 1.20 KB/s");
+    assert_eq!(rate_pair(180.0, 146.0), "down 180 \u{b7} up 146 B/s");
+    assert_eq!(rate_pair(0.0, 0.0), "down 0 \u{b7} up 0 B/s");
 }

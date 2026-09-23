@@ -155,7 +155,43 @@ pub fn tront_mark(ui: &mut egui::Ui, primary: Color32, secondary: Color32, size:
     );
 }
 
-pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) {
+/// A selectable tab pill in a fixed slot sized for its framed (selected or
+/// hovered) state: a pill that gains a frame when selected never nudges the
+/// tabs after it sideways. Returns the button response.
+pub fn stable_tab(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let text = ui
+        .painter()
+        .layout_no_wrap(label.into(), font, Color32::PLACEHOLDER)
+        .size();
+    let pad = ui.spacing().button_padding;
+    let visuals = ui.visuals();
+    let stroke = visuals
+        .widgets
+        .active
+        .bg_stroke
+        .width
+        .max(visuals.widgets.hovered.bg_stroke.width)
+        .max(visuals.selection.stroke.width)
+        .max(visuals.widgets.inactive.bg_stroke.width);
+    let size = Vec2::new(
+        text.x + pad.x * 2.0 + stroke * 2.0 + 2.0,
+        (text.y + pad.y * 2.0 + stroke * 2.0).max(ui.spacing().interact_size.y),
+    )
+    .ceil();
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    // A child Ui that never allocates back into the parent: even a framed
+    // button a fraction wider than the slot cannot push later tabs.
+    let mut slot = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
+    );
+    slot.add(egui::Button::selectable(selected, label).wrap_mode(egui::TextWrapMode::Extend))
+}
+
+/// Returns the pill's label response, so a caller can attach hover text.
+pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) -> egui::Response {
     let dark = ui.visuals().dark_mode;
     let frame = egui::Frame::new()
         .fill(theme::text_surface(
@@ -164,14 +200,18 @@ pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) {
         ))
         .corner_radius(20.0)
         .inner_margin(egui::Margin::symmetric(8, 3));
+    let mut response = None;
     hover_frame(ui, frame, |ui| {
-        ui.label(
-            RichText::new(label)
-                .size(10.0)
-                .strong()
-                .color(theme::ink(color, dark)),
+        response = Some(
+            ui.label(
+                RichText::new(label)
+                    .size(10.0)
+                    .strong()
+                    .color(theme::ink(color, dark)),
+            ),
         );
     });
+    response.expect("hover_frame runs its contents once")
 }
 
 pub fn nav_button(ui: &mut egui::Ui, selected: bool, icon: Icon, label: &str, t: Tokens) -> bool {
@@ -564,8 +604,15 @@ pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Toke
             .total_read_bytes
             .saturating_add(process.total_write_bytes),
     );
-    let (rect, response) =
-        ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
+    let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
+    let cols = history_columns(full);
+    // The stripe and hover band end with the last column (plus the same
+    // 8 px the rank column is inset by), never running on past TOTAL I/O.
+    let rect = egui::Rect::from_min_max(
+        full.min,
+        egui::pos2((cols.io_right + 8.0).min(full.right()), full.bottom()),
+    );
+    let response = ui.interact(rect, ui.id().with(("history_row", rank)), Sense::hover());
     if rank % 2 == 1 {
         ui.painter()
             .rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
@@ -574,7 +621,6 @@ pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Toke
         ui.painter()
             .rect_filled(rect, 0.0, ui.visuals().widgets.hovered.weak_bg_fill);
     }
-    let cols = history_columns(rect);
     for (text, left, right, font, color, align) in [
         (
             ordinal.as_str(),
@@ -1860,6 +1906,7 @@ pub fn inventory_table<const N: usize>(
     flex_index: usize,
     row_count: usize,
     selected: Option<usize>,
+    chip: Option<StateChipColumn<'_>>,
     mut values: impl FnMut(usize) -> [(String, String); N],
     t: Tokens,
 ) -> Option<usize> {
@@ -1901,15 +1948,18 @@ pub fn inventory_table<const N: usize>(
                 body.rows(32.0, row_count, |mut row| {
                     let index = row.index();
                     row.set_selected(selected == Some(index));
-                    for (value, hover) in &values(index) {
+                    for (column, (value, hover)) in values(index).iter().enumerate() {
                         table_column(&mut row, t, |ui| {
-                            if table_label(
-                                ui,
-                                RichText::new(value.as_str()).size(12.0).color(t.text),
-                            )
-                            .on_hover_text(hover.as_str())
-                            .clicked()
-                            {
+                            let response = match chip {
+                                Some((chip_column, color)) if chip_column == column => {
+                                    state_chip(ui, value, color(value), t)
+                                }
+                                _ => table_label(
+                                    ui,
+                                    RichText::new(value.as_str()).size(12.0).color(t.text),
+                                ),
+                            };
+                            if response.on_hover_text(hover.as_str()).clicked() {
                                 clicked = Some(index);
                             }
                         });
@@ -1918,6 +1968,46 @@ pub fn inventory_table<const N: usize>(
             });
     });
     clicked
+}
+
+/// `(column index, color for a state word)`: the inventory column drawn as
+/// [`state_chip`] cells instead of plain text.
+pub type StateChipColumn<'a> = (usize, &'a dyn Fn(&str) -> Color32);
+
+/// A table-cell state chip: a colored dot and the state word on a faint tint
+/// of the same color, so Running and Stopped read apart at a glance. The cell
+/// stays one click target, like [`table_label`].
+pub fn state_chip(ui: &mut egui::Ui, text: &str, color: Color32, t: Tokens) -> egui::Response {
+    let response = ui.allocate_response(ui.available_size(), Sense::click());
+    let font = FontId::proportional(11.0);
+    let ink = t.ink(color);
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, ink);
+    let width = (galley.size().x + 24.0).min(response.rect.width());
+    let chip = egui::Rect::from_min_size(
+        egui::pos2(response.rect.left(), response.rect.center().y - 10.0),
+        Vec2::new(width, 20.0),
+    );
+    ui.painter().rect_filled(
+        chip,
+        10.0,
+        t.surface(theme::mix(t.panel_raised, color, 0.16)),
+    );
+    ui.painter()
+        .circle_filled(chip.left_center() + Vec2::new(9.0, 0.0), 3.0, ink);
+    // Optically centered: the galley box carries descender room below the
+    // cap height, so lift the text by one pixel.
+    ui.painter_at(chip).galley(
+        egui::pos2(
+            chip.left() + 17.0,
+            chip.center().y - galley.size().y * 0.5 - 1.0,
+        ),
+        galley,
+        ink,
+    );
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), text));
+    paint_table_focus(ui, &response);
+    response
 }
 
 pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {
@@ -1939,6 +2029,26 @@ pub fn tile_grid_columns(width: f32) -> usize {
     } else {
         4
     }
+}
+
+/// Grid columns for `cards` cards when the width allows `columns`: keep
+/// `columns` when the cards fill every row; otherwise widen to the fewest
+/// extra columns (each still at least `min_card` wide) that make every row
+/// full, then fall back to fewer columns that divide the cards evenly. Only
+/// when neither exists does the grid keep `columns` and a short last row.
+pub fn balanced_columns(cards: usize, columns: usize, width: f32, min_card: f32) -> usize {
+    let columns = columns.max(1);
+    if cards <= columns || cards.is_multiple_of(columns) {
+        return columns;
+    }
+    let fit = (width / min_card.max(1.0)).floor() as usize;
+    if let Some(wider) = (columns + 1..=fit.min(cards)).find(|k| cards.is_multiple_of(*k)) {
+        return wider;
+    }
+    (2..columns)
+        .rev()
+        .find(|k| cards.is_multiple_of(*k))
+        .unwrap_or(columns)
 }
 
 /// Columns to allocate for a grid row holding `cards` of a `columns`-wide
@@ -2191,6 +2301,19 @@ mod tests {
     }
 
     #[test]
+    fn balanced_columns_never_leave_an_orphan_card_when_a_full_grid_fits() {
+        // Three engine cards at a two-column width go three across.
+        assert_eq!(balanced_columns(3, 2, 535.0, 170.0), 3);
+        // Too narrow for three: keep two (and the short last row).
+        assert_eq!(balanced_columns(3, 2, 400.0, 170.0), 2);
+        // Already full rows, or fewer cards than columns: unchanged.
+        assert_eq!(balanced_columns(4, 2, 535.0, 170.0), 2);
+        assert_eq!(balanced_columns(2, 3, 900.0, 170.0), 3);
+        // Six at four columns: three across divides evenly.
+        assert_eq!(balanced_columns(6, 4, 900.0, 300.0), 3);
+    }
+
+    #[test]
     fn row_columns_stretches_a_short_row_only_within_one_and_a_half_widths() {
         assert_eq!(row_columns(4, 4), 4);
         assert_eq!(row_columns(4, 3), 3);
@@ -2242,6 +2365,7 @@ mod tests {
                     ],
                     1,
                     20_000,
+                    None,
                     None,
                     |index| {
                         formatted.push(index);
@@ -2498,7 +2622,9 @@ mod tests {
                                             settings,
                                             t,
                                         ),
-                                        5 => status_pill(ui, "LIVE", t.good),
+                                        5 => {
+                                            status_pill(ui, "LIVE", t.good);
+                                        }
                                         6 => {
                                             mini_meter_text(
                                                 ui,

@@ -347,7 +347,7 @@ fn build(adapters: Result<Vec<Adapter>, String>) -> Section {
             continue;
         }
         group.push_row(
-            Row::live("Throughput", live).note("Receive / transmit over the sampler interval"),
+            Row::live("Throughput", live).note("Download / upload over the sampler interval"),
         );
         group.push_row(Row::new(
             "MTU",

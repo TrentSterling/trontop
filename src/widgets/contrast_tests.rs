@@ -192,7 +192,9 @@ fn contrast_badges_and_selected_device_captions_survive_extreme_themes() {
                             |ui| {
                                 ui.set_width(220.0);
                                 match widget {
-                                    0 => status_pill(ui, "Sensor status", t.accent),
+                                    0 => {
+                                        status_pill(ui, "Sensor status", t.accent);
+                                    }
                                     1 => {
                                         rail_button(
                                             ui,

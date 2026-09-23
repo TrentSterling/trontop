@@ -460,8 +460,9 @@ fn switching_process_pages_never_leaves_an_invisible_sort_key() {
             for _ in 0..3 {
                 output = frame(&ctx, &mut app, size, vec![]);
             }
+            // Details shows every column, WRITE included.
             let hidden = if page == Page::Details {
-                column == SortColumn::WriteRate
+                false
             } else {
                 matches!(
                     column,

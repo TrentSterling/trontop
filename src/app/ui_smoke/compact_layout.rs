@@ -112,14 +112,16 @@ fn compact_layout_metric_values_and_footer_fit_with_or_without_inspector() {
                     frame(&ctx, &mut app, size, vec![]);
                 }
                 let output = frame(&ctx, &mut app, size, vec![]);
-                let toolbar_count = visible_text(
-                    &output,
-                    &format!("{} processes", app.snapshot.process_count),
-                );
+                let toolbar = visible_text(&output, "Flat");
                 let name = visible_text(&output, "NAME");
+                assert!(toolbar.bottom() < name.top(), "toolbar overlaps table");
+                // The process count is shown once: in the footer only.
                 assert!(
-                    toolbar_count.bottom() < name.top(),
-                    "toolbar overlaps table"
+                    !text_shapes(&output)
+                        .iter()
+                        .any(|(text, _)| text.galley.job.text
+                            == format!("{} processes", app.snapshot.process_count)),
+                    "process count repeated in the toolbar"
                 );
                 let footer = format!(
                     "{} processes \u{b7} {} rows",

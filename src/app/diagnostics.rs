@@ -242,28 +242,33 @@ impl TrontopApp {
         response.on_hover_text(hover);
     }
 
+    /// Nothing while the provider is fresh; a single plain sentence when its
+    /// readings are stale or unavailable, with the age on hover. Cards
+    /// already carry their own state chips, so there is no status pill or
+    /// "Last usable data" row here.
     pub(super) fn provider_notice(&self, ui: &mut egui::Ui, provider: Provider) {
         let health = self.snapshot.diagnostics.get(provider);
         let now = Instant::now();
         let state = health.state(provider, now);
+        if !matches!(state, State::Stale | State::Unavailable) {
+            return;
+        }
         let t = self.colors();
-        widgets::hover_frame(ui, widgets::surface(ui, t, true), |ui| {
-            ui.set_min_width(ui.available_width());
-            ui.horizontal_wrapped(|ui| {
-                widgets::status_pill(ui, state.label(), state_color(state, t));
-                widgets::hover_label(
-                    ui,
-                    RichText::new(format!(
-                        "Last usable data: {}",
-                        age(health.last_success, now)
-                    ))
-                    .size(11.0),
-                );
-            });
-            if matches!(state, State::Stale | State::Unavailable) {
-                widgets::hover_label(ui, RichText::new("No fresh reading. Cached values are not live; missing fields are not zero.").size(11.0));
-            }
-        });
+        ui.add_space(theme::space::S);
+        widgets::hover_label(
+            ui,
+            RichText::new(
+                "No fresh reading: values shown are cached, and missing fields are not zero.",
+            )
+            .size(11.0)
+            .color(t.text_muted),
+        )
+        .on_hover_text(format!(
+            "{}: {}. Last usable data {}.",
+            provider.name(),
+            state.label(),
+            age(health.last_success, now)
+        ));
         ui.add_space(theme::space::M);
     }
 }

@@ -14,13 +14,13 @@ pub(super) enum Combine {
     First,
     /// The hottest sensor.
     Max,
-    /// Read plus write, receive plus send, paged plus nonpaged.
+    /// Read plus write, download plus upload, paged plus nonpaged.
     Sum,
 }
 
 pub(super) struct Series<'a> {
     pub chart: &'a Chart,
-    /// Short legend label ("R", "Receive", "S0"); empty on single-series cards.
+    /// Short legend label ("Read", "Download", "S0"); empty on single-series cards.
     pub label: &'static str,
 }
 
@@ -241,7 +241,7 @@ fn place(chart: &Chart) -> (String, String, &'static str, Combine, u8) {
         Id::Disk(instance, metric @ (3 | 4)) => (
             format!("disk-io-{instance}"),
             "Read / write".into(),
-            if *metric == 3 { "R" } else { "W" },
+            if *metric == 3 { "Read" } else { "Write" },
             Combine::Sum,
             0,
         ),
@@ -250,7 +250,11 @@ fn place(chart: &Chart) -> (String, String, &'static str, Combine, u8) {
         Id::Network(name, direction) => (
             format!("net-{name}"),
             "Network traffic".into(),
-            if *direction == 0 { "Receive" } else { "Send" },
+            if *direction == 0 {
+                "Download"
+            } else {
+                "Upload"
+            },
             Combine::Sum,
             0,
         ),
