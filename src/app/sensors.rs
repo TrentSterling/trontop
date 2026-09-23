@@ -12,6 +12,7 @@ impl TrontopApp {
     pub(super) fn sensors_page(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         let now = Instant::now();
+        ui.spacing_mut().item_spacing.y = 0.0;
         // A fixed-height row: an unbounded right_to_left child otherwise
         // claims the rest of the page height and centers the chips in the
         // middle of the window instead of beside the intro text.
@@ -73,16 +74,20 @@ impl TrontopApp {
                 });
             },
         );
-        ui.add_space(theme::space::S);
+        ui.add_space(theme::space::M);
         egui::ScrollArea::vertical()
             .id_salt("all_sensors_scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                // Vertical rhythm is explicit on this page: no implicit item
+                // spacing between blocks, only the shared scale below.
+                ui.spacing_mut().item_spacing.y = 0.0;
                 self.gpu_sensor_performance(ui);
                 ui.add_space(theme::space::L);
                 self.storage_sensor_cards(ui);
                 ui.add_space(theme::space::L);
                 self.bridge_sensor_cards(ui, now);
+                ui.add_space(theme::space::L);
             });
     }
 
@@ -119,6 +124,8 @@ impl TrontopApp {
         let fresh = bridge.collected_at.is_some_and(|at| {
             now.saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
         });
+        // The same row rhythm as System's spec rows.
+        ui.spacing_mut().item_spacing.y = 3.0;
         header.response.on_hover_text(format!(
             "Read-only values published by {providers}. {} readings in total; every one is \
              listed on System > Sensor Sources. ACPI thermal zones are never shown as CPU \
@@ -250,8 +257,22 @@ impl TrontopApp {
             )
             .on_hover_text(provenance(0));
         }
+        // The Sensors page stacks drives and CPU sensors under the GPU, so its
+        // plots are shorter; Performance > GPU sensors has the pane to itself.
+        // Tall windows (1600x1000) get the full plot back.
+        let plot_height = if on_sensors_page && ui.available_height() < 760.0 {
+            78.0
+        } else {
+            106.0
+        };
         for (index, adapter) in adapters.iter().enumerate() {
             ui.push_id(("sensor_adapter", adapter.uuid.as_deref(), index), |ui| {
+                // Explicit vertical rhythm: the block looks the same on
+                // Sensors and on Performance whatever the parent spacing.
+                ui.spacing_mut().item_spacing.y = 0.0;
+                if index > 0 {
+                    ui.add_space(theme::space::L);
+                }
                 let mut hover = provenance(index);
                 if adapter.uuid.is_none() {
                     hover.push_str(
@@ -266,9 +287,12 @@ impl TrontopApp {
                         widgets::section_header(ui, &adapter.name, None, t);
                     });
                     header.response.on_hover_text(hover);
+                } else {
+                    ui.add_space(theme::space::M);
                 }
                 if let Some(error) = &adapter.error {
                     widgets::hover_label(ui, RichText::new(error).color(t.text));
+                    ui.add_space(theme::space::S);
                 }
                 let history = adapter
                     .uuid
@@ -283,7 +307,10 @@ impl TrontopApp {
                             adapter.temperature_c.map(|v| format!("{v} °C")),
                             "GPU die sensor, read-only NVML.",
                             history,
-                            false,
+                            SensorPlot {
+                                power: false,
+                                height: plot_height,
+                            },
                             self.theme,
                             t,
                         );
@@ -293,33 +320,42 @@ impl TrontopApp {
                             adapter.power_w.map(|v| format!("{v:.1} W")),
                             "Driver-reported board draw, read-only NVML.",
                             history,
-                            true,
+                            SensorPlot {
+                                power: true,
+                                height: plot_height,
+                            },
                             self.theme,
                             t,
                         );
                     });
                 });
-                ui.add_space(theme::space::M);
+                ui.add_space(theme::space::GAP);
                 let details = sensor_details(adapter);
                 let memory_note = if adapter.memory.is_none() {
                     "VRAM is unavailable for this adapter."
                 } else if adapter.memory_includes_reserved {
-                    "Legacy VRAM reading includes driver reservations."
+                    "Legacy VRAM reading includes driver reservations; the total is the \
+                     adapter's full memory."
                 } else {
-                    "VRAM used excludes driver reservations."
+                    "VRAM used excludes driver reservations; the total is the adapter's full \
+                     memory."
                 };
                 let per_row = if ui.available_width() >= 640.0 { 4 } else { 2 };
-                for row in details.chunks(per_row) {
-                    ui.columns(per_row, |columns| {
-                        for (index, (column, (label, value))) in
-                            columns.iter_mut().zip(row).enumerate()
-                        {
-                            render_metric(column, index, label, value, memory_note, t);
+                ui.scope(|ui| {
+                    ui.spacing_mut().item_spacing.x = theme::space::GAP;
+                    for (row_index, row) in details.chunks(per_row).enumerate() {
+                        if row_index > 0 {
+                            ui.add_space(theme::space::GAP);
                         }
-                    });
-                    ui.add_space(theme::space::S);
-                }
-                ui.add_space(theme::space::L);
+                        ui.columns(per_row, |columns| {
+                            for (index, (column, (label, value))) in
+                                columns.iter_mut().zip(row).enumerate()
+                            {
+                                render_metric(column, index, label, value, memory_note, t);
+                            }
+                        });
+                    }
+                });
             });
         }
     }
@@ -339,7 +375,7 @@ fn sensor_details(adapter: &AdapterSensors) -> [(&'static str, String); 4] {
                 .map_or_else(|| "--".into(), |v| format!("{v}%")),
         ),
         (
-            "VRAM used / total",
+            "VRAM used",
             adapter.memory.map_or_else(
                 || "--".into(),
                 |(used, total)| {
@@ -366,16 +402,20 @@ fn render_metric(
 ) {
     let mut hover = match label {
         "Fan target" => "Fan % is the intended speed, not measured RPM.".to_owned(),
-        "VRAM used / total" => memory_note.to_owned(),
+        "VRAM used" => memory_note.to_owned(),
         _ => "Read-only NVML driver telemetry.".to_owned(),
     };
     if value == "--" {
-        hover.push_str(
-            "
-Not reported by the driver for this adapter.",
-        );
+        hover.push_str("\nNot reported by the driver for this adapter.");
     }
     widgets::value_tile(ui, label, value, &hover, None, index % 2 == 1, t);
+}
+
+/// Which reading a GPU sensor card plots, and how tall its plot is.
+#[derive(Clone, Copy)]
+struct SensorPlot {
+    power: bool,
+    height: f32,
 }
 
 /// Card anatomy: a 13 px title with a right-aligned "peak" chip, the 21 px
@@ -388,10 +428,11 @@ fn sensor_card(
     value: Option<String>,
     source: &str,
     history: Option<&SensorHistory>,
-    power: bool,
+    plot: SensorPlot,
     settings: ThemeSettings,
     t: Tokens,
 ) {
+    let power = plot.power;
     widgets::hover_frame(
         ui,
         widgets::surface(ui, t, power).inner_margin(theme::CARD_PAD),
@@ -466,7 +507,7 @@ fn sensor_card(
                 response.on_hover_text("Not reported by the driver for this adapter.");
             }
             let color = if power { t.accent } else { t.secondary };
-            sensor_graph(ui, history, power, color, settings, t);
+            sensor_graph(ui, history, plot, color, settings, t);
         },
     );
 }
@@ -474,13 +515,16 @@ fn sensor_card(
 fn sensor_graph(
     ui: &mut egui::Ui,
     history: Option<&SensorHistory>,
-    power: bool,
+    plot_spec: SensorPlot,
     color: Color32,
     settings: ThemeSettings,
     t: Tokens,
 ) {
-    let (rect, response) =
-        ui.allocate_exact_size(Vec2::new(ui.available_width(), 106.0), Sense::hover());
+    let power = plot_spec.power;
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), plot_spec.height),
+        Sense::hover(),
+    );
     let painter = ui.painter_at(rect);
     painter.rect_filled(
         rect,

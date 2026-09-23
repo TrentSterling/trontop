@@ -635,7 +635,7 @@ fn sensor_fields_keep_geometry_when_data_is_missing_or_cached_and_cache_does_not
             "Graphics clock",
             "Memory clock",
             "Fan target",
-            "VRAM used / total",
+            "VRAM used",
         ]
         .into_iter()
         .map(|label| {
@@ -1400,6 +1400,88 @@ fn sensors_page_drive_without_sensors_is_a_gap_row_not_a_card() {
             .any(|(text, _)| text.galley.job.text.contains("Unavailable")),
         "a silent drive must never render a giant Unavailable card"
     );
+}
+
+/// At Trent's 1000x580 window the Sensors page keeps a tight vertical
+/// rhythm: the GPU block (cards plus the metric row) stays within 250 px and
+/// the Drives section starts above the fold, in both themes.
+#[test]
+fn sensors_page_drives_start_above_the_fold_at_1000x580() {
+    for dark in [true, false] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        app.page = Page::Sensors;
+        let size = Vec2::new(1000.0, 580.0);
+        let mut output = egui::FullOutput::default();
+        for _ in 0..3 {
+            output = frame(&ctx, &mut app, size, vec![]);
+        }
+        let texts = text_shapes(&output);
+        let top = |label: &str| {
+            texts
+                .iter()
+                .find(|(text, _)| text.galley.job.text == label)
+                .unwrap_or_else(|| panic!("{label} not rendered"))
+                .0
+                .visual_bounding_rect()
+        };
+        let drives = top("Drives");
+        assert!(
+            drives.top() < 560.0,
+            "Drives header starts at {} px, below the fold",
+            drives.top()
+        );
+        let block = top("GPU temperature").top();
+        let metric_row = top("VRAM used").top();
+        assert!(
+            drives.top() - block <= 250.0,
+            "GPU block is {} px tall at 1000x580",
+            drives.top() - block
+        );
+        assert!(metric_row < drives.top());
+        // The drive card and its sensor values are fully on screen too.
+        for label in ["S0", "S1", "S2"] {
+            assert!(top(label).bottom() < 580.0, "{label} below the fold");
+        }
+    }
+}
+
+/// Card anatomy on the Sensors page: the peak is a small chip in the title
+/// row, never a "Peak" footer line under the plot.
+#[test]
+fn sensors_page_has_no_peak_footer_text() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Sensors;
+    for size in [
+        Vec2::new(1000.0, 580.0),
+        Vec2::new(1280.0, 800.0),
+        Vec2::new(1600.0, 1000.0),
+    ] {
+        let mut output = egui::FullOutput::default();
+        for _ in 0..3 {
+            output = frame(&ctx, &mut app, size, vec![]);
+        }
+        let texts = text_shapes(&output);
+        assert!(
+            !texts
+                .iter()
+                .any(|(text, _)| text.galley.job.text.starts_with("Peak")),
+            "no Peak footer on the Sensors page at {size:?}"
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|(text, _)| text.galley.job.text.starts_with("peak ")),
+            "the peak lives in the title chip at {size:?}"
+        );
+    }
 }
 
 #[test]
