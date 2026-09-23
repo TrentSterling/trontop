@@ -1082,9 +1082,12 @@ fn sensor_states_render_without_wrapping_or_fabricated_readings() {
 
 #[test]
 fn drive_sensor_fields_stay_aligned_for_live_cached_unavailable_and_disconnected_data() {
+    // Chip vocabulary is restricted to Live (no chip), Cached and Stale; raw
+    // "Unavailable"/"Disconnected" driver text never becomes a visible chip.
+    let expected_chip: [Option<&str>; 4] = [None, Some("Cached"), Some("Stale"), Some("Stale")];
     for dark in [true, false] {
         let mut expected = None;
-        for state in 0..4 {
+        for (state, chip) in expected_chip.into_iter().enumerate() {
             let settings = ThemeSettings {
                 dark,
                 ..Default::default()
@@ -1126,18 +1129,35 @@ fn drive_sensor_fields_stay_aligned_for_live_cached_unavailable_and_disconnected
                 .map(|index| {
                     let (text, clip) = texts
                         .iter()
-                        .find(|(text, _)| text.galley.job.text == format!("Sensor {index}"))
+                        .find(|(text, _)| text.galley.job.text == format!("S{index}"))
                         .unwrap();
                     assert!(clip.contains_rect(text.visual_bounding_rect()));
                     text.visual_bounding_rect()
                 })
                 .collect();
             if let Some(expected) = &expected {
-                assert_eq!(&bounds, expected);
+                assert_eq!(&bounds, expected, "sensor row shifted at state {state}");
             }
             expected = Some(bounds);
-            assert!(texts.iter().any(|(text, _)| text.galley.job.text
-                == ["Live", "Cached", "Unavailable", "Disconnected"][state]));
+            match chip {
+                Some(chip) => assert!(
+                    texts.iter().any(|(text, _)| text.galley.job.text == chip),
+                    "state {state} missing chip {chip}"
+                ),
+                None => {
+                    assert!(
+                        !texts.iter().any(|(text, _)| ["Cached", "Stale"]
+                            .contains(&text.galley.job.text.as_str())),
+                        "a Live drive must show no state chip"
+                    )
+                }
+            }
+            assert!(
+                !texts
+                    .iter()
+                    .any(|(text, _)| text.galley.job.text.contains("Unavailable")),
+                "raw driver wording must never reach the sensors page (state {state})"
+            );
             assert!(!texts.iter().any(|(text, _)| {
                 text.galley
                     .job
@@ -1160,6 +1180,103 @@ fn drive_sensor_fields_stay_aligned_for_live_cached_unavailable_and_disconnected
             }
         }
     }
+}
+
+/// No sensor bridge provider has ever polled (the fixture default): the CPU
+/// and motherboard section collapses to one gap row, never four separate
+/// "Unavailable" rows and a paragraph of provider jargon.
+#[test]
+fn no_sensor_bridge_provider_is_one_gap_row_not_four_unavailable_rows() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Sensors;
+    let size = Vec2::new(1280.0, 900.0);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let texts = text_shapes(&output);
+    assert!(
+        !texts
+            .iter()
+            .any(|(text, _)| text.galley.job.text.contains("Unavailable")),
+        "no provider must never surface raw Unavailable text on the Sensors page"
+    );
+    let gap_rows = texts
+        .iter()
+        .filter(|(text, _)| text.galley.job.text == "CPU and motherboard sensors")
+        .count();
+    assert_eq!(
+        gap_rows, 1,
+        "exactly one gap row explains the missing CPU sensors"
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|(text, _)| text.galley.job.text == "Needs sensor app"),
+        "the gap row carries its short reason chip"
+    );
+    for label in [
+        "CPU package temperature",
+        "Motherboard temperature",
+        "CPU package power",
+        "CPU core voltage",
+    ] {
+        assert!(
+            !texts.iter().any(|(text, _)| text.galley.job.text == label),
+            "individual bridge rows must not render without a provider ({label})"
+        );
+    }
+}
+
+/// A drive whose storage driver reports no temperature sensor is a compact
+/// gap row on the Sensors page too, never a card with an empty plot.
+#[test]
+fn sensors_page_drive_without_sensors_is_a_gap_row_not_a_card() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Sensors;
+    let storage = std::sync::Arc::make_mut(&mut app.snapshot.storage_sensors);
+    storage.drives.push(crate::storage_sensors::DriveReading {
+        device: crate::storage_sensors::Device {
+            id: "FIXTURE-SILENT-DRIVE".into(),
+            name: "WDC WD60EZAX-00C8VB0".into(),
+        },
+        temperatures: crate::storage_sensors::Temperatures::default(),
+        last_attempt: Some(std::time::Instant::now()),
+        last_success: None,
+        query_millis: Some(1.0),
+        error: Some(crate::storage_sensors::Error::Windows(1)),
+        present: true,
+    });
+    let size = Vec2::new(1280.0, 900.0);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let texts = text_shapes(&output);
+    assert!(
+        texts
+            .iter()
+            .any(|(text, _)| text.galley.job.text == "WDC WD60EZAX-00C8VB0"),
+        "the silent drive's gap row shows its name"
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|(text, _)| text.galley.job.text == "Not reported"),
+        "the silent drive's gap row carries a short reason chip"
+    );
+    // The drive with real sensors still gets its compact card, not a gap.
+    assert!(texts.iter().any(|(text, _)| text.galley.job.text == "S0"));
+    assert!(
+        !texts
+            .iter()
+            .any(|(text, _)| text.galley.job.text.contains("Unavailable")),
+        "a silent drive must never render a giant Unavailable card"
+    );
 }
 
 #[test]
