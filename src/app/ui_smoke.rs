@@ -931,6 +931,98 @@ fn network_performance_graph_label_carries_a_rate_unit() {
 }
 
 #[test]
+fn volume_graph_draws_read_and_write_with_a_legend() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Performance;
+    app.performance_device = PerformanceDevice::Disk(0);
+    let mut output = frame(&ctx, &mut app, Vec2::new(1280.0, 900.0), vec![]);
+    for _ in 0..2 {
+        output = frame(&ctx, &mut app, Vec2::new(1280.0, 900.0), vec![]);
+    }
+    let content: Vec<_> = text_shapes(&output)
+        .into_iter()
+        .filter(|(s, _)| s.pos.x > 450.0)
+        .collect();
+    // The legend sits in the plot's top strip, above the Read / Write tiles.
+    let tile = |label: &str| {
+        content
+            .iter()
+            .find(|(s, _)| s.galley.job.text == label)
+            .unwrap_or_else(|| panic!("{label} tile missing"))
+            .0
+            .pos
+            .y
+    };
+    for label in ["Read", "Write"] {
+        let tile_y = tile(label);
+        assert!(
+            content
+                .iter()
+                .any(|(s, _)| s.galley.job.text.starts_with(label)
+                    && s.pos.y < tile_y - 40.0
+                    && s.galley.job.text.len() <= label.len() + 14),
+            "the volume graph legend has no {label} entry"
+        );
+    }
+    assert!(
+        content
+            .iter()
+            .any(|(s, _)| s.galley.job.text.ends_with("B/s")
+                && s.galley
+                    .job
+                    .text
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())),
+        "the volume axis carries a rate unit"
+    );
+}
+
+#[test]
+fn performance_rail_scrolls_a_selected_device_below_the_fold_into_view() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    let size = Vec2::new(1000.0, 580.0);
+    app.page = Page::Performance;
+    let last = app.snapshot.networks.len() - 1;
+    let name = app.snapshot.networks[last].name.clone();
+    let rail_item = |output: &egui::FullOutput| {
+        text_shapes(output)
+            .into_iter()
+            .find(|(s, _)| s.galley.job.text == name && s.pos.x > 200.0 && s.pos.x < 420.0)
+            .map(|(s, clip)| (s.visual_bounding_rect(), clip))
+    };
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    for _ in 0..2 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let (rect, clip) = rail_item(&output).expect("rail lists the last adapter");
+    assert!(
+        !clip.contains_rect(rect),
+        "fixture precondition: the last rail device starts below the fold"
+    );
+    app.performance_device = PerformanceDevice::Network(last);
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let (rect, clip) = rail_item(&output).expect("rail lists the last adapter");
+    assert!(
+        clip.contains_rect(rect),
+        "selected rail item {rect:?} is outside the rail clip {clip:?}"
+    );
+    // Following happens once per selection: scrolling the rail back up by
+    // hand is not undone on the next frames.
+    let followed = app.rail_followed.clone();
+    for _ in 0..2 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    assert!(app.rail_followed == followed);
+}
+
+#[test]
 fn navigation_and_selection_accept_local_pointer_input() {
     let ctx = egui::Context::default();
     let mut app = app(ThemeSettings::default(), true);

@@ -254,6 +254,13 @@ fn place(chart: &Chart) -> (String, String, &'static str, Combine, u8) {
             Combine::Sum,
             0,
         ),
+        Id::Volume(mount, direction) => (
+            format!("volume-{mount}"),
+            "Volume throughput".into(),
+            if *direction == 0 { "Read" } else { "Write" },
+            Combine::Sum,
+            0,
+        ),
         Id::Cpu(_) => single(0),
     }
 }
@@ -382,7 +389,7 @@ const IDLE_MEMORY_GIB: f32 = 1.0 / 16.0;
 /// and shared memory stayed under 64 MiB for the whole window (an iGPU the
 /// desktop is not using). A signal that never reported keeps the adapter on
 /// the wall: that is a gap, not idleness.
-fn idle_adapter_keys(history: &History, now: Instant) -> Vec<crate::gpu_adapters::Key> {
+pub(super) fn idle_adapter_keys(history: &History, now: Instant) -> Vec<crate::gpu_adapters::Key> {
     let mut keys: Vec<crate::gpu_adapters::Key> = Vec::new();
     for chart in &history.charts {
         if let Id::Adapter(key, 3) = chart.id

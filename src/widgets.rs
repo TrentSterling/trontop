@@ -1301,11 +1301,15 @@ pub fn sparkline_range(
 
 /// A Performance rail tile. `max` fixes the sparkline scale (100 for
 /// percentages, so an idle disk never reads as a full-height spike); `None`
-/// auto-scales to the visible samples (rates, temperatures).
+/// auto-scales to the visible samples (rates, temperatures). When `selected`
+/// and `follow` are both set, the tile scrolls its enclosing scroll area just
+/// enough to show it; callers pass `follow` only on the frame the selection
+/// changed.
 #[allow(clippy::too_many_arguments)]
-pub fn device_button(
+pub fn rail_button(
     ui: &mut egui::Ui,
     selected: bool,
+    follow: bool,
     label: &str,
     value: &str,
     history: &VecDeque<f32>,
@@ -1381,6 +1385,10 @@ pub fn device_button(
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, label)
     });
+    if selected && follow {
+        // An instant jump: no animation frames, so no repaint run.
+        response.scroll_to_me_animation(None, egui::style::ScrollAnimation::none());
+    }
     response
         .on_hover_text(format!("{label}: {value}"))
         .clicked()
@@ -1918,8 +1926,7 @@ pub fn push_history(history: &mut VecDeque<f32>, value: f32, limit: usize) {
 }
 
 /// Column count for a responsive tile grid: 1 below 520 px, 2 below 760, 3 below
-/// 1100, otherwise 4. Later polish-gauntlet packages wire this into page grids.
-#[allow(dead_code)]
+/// 1100, otherwise 4.
 pub fn tile_grid_columns(width: f32) -> usize {
     if width < 520.0 {
         1
@@ -1929,6 +1936,21 @@ pub fn tile_grid_columns(width: f32) -> usize {
         3
     } else {
         4
+    }
+}
+
+/// Columns to allocate for a grid row holding `cards` of a `columns`-wide
+/// grid. A full row uses every column. A short last row stretches its cards
+/// only while each stays within 1.5x a full-row card (4 columns with one
+/// missing, 3 with one missing); otherwise it keeps the full-row width and
+/// sits left aligned, so a lone card never spans the whole pane.
+pub fn row_columns(columns: usize, cards: usize) -> usize {
+    let columns = columns.max(1);
+    let cards = cards.clamp(1, columns);
+    if cards == columns || columns as f32 / cards as f32 <= 1.5 {
+        cards
+    } else {
+        columns
     }
 }
 
@@ -2087,6 +2109,24 @@ mod tests {
             .height();
         });
         assert_eq!(height, 22.0);
+    }
+
+    #[test]
+    fn row_columns_stretches_a_short_row_only_within_one_and_a_half_widths() {
+        assert_eq!(row_columns(4, 4), 4);
+        assert_eq!(row_columns(4, 3), 3);
+        assert_eq!(row_columns(4, 2), 4);
+        assert_eq!(row_columns(4, 1), 4);
+        assert_eq!(row_columns(3, 2), 2);
+        assert_eq!(row_columns(3, 1), 3);
+        assert_eq!(row_columns(2, 1), 2);
+        assert_eq!(row_columns(1, 1), 1);
+        for columns in 1..=4 {
+            for cards in 1..=columns {
+                let allocated = row_columns(columns, cards);
+                assert!(columns as f32 / allocated as f32 <= 1.5);
+            }
+        }
     }
 
     #[test]
@@ -2346,8 +2386,9 @@ mod tests {
                                             );
                                         }
                                         1 => {
-                                            device_button(
+                                            rail_button(
                                                 ui,
+                                                false,
                                                 false,
                                                 "CPU",
                                                 "37.2%",
@@ -2410,9 +2451,10 @@ mod tests {
                                             );
                                         }
                                         10 => {
-                                            device_button(
+                                            rail_button(
                                                 ui,
                                                 true,
+                                                false,
                                                 "CPU",
                                                 "37.2%",
                                                 &VecDeque::new(),

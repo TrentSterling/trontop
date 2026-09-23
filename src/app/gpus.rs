@@ -5,10 +5,22 @@ impl TrontopApp {
         let t = self.colors();
         self.graphs.ensure_sample(&self.snapshot);
         let adapters = &self.snapshot.gpu.adapters;
-        let selected = self
+        // With one adapter producing values (an idle iGPU, a software
+        // adapter or a silent counter identity does not count) there is
+        // nothing to pick: the row goes and that adapter is shown.
+        let active: Vec<_> = self
             .graphs
-            .gpu_selected
+            .active_adapters()
+            .into_iter()
             .filter(|key| adapters.iter().any(|a| a.key == *key))
+            .collect();
+        let picker = active.len() > 1 || (active.is_empty() && adapters.len() > 1);
+        let only = (active.len() == 1).then(|| active[0]);
+        let selected = only
+            .or(self
+                .graphs
+                .gpu_selected
+                .filter(|key| adapters.iter().any(|a| a.key == *key)))
             .unwrap_or_else(|| {
                 adapters
                     .iter()
@@ -30,25 +42,27 @@ impl TrontopApp {
         };
         // Counter identity and status are provenance, not something to read at
         // a glance; they live on the picker's hover, not their own text line.
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Adapter").color(t.text_muted));
-            egui::ComboBox::from_id_salt("gpu-adapter-selector")
-                .width((ui.available_width() - 8.0).clamp(140.0, 420.0))
-                .selected_text(adapter.name())
-                .show_ui(ui, |ui| {
-                    for adapter in adapters {
-                        ui.selectable_value(
-                            &mut self.graphs.gpu_selected,
-                            Some(adapter.key),
-                            format!("{} [{}]", adapter.name(), adapter.key.label()),
-                        )
-                        .on_hover_text(adapter.key.label());
-                    }
-                })
-                .response
-                .on_hover_text(format!("{}  |  {}", key.label(), activity.status()));
-        });
-        ui.add_space(8.0);
+        if picker {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("Adapter").color(t.text_muted));
+                egui::ComboBox::from_id_salt("gpu-adapter-selector")
+                    .width((ui.available_width() - 8.0).clamp(140.0, 420.0))
+                    .selected_text(adapter.name())
+                    .show_ui(ui, |ui| {
+                        for adapter in adapters {
+                            ui.selectable_value(
+                                &mut self.graphs.gpu_selected,
+                                Some(adapter.key),
+                                format!("{} [{}]", adapter.name(), adapter.key.label()),
+                            )
+                            .on_hover_text(adapter.key.label());
+                        }
+                    })
+                    .response
+                    .on_hover_text(format!("{}  |  {}", key.label(), activity.status()));
+            });
+            ui.add_space(theme::space::M);
+        }
         widgets::performance_heading(ui, &adapter.name(), "", &activity.label(), t.accent, t)
             .on_hover_text(format!(
                 "Busiest engine: {}
@@ -91,7 +105,7 @@ Windows GPU Engine and GPU Adapter Memory counters.",
             });
         }
         ui.add_space(8.0);
-        widgets::section_label(ui, "Engine histories", t);
+        widgets::section_header(ui, "Engine histories", None, t);
         if adapter.engines.is_empty() {
             widgets::hover_label(
                 ui,
@@ -99,11 +113,12 @@ Windows GPU Engine and GPU Adapter Memory counters.",
             );
         }
         self.graphs.adapter_charts(ui, key, false, t);
-        widgets::section_label(ui, "Memory histories", t);
+        widgets::section_header(ui, "Memory histories", None, t);
         self.graphs.adapter_charts(ui, key, true, t);
         if let Some(description) = &adapter.description {
             ui.add_space(4.0);
-            widgets::section_label(ui, "DXGI capacity (logical adapter, all nodes)", t);
+            // DXGI capacity of the logical adapter, all nodes.
+            widgets::section_header(ui, "Capacity", None, t);
             for (label, value) in [
                 ("Dedicated video memory", description.dedicated_video),
                 ("Dedicated system memory", description.dedicated_system),

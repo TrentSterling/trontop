@@ -123,8 +123,8 @@ impl Dashboard {
                 card
             })
             .collect();
-        let cols = if ui.available_width() >= 480.0 { 2 } else { 1 };
         let width = ui.available_width();
+        let cols = widgets::tile_grid_columns(width);
         let mut height = 0.0;
         for (row, chunk) in charts.chunks(cols).enumerate() {
             let size = Vec2::new(width, height);
@@ -134,7 +134,9 @@ impl Dashboard {
                 let response = ui.push_id(("gpu-charts", key, memory, row), |ui| {
                     ui.set_width(width);
                     ui.spacing_mut().item_spacing.x = theme::space::GAP;
-                    ui.columns(chunk.len(), |columns| {
+                    // A short last row keeps its siblings' width unless
+                    // stretching stays within 1.5x; never a lone wide card.
+                    ui.columns(widgets::row_columns(cols, chunk.len()), |columns| {
                         for (index, (column, card)) in columns.iter_mut().zip(chunk).enumerate() {
                             column.push_id(&card.key, |ui| {
                                 card_view(ui, card, now, self.style, (row + index) % 2 == 1, t)
@@ -165,31 +167,88 @@ impl Dashboard {
             );
         }
     }
+    /// Adapters that produced a measured wall value in the window and are not
+    /// folded as idle on the Graphs wall (an unused iGPU), in history order.
+    /// Software adapters and silent counter identities never count.
+    pub(super) fn active_adapters(&self) -> Vec<crate::gpu_adapters::Key> {
+        let now = self.now();
+        let idle = wall::idle_adapter_keys(&self.history, now);
+        let mut keys = Vec::new();
+        for chart in &self.history.charts {
+            if let history::Id::Adapter(key, _) = chart.id
+                && chart.wall
+                && !idle.contains(&key)
+                && !keys.contains(&key)
+                && wall::measured(chart, now)
+            {
+                keys.push(key);
+            }
+        }
+        keys
+    }
     /// Performance > network: one adapter's Receive and Send as two lines
     /// with a legend on a shared rate axis, the same history and drawing as
     /// the Graphs network card.
     pub(super) fn network_graph(&self, ui: &mut egui::Ui, name: &str, height: f32, t: Tokens) {
+        self.two_line_graph(
+            ui,
+            [
+                (history::Id::Network(name.to_owned(), 0), "Receive"),
+                (history::Id::Network(name.to_owned(), 1), "Send"),
+            ],
+            (
+                "Traffic history",
+                "No sample of this adapter has been recorded yet.",
+            ),
+            name,
+            height,
+            t,
+        );
+    }
+
+    /// Performance > volume: Read and Write as two lines with a legend on a
+    /// shared, rounded rate axis, drawn like the network graph.
+    pub(super) fn volume_graph(&self, ui: &mut egui::Ui, mount: &str, height: f32, t: Tokens) {
+        self.two_line_graph(
+            ui,
+            [
+                (history::Id::Volume(mount.to_owned(), 0), "Read"),
+                (history::Id::Volume(mount.to_owned(), 1), "Write"),
+            ],
+            (
+                "Throughput history",
+                "No sample of this volume has been recorded yet.",
+            ),
+            mount,
+            height,
+            t,
+        );
+    }
+
+    fn two_line_graph(
+        &self,
+        ui: &mut egui::Ui,
+        lines: [(history::Id, &'static str); 2],
+        (gap_title, gap_reason): (&str, &str),
+        title: &str,
+        height: f32,
+        t: Tokens,
+    ) {
         let now = self.now();
-        let series: Vec<_> = [(0, "Receive"), (1, "Send")]
-            .into_iter()
-            .filter_map(|(direction, label)| {
+        let series: Vec<_> = lines
+            .iter()
+            .filter_map(|(id, label)| {
                 self.history
-                    .chart(&history::Id::Network(name.to_owned(), direction))
+                    .chart(id)
                     .map(|chart| wall::Series { chart, label })
             })
             .collect();
         if series.is_empty() {
-            widgets::gap_row(
-                ui,
-                "Traffic history",
-                "Starting",
-                "No sample of this adapter has been recorded yet.",
-                t,
-            );
+            widgets::gap_row(ui, gap_title, "Starting", gap_reason, t);
             return;
         }
         let mut card = wall::Card::single(series[0].chart);
-        card.title = name.to_owned();
+        card.title = title.to_owned();
         card.combine = wall::Combine::Sum;
         card.series = series;
         let colors = [t.secondary, t.accent];

@@ -162,7 +162,9 @@ impl TrontopApp {
         let empty = VecDeque::new();
         widgets::section_header(ui, "Active time history", None, t);
         // Room below: the response and queue histories with their headers.
-        let height = widgets::fit_height(ui, 118.0, 60.0, 180.0);
+        // Active time is the headline history, so it keeps at least 80 px
+        // and the two smaller histories give way first.
+        let height = widgets::fit_height(ui, 104.0, 80.0, 180.0);
         widgets::history_graph_with_window(
             ui,
             history.map_or(&empty, |h| &h[Metric::Active as usize]),
@@ -176,7 +178,7 @@ impl TrontopApp {
         ui.add_space(theme::space::M);
         // Measured before the columns: each column's own origin would hide
         // how far down the page the pair sits. 26 px is the header row.
-        let small = widgets::fit_height(ui, 30.0, 56.0, 110.0);
+        let small = widgets::fit_height(ui, 36.0, 44.0, 110.0);
         ui.columns(2, |columns| {
             let response_fmt = |v: f32| {
                 if v >= 10.0 {

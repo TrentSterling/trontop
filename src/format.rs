@@ -46,13 +46,6 @@ pub fn rate(value: f64) -> String {
     format!("{}/s", format_scaled(raw, scaled, unit, &UNITS))
 }
 
-/// A disk MiB/s axis top, already rounded to a readable step by the caller
-/// (the history's native unit): a clean whole number, never the decimal
-/// text [`rate`] uses for a live reading.
-pub fn rate_mib_axis(mib_per_second: f32) -> String {
-    format!("{mib_per_second:.0} MB/s")
-}
-
 /// Rounds a bytes/second peak up to a readable rate-axis top, in the same
 /// bucket [`rate`] would display it in (KB/s, MB/s, GB/s), then converts
 /// back to bytes/second so a history stored in raw bytes/second can compare
@@ -203,12 +196,6 @@ mod tests {
         // byte quantities (`bytes`) switched to IEC labels.
         assert_eq!(rate(1_048_576.0), "1.00 MB/s");
         assert_eq!(rate(0.0), "0 B/s");
-    }
-
-    #[test]
-    fn rate_mib_axis_is_a_clean_whole_number() {
-        assert_eq!(rate_mib_axis(50.0), "50 MB/s");
-        assert_eq!(rate_mib_axis(0.0), "0 MB/s");
     }
 
     #[test]

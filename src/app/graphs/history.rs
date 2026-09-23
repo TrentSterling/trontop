@@ -18,6 +18,8 @@ pub(super) enum Id {
     Temperature(String, u16),
     Disk(String, usize),
     Network(String, u8),
+    /// A mounted volume's read (0) or write (1) rate, Performance only.
+    Volume(String, u8),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -839,6 +841,36 @@ impl History {
                         partial: false,
                         device: Some(network.name.clone()),
                         wall: true,
+                    },
+                    now,
+                );
+            }
+        }
+        // Volume throughput feeds Performance > Volume only: the Graphs wall
+        // already shows the same traffic per physical disk.
+        for disk in &s.disks {
+            for (index, (title, value)) in [
+                ("Read", disk.read_bytes_per_sec),
+                ("Write", disk.write_bytes_per_sec),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                self.field(
+                    Field {
+                        id: Id::Volume(disk.mount.clone(), index as u8),
+                        title,
+                        detail: &disk.mount,
+                        group: Group::Storage,
+                        unit: Unit::Rate,
+                        value: system.last_success.map(|_| value as f32),
+                        at: system.last_success,
+                        state: system_state,
+                        maximum: None,
+                        cadence: Duration::from_secs(1),
+                        partial: false,
+                        device: Some(disk.mount.clone()),
+                        wall: false,
                     },
                     now,
                 );

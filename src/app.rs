@@ -216,6 +216,8 @@ pub struct TrontopApp {
     physical_disk_history: disks::Histories,
     graphs: graphs::Dashboard,
     selected_physical_disk: Option<String>,
+    /// The Performance selection the rail last scrolled into view.
+    rail_followed: Option<(PerformanceDevice, Option<String>)>,
     network_history: HashMap<String, VecDeque<f32>>,
     theme: ThemeSettings,
     show_theme_editor: bool,
@@ -326,6 +328,7 @@ impl TrontopApp {
             physical_disk_history: disks::Histories::default(),
             graphs: graphs::Dashboard::default(),
             selected_physical_disk: None,
+            rail_followed: None,
             network_history: HashMap::new(),
             theme: saved_theme,
             show_theme_editor: false,
@@ -1704,9 +1707,21 @@ impl TrontopApp {
     fn performance_rail(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         let empty = VecDeque::new();
-        if widgets::device_button(
+        // Scroll the selected device into view once per selection change
+        // (another page, a shortcut or a removed device can select one below
+        // the fold), never every frame, so the rail still scrolls freely.
+        let current = (
+            self.performance_device,
+            (self.performance_device == PerformanceDevice::PhysicalDisks)
+                .then(|| self.selected_physical_disk.clone())
+                .flatten(),
+        );
+        let follow = self.rail_followed.as_ref() != Some(&current);
+        self.rail_followed = Some(current);
+        if widgets::rail_button(
             ui,
             self.performance_device == PerformanceDevice::Cpu,
+            follow,
             "CPU",
             &format::percent(self.snapshot.cpu_percent),
             &self.cpu_history,
@@ -1716,9 +1731,10 @@ impl TrontopApp {
         ) {
             self.performance_device = PerformanceDevice::Cpu;
         }
-        if widgets::device_button(
+        if widgets::rail_button(
             ui,
             self.performance_device == PerformanceDevice::Memory,
+            follow,
             "Memory",
             &format::percent(memory_percent(&self.snapshot)),
             &self.memory_history,
@@ -1729,9 +1745,10 @@ impl TrontopApp {
             self.performance_device = PerformanceDevice::Memory;
         }
         let gpu_value = self.snapshot.gpu.reading().label();
-        if widgets::device_button(
+        if widgets::rail_button(
             ui,
             self.performance_device == PerformanceDevice::Gpu,
+            follow,
             "GPU",
             &gpu_value,
             &self.gpu_history,
@@ -1774,9 +1791,10 @@ impl TrontopApp {
                     .map(|p| p.temperature_c.unwrap_or(f32::NAN))
                     .collect()
             });
-        if widgets::device_button(
+        if widgets::rail_button(
             ui,
             self.performance_device == PerformanceDevice::GpuSensors,
+            follow,
             "GPU thermals",
             &thermal_value,
             &thermal_history,
@@ -1798,9 +1816,10 @@ impl TrontopApp {
                 });
             let selected = self.performance_device == PerformanceDevice::PhysicalDisks
                 && self.selected_physical_disk.as_deref() == Some(disk.instance.as_str());
-            if widgets::device_button(
+            if widgets::rail_button(
                 ui,
                 selected,
+                follow,
                 &format!("Disk {}", disk.number),
                 &value,
                 &history,
@@ -1814,9 +1833,10 @@ impl TrontopApp {
         }
         for (index, disk) in self.snapshot.disks.iter().enumerate() {
             let history = self.disk_history.get(&disk.mount).unwrap_or(&empty);
-            if widgets::device_button(
+            if widgets::rail_button(
                 ui,
                 self.performance_device == PerformanceDevice::Disk(index),
+                follow,
                 &format!("Volume {}", disk.mount),
                 &format::rate(disk.read_bytes_per_sec + disk.write_bytes_per_sec),
                 history,
@@ -1836,9 +1856,10 @@ impl TrontopApp {
             .take(3)
         {
             let history = self.network_history.get(&network.name).unwrap_or(&empty);
-            if widgets::device_button(
+            if widgets::rail_button(
                 ui,
                 self.performance_device == PerformanceDevice::Network(index),
+                follow,
                 &network.name,
                 &format::rate(network.received_bytes_per_sec + network.transmitted_bytes_per_sec),
                 history,
@@ -2157,8 +2178,9 @@ Counters: {state}."
         )
     }
 
-    fn disk_performance(&self, ui: &mut egui::Ui, index: usize) {
+    fn disk_performance(&mut self, ui: &mut egui::Ui, index: usize) {
         let t = self.colors();
+        self.graphs.ensure_sample(&self.snapshot);
         let Some(disk) = self.snapshot.disks.get(index) else {
             widgets::gap_row(
                 ui,
@@ -2169,8 +2191,6 @@ Counters: {state}."
             );
             return;
         };
-        let empty = VecDeque::new();
-        let history = self.disk_history.get(&disk.mount).unwrap_or(&empty);
         let total_rate = disk.read_bytes_per_sec + disk.write_bytes_per_sec;
         let kind = volume_kind(&disk.kind);
         let subline = [kind.as_str(), disk.file_system.as_str()]
@@ -2200,17 +2220,8 @@ Counters: {state}."
             },
             if disk.removable { "yes" } else { "no" }
         ));
-        let height = widgets::fit_height(ui, 72.0, 160.0, 270.0);
-        widgets::history_graph_with_window(
-            ui,
-            history,
-            t.good,
-            height,
-            None,
-            t,
-            ("120 s", HISTORY_LENGTH),
-            Some(&|v: f32| format::rate_mib_axis(v)),
-        );
+        let height = widgets::fit_height(ui, 84.0, 160.0, 360.0);
+        self.graphs.volume_graph(ui, &disk.mount, height, t);
         ui.add_space(theme::space::L);
         let used = (disk.total_bytes > 0).then(|| {
             let used = disk.total_bytes.saturating_sub(disk.available_bytes);
@@ -2287,7 +2298,7 @@ Counters: {state}."
             t,
         )
         .on_hover_text("Receive plus send throughput for this adapter.");
-        let height = widgets::fit_height(ui, 72.0, 160.0, 270.0);
+        let height = widgets::fit_height(ui, 84.0, 160.0, 360.0);
         self.graphs.network_graph(ui, &network.name, height, t);
         ui.add_space(theme::space::L);
         ui.columns(4, |columns| {

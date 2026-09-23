@@ -194,9 +194,10 @@ fn contrast_badges_and_selected_device_captions_survive_extreme_themes() {
                                 match widget {
                                     0 => status_pill(ui, "Sensor status", t.accent),
                                     1 => {
-                                        device_button(
+                                        rail_button(
                                             ui,
                                             true,
+                                            false,
                                             "DEVICE CAPTION",
                                             "42.0%",
                                             &VecDeque::new(),
