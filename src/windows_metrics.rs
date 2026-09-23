@@ -9,14 +9,31 @@ fn counter_reading(api_ok: bool, status_ok: bool, value: f64) -> Option<f32> {
     (api_ok && status_ok && value.is_finite() && value >= 0.0).then(|| value.min(100.0) as f32)
 }
 
+/// One engine counter's contribution to a sample's coverage.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum CounterState {
+    /// The engine instance no longer exists (its process exited). It is not a
+    /// coverage gap for the live system; the handle is dropped at the next inventory.
+    Ended,
+    Reading(Usage),
+}
+
+fn classify_counter(instance_gone: bool, reading: Option<f32>) -> CounterState {
+    if instance_gone {
+        CounterState::Ended
+    } else {
+        CounterState::Reading(reading.map_or(Usage::Unavailable, Usage::Measured))
+    }
+}
+
 #[cfg(windows)]
 mod native {
     use super::*;
     use windows::Win32::System::Performance::{
-        PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_VALID_DATA, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE,
-        PDH_HCOUNTER, PDH_HQUERY, PDH_MORE_DATA, PERF_DETAIL_WIZARD, PdhAddEnglishCounterW,
-        PdhCloseQuery, PdhCollectQueryData, PdhEnumObjectItemsW, PdhGetFormattedCounterValue,
-        PdhOpenQueryW, PdhRemoveCounter,
+        PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_NO_INSTANCE, PDH_CSTATUS_VALID_DATA,
+        PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY, PDH_MORE_DATA,
+        PERF_DETAIL_WIZARD, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
+        PdhEnumObjectItemsW, PdhGetFormattedCounterValue, PdhOpenQueryW, PdhRemoveCounter,
     };
     use windows::Win32::System::Services::{
         CloseServiceHandle, ENUM_SERVICE_STATUS_PROCESSW, EnumServicesStatusExW, OpenSCManagerW,
@@ -164,6 +181,7 @@ mod native {
             }
             let mut readings = Vec::with_capacity(self.counters.len());
             let mut valid_counters = 0;
+            let mut ended_counters = 0;
             for counter in &mut self.counters {
                 counter.samples = counter.samples.saturating_add(1);
                 if counter.samples < 2 {
@@ -180,13 +198,15 @@ mod native {
                         || value.CStatus == PDH_CSTATUS_NEW_DATA,
                     unsafe { value.Anonymous.doubleValue },
                 );
-                if number.is_some() {
-                    valid_counters += 1;
+                match classify_counter(value.CStatus == PDH_CSTATUS_NO_INSTANCE, number) {
+                    CounterState::Ended => ended_counters += 1,
+                    CounterState::Reading(usage) => {
+                        if number.is_some() {
+                            valid_counters += 1;
+                        }
+                        readings.push((&counter.identity, usage));
+                    }
                 }
-                readings.push((
-                    &counter.identity,
-                    number.map_or(Usage::Unavailable, Usage::Measured),
-                ));
             }
             let adapters =
                 crate::gpu_adapters::aggregate(readings.iter().copied(), self.last_error.is_some());
@@ -204,7 +224,7 @@ mod native {
                     adapters,
                     available: valid_counters > 0,
                     valid_counters,
-                    total_counters: self.counters.len(),
+                    total_counters: self.counters.len() - ended_counters,
                     utilization_percent: total.value().unwrap_or_default(),
                     engine_utilization: engines,
                     error: self.last_error.clone().or_else(|| {
@@ -380,6 +400,9 @@ mod native {
                     .filter_map(|v| v.value())
                     .all(|v| v.is_finite() && (0.0..=100.0).contains(&v))
             );
+            // Every engine this box reports must parse; an unrecognized identity
+            // used to pin the whole GPU reading at Partial forever.
+            assert!(sampler.last_error.is_none(), "{:?}", sampler.last_error);
             eprintln!(
                 "Native GPU refresh: {retained} handles retained, {refresh_ms:.3} ms inventory, {}/{} valid counters, {} PID readings; no UI/input",
                 after.valid_counters,
@@ -431,6 +454,20 @@ mod tests {
         assert_eq!(counter_reading(true, false, 12.0), None);
         assert_eq!(counter_reading(true, true, f64::NAN), None);
         assert_eq!(counter_reading(true, true, -1.0), None);
+    }
+
+    #[test]
+    fn exited_engine_instances_do_not_mark_live_coverage_partial() {
+        // A vanished instance is dropped, not reported as a missing live reading.
+        assert_eq!(classify_counter(true, None), CounterState::Ended);
+        assert_eq!(
+            classify_counter(false, None),
+            CounterState::Reading(Usage::Unavailable)
+        );
+        assert_eq!(
+            classify_counter(false, Some(3.5)),
+            CounterState::Reading(Usage::Measured(3.5))
+        );
     }
 
     #[cfg(windows)]

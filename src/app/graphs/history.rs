@@ -74,7 +74,8 @@ impl Unit {
             Self::Gib => format!("{value:.2} GiB"),
             Self::Rate => crate::format::rate(value as f64),
             Self::Millis => format!("{value:.2} ms"),
-            Self::Count => format!("{value:.1}"),
+            // Counts (processes, queue depth) are whole numbers: never "369.0".
+            Self::Count => format!("{:.0}", value.round()),
         }
     }
 }
@@ -83,6 +84,8 @@ impl Unit {
 pub(super) struct Point {
     pub at: Instant,
     pub value: Option<f32>,
+    /// A real lower bound from the readable counters, drawn distinctly.
+    pub partial: bool,
 }
 
 pub(super) struct Chart {
@@ -122,8 +125,8 @@ impl Chart {
             |v| {
                 format!(
                     "{}{}",
-                    if self.partial { ">=" } else { "" },
-                    self.unit.format(v)
+                    self.unit.format(v),
+                    if self.partial { "+" } else { "" }
                 )
             },
         )
@@ -140,8 +143,23 @@ impl Chart {
             low = low.min(value);
             high = high.max(value);
         }
-        (low.min(0.0), self.maximum.unwrap_or(high * 1.15).max(high))
+        let high = self.maximum.unwrap_or(high * 1.15).max(high);
+        let high = match self.unit {
+            // Integer quantities get an integer axis top, e.g. 450 rather than 447.3.
+            Unit::Count if self.maximum.is_none() => whole_axis_top(high),
+            _ => high,
+        };
+        (low.min(0.0), high)
     }
+}
+
+/// Round an axis top up to a whole, readable step (1, 5, 50, 500, ...).
+pub(super) fn whole_axis_top(value: f32) -> f32 {
+    if !value.is_finite() || value <= 1.0 {
+        return 1.0;
+    }
+    let step = (10_f32.powf(value.log10().floor()) / 2.0).max(1.0);
+    (value / step).ceil() * step
 }
 
 #[derive(Default)]
@@ -211,7 +229,8 @@ impl History {
             chart.state = "Cached";
         }
         let at = field.at.filter(|at| *at <= now);
-        if field.state == "Live" && measured.is_some() {
+        let graphable = matches!(field.state, "Live" | "Partial");
+        if graphable && measured.is_some() {
             chart.measured_at = at;
         }
         if let Some(at) = at
@@ -219,9 +238,8 @@ impl History {
         {
             chart.points.push_back(Point {
                 at,
-                value: (field.state == "Live" && !field.partial)
-                    .then_some(measured)
-                    .flatten(),
+                value: graphable.then_some(measured).flatten(),
+                partial: field.partial,
             });
         }
         while chart.points.len() > MAX_POINTS
@@ -455,12 +473,34 @@ impl History {
                 .map(|(name, value)| (name.as_str(), *value)),
         ) {
             let partial = usage.value().is_some() && usage.exact().is_none();
-            self.field(Field { id: Id::Activity(name.into()), title: name,
-                detail: "Windows GPU engines across adapters; partial readings are lower bounds, not exact totals",
-                group: if name == "GPU activity" { Group::System } else { Group::Gpu }, unit: Unit::Percent,
-                value: usage.value(), at: activity_health.last_attempt,
-                state: if !activity_live { "Unavailable" } else if partial { "Partial / graph gap" } else if usage.exact().is_some() { "Live" } else { "Unavailable" },
-                maximum: Some(100.0), cadence: Duration::from_secs(1), partial }, now);
+            self.field(
+                Field {
+                    id: Id::Activity(name.into()),
+                    title: name,
+                    detail: "Busiest engine, all adapters",
+                    group: if name == "GPU activity" {
+                        Group::System
+                    } else {
+                        Group::Gpu
+                    },
+                    unit: Unit::Percent,
+                    value: usage.value(),
+                    at: activity_health.last_attempt,
+                    state: if !activity_live {
+                        "Unavailable"
+                    } else if partial {
+                        "Partial"
+                    } else if usage.exact().is_some() {
+                        "Live"
+                    } else {
+                        "Unavailable"
+                    },
+                    maximum: Some(100.0),
+                    cadence: Duration::from_secs(1),
+                    partial,
+                },
+                now,
+            );
         }
         for adapter in &s.gpu.adapters {
             let detail = format!("{} / {}", adapter.name(), adapter.key.label());
@@ -512,7 +552,7 @@ impl History {
                         value: usage.value(),
                         at: adapter.sampled_at,
                         state: if partial {
-                            "Partial / graph gap"
+                            "Partial"
                         } else if usage.exact().is_some() {
                             "Live"
                         } else {

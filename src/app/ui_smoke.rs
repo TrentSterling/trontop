@@ -1144,7 +1144,7 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
             for _ in 0..3 {
                 output = frame(&ctx, &mut app, size, vec![]);
             }
-            for expected in ["0.00%", "12.3%", ">=4.56%", "-- %"] {
+            for expected in ["0.00%", "12.3%", "4.56%+", "-- %"] {
                 assert!(
                     text_shapes(&output).iter().any(|(text, clip)| {
                         text.galley.job.text == expected
@@ -1161,7 +1161,7 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
                 assert!(
                     text_shapes(&output)
                         .iter()
-                        .any(|(text, _)| { text.galley.job.text == ">=16.9%" })
+                        .any(|(text, _)| { text.galley.job.text == "16.9%+" })
                 );
                 app.selected_pid = Some(900_005);
                 let output = frame(&ctx, &mut app, size, vec![]);
@@ -1589,6 +1589,36 @@ fn service_action_states_keep_table_headers_fixed_and_unknown_outcome_disables_r
             assert!(output.platform_output.commands.is_empty());
         }
     }
+}
+
+#[test]
+fn sidebar_gpu_meter_shows_measured_and_partial_readings_not_dashes() {
+    let ctx = egui::Context::default();
+    theme::install(&ctx, ThemeSettings::default());
+    let mut app = app(ThemeSettings::default(), true);
+    let size = Vec2::new(1000.0, 580.0);
+    let meter_text = |output: &egui::FullOutput, label: &str| {
+        text_shapes(output)
+            .iter()
+            // The navigation rail is 196 px wide; only its footer meter counts.
+            .any(|(text, _)| text.galley.job.text == label && text.pos.x < 196.0)
+    };
+    let mut output = egui::FullOutput::default();
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let measured = app.snapshot.gpu.reading();
+    assert!(measured.exact().is_some());
+    assert!(meter_text(&output, &measured.label()), "measured GPU meter");
+    // A partial sample (one counter warming) used to blank the meter to "-- %".
+    gpu_activity_fixture(&mut app);
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let partial = app.snapshot.gpu.reading();
+    assert!(partial.exact().is_none() && partial.value().is_some());
+    assert!(partial.label().ends_with('+'));
+    assert!(meter_text(&output, &partial.label()), "partial GPU meter");
 }
 
 #[test]

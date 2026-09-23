@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 use sysinfo::{Disks, Networks, ProcessesToUpdate, System, Users};
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
-const GPU_INVENTORY_INTERVAL: u64 = 30;
+// A GPU engine inventory costs about 4 ms on a 650-instance box. Every 5 s keeps
+// new GPU clients from staying unreported (and ended ones lingering) for long.
+const GPU_INVENTORY_INTERVAL: u64 = 5;
 const CONTROL_REFRESH_INTERVAL: u64 = 5;
 
 fn cpu_info(system: &System, physical_cores: usize) -> CpuInfo {
@@ -146,6 +148,7 @@ fn sample_loop(
     let mut system = System::new_all();
     let mut disks = Disks::new_with_refreshed_list();
     let mut networks = Networks::new_with_refreshed_list();
+    let mut network_filters = crate::network_identity::FilterAliases::default();
     let users = Users::new_with_refreshed_list();
     let mut gpu_sampler = GpuSampler::new();
     // The optional driver library and every sensor call stay on this worker.
@@ -186,6 +189,7 @@ fn sample_loop(
         system.refresh_processes(ProcessesToUpdate::All, true);
         disks.refresh(true);
         networks.refresh(true);
+        network_filters.refresh(networks.keys());
         if sequence.is_multiple_of(CONTROL_REFRESH_INTERVAL) {
             system.refresh_cpu_frequency();
         }
@@ -339,6 +343,8 @@ fn sample_loop(
             .collect();
         let network_rows = networks
             .iter()
+            // NDIS filter modules repeat their adapter's traffic under another alias.
+            .filter(|(name, _)| !network_filters.is_filter(name))
             .map(|(name, network)| NetworkRow {
                 name: name.clone(),
                 received_bytes_per_sec: network.received() as f64 / sample_seconds,

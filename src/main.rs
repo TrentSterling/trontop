@@ -14,6 +14,7 @@ mod icons;
 mod inventory;
 mod memory_metrics;
 mod model;
+mod network_identity;
 mod platform;
 mod preferences;
 mod process_actions;

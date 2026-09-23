@@ -303,16 +303,24 @@ fn paint_interactive_surface(
 }
 
 pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32, t: Tokens) {
+    let text = value.map_or_else(|| "-- %".into(), format::percent);
+    mini_meter_text(ui, label, &text, value, color, t);
+}
+
+/// Mini meter with caller-formatted text, e.g. a GPU lower bound shown as `3.1%+`.
+pub fn mini_meter_text(
+    ui: &mut egui::Ui,
+    label: &str,
+    text: &str,
+    value: Option<f32>,
+    color: Color32,
+    t: Tokens,
+) {
     hover_frame(ui, surface(ui, t, false), |ui| {
         ui.horizontal(|ui| {
             ui.label(RichText::new(label).size(10.0).color(t.text_muted));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(
-                    RichText::new(value.map_or_else(|| "-- %".into(), format::percent))
-                        .monospace()
-                        .size(10.0)
-                        .color(t.text),
-                );
+                ui.label(RichText::new(text).monospace().size(10.0).color(t.text));
             });
         });
         ui.add(

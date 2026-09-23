@@ -3,7 +3,7 @@ use crate::diagnostics::{Provider, State};
 use history::Id;
 
 #[test]
-fn gpu_adapter_histories_do_not_mix_devices_repeat_cached_values_or_lose_partial_gaps() {
+fn gpu_adapter_histories_do_not_mix_devices_repeat_cached_values_or_hide_partial_samples() {
     use crate::gpu_activity::Usage;
     use crate::gpu_adapters::{Adapter, Engine, Key};
     let now = Instant::now();
@@ -52,8 +52,10 @@ fn gpu_adapter_histories_do_not_mix_devices_repeat_cached_values_or_lose_partial
     assert_eq!(h.chart(&memory).unwrap().current, Some(1.));
     assert_eq!(h.chart(&memory).unwrap().state(later), "Cached");
     assert_eq!(h.chart(&memory).unwrap().points.back().unwrap().value, None);
-    assert_eq!(h.chart(&engine).unwrap().points.back().unwrap().value, None);
-    assert!(h.chart(&engine).unwrap().value_label().starts_with(">="));
+    let last = *h.chart(&engine).unwrap().points.back().unwrap();
+    assert_eq!(last.value, Some(5.));
+    assert!(last.partial);
+    assert!(h.chart(&engine).unwrap().value_label().ends_with('+'));
     h.sample(&s, later);
     assert_eq!(h.chart(&memory).unwrap().points.len(), 2);
 }
@@ -263,7 +265,33 @@ fn missing_gpu_value_retains_readout_but_never_plots_cached_value() {
 }
 
 #[test]
-fn partial_activity_is_labelled_lower_bound_and_not_graphed_as_exact() {
+fn integer_counts_have_whole_values_and_whole_axis_labels() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.process_count = 389;
+    let mut history = History::default();
+    history.sample(&s, now);
+    let chart = history.chart(&Id::System(2)).unwrap();
+    assert_eq!(chart.value_label(), "389");
+    let (_, high) = chart.range(now);
+    assert_eq!(
+        high, 450.0,
+        "389 * 1.15 = 447.35 must round to a whole step"
+    );
+    assert_eq!(chart.unit.format(high), "450");
+    for (value, top) in [
+        (0.0, 1.0),
+        (1.15, 2.0),
+        (3.45, 4.0),
+        (11.5, 15.0),
+        (447.35, 450.0),
+    ] {
+        assert_eq!(history::whole_axis_top(value), top, "{value}");
+    }
+}
+
+#[test]
+fn partial_activity_is_labelled_lower_bound_and_graphed_as_marked_partial() {
     let now = Instant::now();
     let mut s = sample(now);
     s.gpu.valid_counters = 1;
@@ -274,8 +302,11 @@ fn partial_activity_is_labelled_lower_bound_and_not_graphed_as_exact() {
         .iter()
         .find(|c| c.id == Id::Activity("GPU activity".into()))
         .unwrap();
-    assert_eq!(chart.value_label(), ">=20.0%");
-    assert_eq!(chart.points[0].value, None);
+    assert_eq!(chart.value_label(), "20.0%+");
+    // The readable lower bound enters history, flagged so it draws as partial.
+    assert_eq!(chart.points[0].value, Some(20.0));
+    assert!(chart.points[0].partial);
+    assert_eq!(chart.state, "Partial");
 }
 
 #[test]

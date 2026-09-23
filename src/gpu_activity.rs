@@ -1,6 +1,9 @@
 //! GPU counter identity and missing-data semantics, independent of Windows/UI.
 use std::collections::HashMap;
 
+/// Engine type label for Windows engines that report no `engtype_` name.
+pub const UNNAMED_ENGINE: &str = "Unnamed";
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Usage {
     #[default]
@@ -29,7 +32,8 @@ impl Usage {
     pub fn label(self) -> String {
         match self {
             Self::Measured(value) => crate::format::percent(value),
-            Self::Partial(value) => format!(">={}", crate::format::percent(value)),
+            // Compact lower-bound marker; the status and tooltip spell it out.
+            Self::Partial(value) => format!("{}+", crate::format::percent(value)),
             _ => "-- %".into(),
         }
     }
@@ -40,7 +44,7 @@ impl Usage {
                 "Measured GPU activity. A process shows its busiest reported engine."
             }
             Self::Partial(_) => {
-                "Partial GPU coverage. >= is a lower bound from readable counters, not a complete measurement."
+                "Partial GPU coverage: a counter was still warming up or unreadable, so + marks a lower bound from the readable counters."
             }
             Self::Warming => "GPU counters need another sample before a rate is available.",
             Self::Unreported => {
@@ -53,7 +57,7 @@ impl Usage {
     pub fn status(self) -> &'static str {
         match self {
             Self::Measured(_) => "Measured engine activity",
-            Self::Partial(_) => "Partial counter coverage",
+            Self::Partial(_) => "Partial (lower bound)",
             Self::Warming => "Counters warming up",
             Self::Unreported => "No counter reported",
             Self::Unavailable => "Counter data unavailable",
@@ -110,13 +114,17 @@ impl EngineInstance {
         let (adapter, engine) = engine.split_once("_eng_")?;
         adapter.parse::<u32>().ok()?;
         engine.parse::<u32>().ok()?;
-        if kind.is_empty() {
-            return None;
-        }
+        // Windows publishes some real engines with an empty `engtype_` suffix
+        // (seen on NVIDIA RTX drivers). Rejecting them used to flag every sample
+        // as partial coverage, so keep them under an explicit neutral label.
         Some(Self {
             pid: pid.parse().ok()?,
             physical: physical.into(),
-            kind: kind.into(),
+            kind: if kind.is_empty() {
+                UNNAMED_ENGINE.into()
+            } else {
+                kind.into()
+            },
         })
     }
 }
@@ -203,6 +211,17 @@ mod tests {
         assert_eq!(Usage::Measured(0.0).label(), "0.00%");
         assert_eq!(Usage::Unavailable.label(), "-- %");
         assert!(Usage::Partial(8.0).exact().is_none());
+    }
+    #[test]
+    fn unnamed_windows_engines_are_real_engines_not_parse_failures() {
+        // Verbatim shape from an RTX 5070 Ti driver (pid 4, engines 7 to 13).
+        let parsed =
+            EngineInstance::parse("pid_4_luid_0x00000000_0x00011A4A_phys_0_eng_11_engtype_")
+                .expect("empty engtype is still a real engine");
+        assert_eq!(parsed.pid, 4);
+        assert_eq!(parsed.kind, UNNAMED_ENGINE);
+        assert_eq!(parsed.physical, "luid_0x00000000_0x00011A4A_phys_0_eng_11");
+        assert_eq!(Usage::Partial(3.07).label(), "3.07%+");
     }
     #[test]
     fn parser_requires_real_adapter_and_engine_identity() {

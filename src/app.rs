@@ -355,6 +355,8 @@ impl TrontopApp {
         );
         widgets::push_history(
             &mut self.gpu_history,
+            // This plain history cannot mark lower bounds, so partial samples
+            // stay gaps here; the Graphs page records them as marked points.
             snapshot.gpu.reading().exact().unwrap_or(f32::NAN),
             HISTORY_LENGTH,
         );
@@ -604,10 +606,14 @@ impl TrontopApp {
                             t.secondary,
                             t,
                         );
-                        widgets::mini_meter(
+                        // Same reading and label as every other GPU surface; the
+                        // old exact-only meter went blank on any partial sample.
+                        let gpu = self.snapshot.gpu.reading();
+                        widgets::mini_meter_text(
                             ui,
                             "GPU",
-                            self.snapshot.gpu.reading().exact(),
+                            &gpu.label(),
+                            gpu.value(),
                             theme::mix(t.accent, t.secondary, 0.5),
                             t,
                         );

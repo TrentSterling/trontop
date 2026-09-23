@@ -397,7 +397,7 @@ fn card(ui: &mut egui::Ui, chart: &Chart, now: Instant, style: Style, banded: bo
             ui.add(egui::Label::new(RichText::new(chart.value_label()).size(21.0).monospace().color(t.text)).truncate());
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add(egui::Label::new(RichText::new(chart.state(now)).size(10.0).color(t.text_muted)).truncate())
-                    .on_hover_text("Only measured values enter the graph. Gaps indicate missing, partial or stale samples. Cached values are not extended into fake history.");
+                    .on_hover_text("Only measured values enter the graph. Gaps indicate missing or stale samples; hollow rings mark partial (lower-bound) samples. Cached values are not extended into fake history.");
             });
         });
         plot(ui, chart, now, style, color, t, 106.0);
@@ -511,7 +511,12 @@ fn plot(
         }
         for point in &visible {
             if let Some(value) = point.value {
-                painter.circle_filled(position(point.at, value), 1.0, ink);
+                if point.partial {
+                    // Lower-bound sample: hollow ring, so it never reads as exact.
+                    painter.circle_stroke(position(point.at, value), 2.0, Stroke::new(1.0, ink));
+                } else {
+                    painter.circle_filled(position(point.at, value), 1.0, ink);
+                }
             }
         }
     }
