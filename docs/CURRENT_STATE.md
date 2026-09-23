@@ -1,7 +1,26 @@
 # Trontop current state
 
-Last updated: 2026-09-23 (alpha.37 polish gauntlet; the checklist below is
+Last updated: 2026-09-23 (alpha.38 release candidate; the checklist below is
 the saved 2026-09-06 handoff)
+
+## alpha.38 (2026-09-23): first tagged private pre-release
+
+Everything since alpha.36: the System specs page, the polish gauntlet (alpha.37),
+round 4, the sampler stall fix, and settled first paints (4eb2e86). Trent reported
+new pages "peeling" (empty, then text, then spacing). Causes, reproduced through
+the real wgpu render path (`cargo test first_paint -- --ignored`): new scroll
+areas slid their bar in over about 8 frames and reflowed the content each frame;
+the specs view was one frame stale on the click frame; finished specs reads did
+not request a repaint. Fixed with settled scroll bars (`widgets::settle_scroll_bars`),
+a same-pass specs poll on page change, worker wake-ups, and hover prewarm of the
+specs workers. Regression tests in `src/app/ui_smoke/settle.rs` fail with the
+fixes switched off.
+
+- Gate (local, 2026-09-23): `cargo fmt --check` clean; `cargo clippy --all-targets
+  -- -D warnings` clean; `cargo test` 417 passed, 0 failed, 45 ignored (twice);
+  `cargo test --release --no-run` compiles without warnings.
+- The release artifact is the CI-built `trontop.exe` from the `verify` workflow on
+  the tagged commit, per RELEASE_PLAN.md.
 
 ## Sampler stall fix (2026-09-23, alpha.37 line)
 
