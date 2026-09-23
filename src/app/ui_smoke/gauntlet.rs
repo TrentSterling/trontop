@@ -377,6 +377,7 @@ fn pages_at(g: &mut Gauntlet, size: Vec2) {
 /// egui debug builds paint a 2 px red outline (clip `EVERYTHING`) when a
 /// widget rect keeps its place but changes id between frames, and a red
 /// outline plus "Double use of ... ID" text on a same-frame id clash.
+#[cfg(debug_assertions)]
 fn id_warnings(output: &egui::FullOutput) -> Vec<String> {
     let mut found = Vec::new();
     for clipped in &output.shapes {
@@ -399,6 +400,7 @@ fn id_warnings(output: &egui::FullOutput) -> Vec<String> {
 
 /// Flips the title-bar System state between Live and Stale, as a slow sample
 /// does in the running app. The status pill appears and disappears with it.
+#[cfg(debug_assertions)]
 fn set_system_stale(app: &mut TrontopApp, stale: bool) {
     let at = Instant::now() + Duration::from_secs(3600);
     let health = app
@@ -423,6 +425,8 @@ fn set_system_stale(app: &mut TrontopApp, stale: bool) {
     }
 }
 
+// egui only has Style::debug in debug builds, so release test runs skip this.
+#[cfg(debug_assertions)]
 #[test]
 fn gauntlet_states_paint_no_egui_id_warnings_in_debug_builds() {
     let settings = ThemeSettings::default();
