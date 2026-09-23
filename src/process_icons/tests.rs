@@ -126,7 +126,8 @@ fn stuck_loader_bounds_queue_and_drop_without_starting_replacement_workers() {
     assert!(running.try_recv().is_err());
     let started = Instant::now();
     drop(cache);
-    assert!(started.elapsed() < Duration::from_millis(250));
+    // The loader stays blocked until after this check; 2 s absorbs a loaded run.
+    assert!(started.elapsed() < Duration::from_secs(2));
     release.send(()).unwrap();
     finished.recv_timeout(Duration::from_secs(2)).unwrap();
 }

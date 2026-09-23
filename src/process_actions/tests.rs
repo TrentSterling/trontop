@@ -82,8 +82,10 @@ fn stalled_action_has_no_duplicates_no_blocking_poll_and_no_shutdown_join() {
     let drop_elapsed = drop_started.elapsed();
     release.send(()).unwrap();
     done.recv_timeout(Duration::from_secs(3)).unwrap();
-    assert!(poll_elapsed < Duration::from_millis(100));
-    assert!(drop_elapsed < Duration::from_millis(100));
+    // The action stays blocked until after both measurements, so a joining
+    // poll or drop would never return; 2 s only absorbs a loaded test run.
+    assert!(poll_elapsed < Duration::from_secs(2));
+    assert!(drop_elapsed < Duration::from_secs(2));
     println!(
         "ACTION_STALL 1000_polls_us={:.1} drop_us={:.1}; one in-flight call, no native API",
         poll_elapsed.as_secs_f64() * 1e6,

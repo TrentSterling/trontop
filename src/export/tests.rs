@@ -562,7 +562,8 @@ fn worker_is_single_flight_retains_captured_data_and_drop_does_not_wait() {
     assert!(exporter.poll().is_none());
     let at = Instant::now();
     drop(exporter);
-    assert!(at.elapsed() < Duration::from_millis(200));
+    // The backend is released only after this check; 2 s absorbs a loaded run.
+    assert!(at.elapsed() < Duration::from_secs(2));
     release_tx.send(()).unwrap();
     assert!(stopped_rx.recv_timeout(Duration::from_secs(3)).unwrap());
 }

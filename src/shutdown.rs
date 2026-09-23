@@ -32,7 +32,7 @@ mod tests {
         release.send(()).unwrap();
         completed.recv_timeout(Duration::from_secs(2)).unwrap();
         assert!(
-            elapsed < Duration::from_millis(500),
+            elapsed < Duration::from_secs(2),
             "shutdown took {elapsed:?}"
         );
         println!("Blocked-worker shutdown: {elapsed:?}; worker released and completed");

@@ -3,7 +3,7 @@ use crate::diagnostics::Provider;
 use std::sync::atomic::AtomicUsize;
 
 fn wait_until(mut ready: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(20);
     while !ready() {
         assert!(Instant::now() < deadline, "fixture worker did not finish");
         thread::sleep(Duration::from_millis(2));
@@ -82,7 +82,8 @@ fn stuck_inventory_keeps_other_worker_updates_and_drop_nonblocking_without_respa
     assert_eq!(calls.load(Ordering::Relaxed), 1);
     let started = Instant::now();
     drop(slow);
-    assert!(started.elapsed() < Duration::from_millis(200));
+    // The read stays blocked until after this check; 2 s absorbs a loaded run.
+    assert!(started.elapsed() < Duration::from_secs(2));
     release_tx.send(()).unwrap();
     // Dropping cancels the queued refresh, even after the blocking read returns.
     assert!(entered_rx.recv_timeout(Duration::from_secs(3)).is_err());
@@ -201,7 +202,7 @@ fn publication_contention_uses_cached_snapshot_and_worker_failure_is_explicit() 
     let _held = shared.lock().unwrap();
     let started = Instant::now();
     assert_eq!(worker.latest(Instant::now()).0.as_slice(), &[8]);
-    assert!(started.elapsed() < Duration::from_millis(200));
+    assert!(started.elapsed() < Duration::from_secs(2));
     drop(_held);
     // Simulate a failed spawn/finished worker without invoking any OS inventory.
     worker.stop.store(true, Ordering::Release);

@@ -373,7 +373,7 @@ impl TrontopApp {
     fn cpu_temperature_gap(&self) -> Option<(&'static str, String)> {
         let bridge = &self.specs_view.bridge;
         let fresh = bridge.collected_at.is_some_and(|at| {
-            Instant::now().saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
+            self.graphs.now().saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
         });
         let published = fresh
             && bridge.readings.iter().any(|r| {

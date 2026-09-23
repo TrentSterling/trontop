@@ -55,7 +55,7 @@ fn sample(cpu: f32) -> TraySample {
 }
 
 fn until(mut condition: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + Duration::from_secs(20);
     while !condition() {
         assert!(Instant::now() < deadline, "owned tray worker timed out");
         thread::sleep(Duration::from_millis(1));
@@ -151,7 +151,7 @@ fn tray_close_during_startup_drops_late_backend_on_its_owner_without_updates() {
     assert_eq!(sink.0.latest.lock().unwrap().unwrap().cpu_percent, 35.0);
     assert!(samples.try_recv().is_err());
     assert!(
-        elapsed < Duration::from_millis(500),
+        elapsed < Duration::from_secs(2),
         "blocked startup joined: {elapsed:?}"
     );
 }
@@ -317,7 +317,7 @@ fn tray_blocked_update_keeps_one_pending_sample_and_bounded_drop() {
     until(|| sink.0.state.load(Ordering::Acquire) == TrayState::Stopped as u8);
     assert!(samples.try_recv().is_err());
     assert!(
-        elapsed < Duration::from_millis(500),
+        elapsed < Duration::from_secs(2),
         "blocked update joined: {elapsed:?}"
     );
 }

@@ -422,13 +422,20 @@ mod tests {
         }
     }
 
+    /// Polls until `what` holds. The bound is generous because a loaded
+    /// parallel test run can delay thread start-up by seconds; timing out is a
+    /// failure with the last snapshot, never a silent return.
     fn wait_for(monitor: &mut Monitor, what: impl Fn(&Snapshot) -> bool) -> Snapshot {
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let snapshot = monitor.snapshot(Instant::now());
-            if what(&snapshot) || Instant::now() > deadline {
+            if what(&snapshot) {
                 return snapshot;
             }
+            assert!(
+                Instant::now() < deadline,
+                "condition not reached; last snapshot: {snapshot:?}"
+            );
             thread::sleep(Duration::from_millis(5));
         }
     }
@@ -444,8 +451,13 @@ mod tests {
             },
             live,
         );
+        // Also wait until the blocked worker has actually begun its first
+        // read: thread start order is not guaranteed, and under load the
+        // other sections can finish before the Memory thread first runs.
         let snapshot = wait_for(&mut monitor, |s| {
             s.get(SectionId::Cpu).is_some_and(|e| e.section.is_some())
+                && s.get(SectionId::Memory)
+                    .is_some_and(|e| e.health.state == SectionState::Collecting)
                 && s.get(SectionId::Peripherals)
                     .is_some_and(|e| e.section.is_some())
                 && s.bridge.collected_at.is_some()
@@ -494,7 +506,7 @@ mod tests {
         );
         let started = Instant::now();
         drop(monitor);
-        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[test]

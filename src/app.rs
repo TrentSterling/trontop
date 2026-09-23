@@ -580,10 +580,7 @@ impl TrontopApp {
                         .snapshot
                         .diagnostics
                         .get(crate::diagnostics::Provider::System)
-                        .state(
-                            crate::diagnostics::Provider::System,
-                            std::time::Instant::now(),
-                        );
+                        .state(crate::diagnostics::Provider::System, self.graphs.now());
                     if state != crate::diagnostics::State::Live {
                         widgets::status_pill(
                             ui,
@@ -1888,10 +1885,9 @@ impl TrontopApp {
             .snapshot
             .diagnostics
             .get(crate::diagnostics::Provider::CpuClock);
-        let clock_state = clock_health.state(
-            crate::diagnostics::Provider::CpuClock,
-            std::time::Instant::now(),
-        );
+        // The page's frame clock, so every status on this page agrees.
+        let clock_state =
+            clock_health.state(crate::diagnostics::Provider::CpuClock, self.graphs.now());
         let live = clock_state == crate::diagnostics::State::Live;
         let clocks = self.snapshot.cpu.clocks.as_ref();
         let ghz = |value: Option<f64>| {
@@ -2167,7 +2163,7 @@ Counters: {state}."
     ) {
         let provider = crate::diagnostics::Provider::MemoryCounters;
         let health = self.snapshot.diagnostics.get(provider);
-        let now = std::time::Instant::now();
+        let now = self.graphs.now();
         let state = health.state(provider, now);
         let provenance = format!(
             "Windows K32GetPerformanceInfo, sampled in the background. Last usable: {}.              Cached values keep their original timestamp; missing readings never become zero.",

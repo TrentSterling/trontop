@@ -316,7 +316,9 @@ fn blocked_native_call_does_not_block_controller_drop() {
     drop(controller);
     let elapsed = started.elapsed();
     unblock_tx.send(()).unwrap();
-    assert!(elapsed < Duration::from_millis(200), "{elapsed:?}");
+    // The backend stays blocked until after this measurement, so any bound
+    // proves drop did not join it; 2 s only absorbs a loaded test run.
+    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
 }
 
 #[test]
@@ -345,7 +347,7 @@ fn busy_result_mailbox_cannot_block_ui_poll_or_lose_completion() {
         sent.send((controller, event)).unwrap();
     });
     // Release even when regressing to lock(), so a failing check cannot hang CI.
-    let early = received.recv_timeout(Duration::from_millis(200));
+    let early = received.recv_timeout(Duration::from_secs(2));
     let was_nonblocking = early.is_ok();
     drop(held);
     let (mut controller, event) = early

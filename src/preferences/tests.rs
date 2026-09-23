@@ -243,7 +243,7 @@ impl Drop for Fake {
 }
 
 fn until(mut condition: impl FnMut() -> bool) {
-    let until = Instant::now() + Duration::from_secs(3);
+    let until = Instant::now() + Duration::from_secs(20);
     while !condition() {
         assert!(Instant::now() < until, "owned settings worker timed out");
         std::thread::sleep(Duration::from_millis(1));
@@ -347,7 +347,7 @@ fn preferences_pending_read_and_write_never_join_on_controller_drop() {
             drop(controller);
             dropped.send(()).unwrap();
         });
-        let early = drop_done.recv_timeout(Duration::from_millis(200));
+        let early = drop_done.recv_timeout(Duration::from_secs(2));
         drop(release); // Always unblock owned backend before assertion/cleanup.
         if early.is_err() {
             drop_done.recv_timeout(Duration::from_secs(3)).unwrap();

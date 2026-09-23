@@ -668,8 +668,25 @@ mod tests {
         fast_reads: AtomicUsize,
         blocked_reads: AtomicUsize,
         active: AtomicUsize,
-        cancels: AtomicUsize,
+        // Which worker threads were cancelled, and which one runs the blocked
+        // read, so assertions about the stuck drive ignore an unrelated drive.
+        cancelled: Mutex<Vec<thread::ThreadId>>,
+        blocked_worker: Mutex<Option<thread::ThreadId>>,
         inventory: Mutex<Vec<Device>>,
+    }
+
+    impl Fake {
+        fn blocked_cancels(&self) -> usize {
+            let Some(blocked) = *self.blocked_worker.lock().unwrap() else {
+                return 0;
+            };
+            self.cancelled
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|id| **id == blocked)
+                .count()
+        }
     }
 
     impl Backend for Fake {
@@ -684,13 +701,16 @@ mod tests {
         ) -> Result<Temperatures, Error> {
             self.active.fetch_add(1, Ordering::SeqCst);
             if device.id == "blocked" {
+                *self.blocked_worker.lock().unwrap() = Some(thread::current().id());
                 self.blocked_reads.fetch_add(1, Ordering::SeqCst);
                 let (lock, event) = &self.release;
                 let guard = lock.lock().unwrap();
                 // Fake an uncooperative driver, even after cancellation. A bounded
-                // test safety timeout prevents a failing assertion leaking a thread.
+                // test safety timeout prevents a failing assertion leaking a thread
+                // forever; it is far longer than the test so it can never release
+                // the read (and permit a legitimate retry) mid-test.
                 let _ = event
-                    .wait_timeout_while(guard, Duration::from_secs(5), |released| !*released)
+                    .wait_timeout_while(guard, Duration::from_secs(120), |released| !*released)
                     .unwrap();
             } else {
                 self.fast_reads.fetch_add(1, Ordering::SeqCst);
@@ -702,8 +722,8 @@ mod tests {
                 Ok(values())
             }
         }
-        fn cancel(&self, _: &JoinHandle<()>) {
-            self.cancels.fetch_add(1, Ordering::SeqCst);
+        fn cancel(&self, worker: &JoinHandle<()>) {
+            self.cancelled.lock().unwrap().push(worker.thread().id());
         }
     }
 
@@ -711,7 +731,7 @@ mod tests {
         let start = Instant::now();
         while !check() {
             assert!(
-                start.elapsed() < Duration::from_secs(3),
+                start.elapsed() < Duration::from_secs(20),
                 "test condition timed out"
             );
             thread::sleep(Duration::from_millis(2));
@@ -762,16 +782,21 @@ mod tests {
                 inventory: Duration::from_millis(10),
             },
         );
+        // Wait for the stuck drive's own timeout. Under a loaded parallel test
+        // run the fast drive's worker can also be starved past the 25 ms
+        // deadline; that is a real (and correctly reported) timeout of that
+        // drive, so it may add its own cancel, but never a second stuck read.
         wait_until(|| {
             fake.fast_reads.load(Ordering::SeqCst) >= 3
+                && fake.blocked_reads.load(Ordering::SeqCst) >= 1
                 && monitor
                     .latest()
                     .drives
                     .iter()
-                    .any(|d| d.error == Some(Error::Timeout))
+                    .any(|d| d.device.id == "blocked" && d.error == Some(Error::Timeout))
         });
         assert_eq!(fake.blocked_reads.load(Ordering::SeqCst), 1);
-        assert_eq!(fake.cancels.load(Ordering::SeqCst), 1);
+        assert_eq!(fake.blocked_cancels(), 1);
         // Hot unplug/replug cannot start a replacement while the first query lives.
         *fake.inventory.lock().unwrap() = vec![device("fast")];
         wait_until(|| {
@@ -793,7 +818,9 @@ mod tests {
         assert_eq!(monitor.latest().drives.len(), 2);
         let started = Instant::now();
         drop(monitor);
-        assert!(started.elapsed() < Duration::from_millis(100));
+        // The read is still blocked (for up to 120 s), so returning at all
+        // proves drop does not wait on it; 2 s only absorbs scheduler stalls.
+        assert!(started.elapsed() < Duration::from_secs(2));
         *fake.release.0.lock().unwrap() = true;
         fake.release.1.notify_all();
         wait_until(|| fake.active.load(Ordering::SeqCst) == 0);

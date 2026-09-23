@@ -170,7 +170,9 @@ fn worker_publishes_once_without_native_calls_and_drop_does_not_wait_for_stall()
     let elapsed = begun.elapsed();
     release_tx.send(()).unwrap();
     assert!(
-        elapsed < Duration::from_millis(250),
+        // The provider is released only after this measurement; 2 s absorbs
+        // scheduler stalls under a loaded parallel test run.
+        elapsed < Duration::from_secs(2),
         "Read/drop waited on provider: {elapsed:?}"
     );
 }

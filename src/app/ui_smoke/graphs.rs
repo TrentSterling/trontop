@@ -148,8 +148,19 @@ fn populated_with_networks(settings: ThemeSettings, networks: Option<usize>) -> 
 }
 
 fn populated_for(settings: ThemeSettings, networks: Option<usize>, cores: usize) -> TrontopApp {
+    populated_at(settings, networks, cores, Instant::now())
+}
+
+/// `populated_for` with the newest sample at `latest`, so two fixtures that are
+/// compared frame for frame carry identical timestamps however slowly they build.
+fn populated_at(
+    settings: ThemeSettings,
+    networks: Option<usize>,
+    cores: usize,
+    latest: Instant,
+) -> TrontopApp {
     let mut app = super::app(settings, false);
-    let start = Instant::now() - Duration::from_secs(120);
+    let start = latest - Duration::from_secs(120);
     for index in 0..=120 {
         let at = start + Duration::from_secs(index);
         let mut s = fixture();
@@ -276,9 +287,14 @@ fn overview_and_core_grid_clipping_match_full_layout_at_fractional_scale() {
     let size = Vec2::new(1280.0, 760.0);
     for page in [Page::Overview, Page::Performance] {
         let settings = ThemeSettings::default();
-        let mut reference = populated_for(settings, None, 256);
-        let mut actual = populated_for(settings, None, 256);
-        let now = Instant::now() + Duration::from_secs(20);
+        // One sample clock and one frozen render clock for both fixtures:
+        // under a loaded parallel test run the second fixture can finish
+        // seconds after the first, which must not move just one of them
+        // across a Live/Stale boundary.
+        let latest = Instant::now();
+        let mut reference = populated_at(settings, None, 256, latest);
+        let mut actual = populated_at(settings, None, 256, latest);
+        let now = latest + Duration::from_secs(20);
         let stale = now - Duration::from_secs(30);
         for app in [&mut reference, &mut actual] {
             app.page = page;
@@ -321,9 +337,14 @@ fn overview_and_core_grid_clipping_match_full_layout_at_fractional_scale() {
             }
             let expected = visible_text(&frame(&a, &mut reference, size, vec![]));
             let output = visible_text(&frame(&b, &mut actual, size, vec![]));
-            assert_eq!(expected.len(), output.len(), "{page:?}/{scroll}");
-            for ((name, rect), (expected_name, expected_rect)) in output.iter().zip(&expected) {
-                assert_eq!(name, expected_name, "{page:?}/{scroll}");
+            // Compare the visible text itself first so a mismatch names the
+            // labels that differ instead of only a count.
+            assert_eq!(
+                output.iter().map(|(name, _)| name).collect::<Vec<_>>(),
+                expected.iter().map(|(name, _)| name).collect::<Vec<_>>(),
+                "{page:?}/{scroll}"
+            );
+            for ((name, rect), (_, expected_rect)) in output.iter().zip(&expected) {
                 assert!(
                     (rect.min - expected_rect.min).length() < 0.1
                         && (rect.max - expected_rect.max).length() < 0.1,
