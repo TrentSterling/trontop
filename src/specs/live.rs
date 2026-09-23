@@ -347,7 +347,7 @@ fn gpu(snapshot: &SystemSnapshot, adapter: &GpuRef, metric: GpuMetric) -> LiveVa
         GpuMetric::Power => found.power_w.map(|v| LiveUnit::Watts.format(v as f64)),
         GpuMetric::CoreClock => found.graphics_clock_mhz.map(|v| format!("{v} MHz")),
         GpuMetric::MemoryClock => found.memory_clock_mhz.map(|v| format!("{v} MHz")),
-        GpuMetric::FanTarget => found.fan_percent.map(|v| format!("{v}%")),
+        GpuMetric::FanTarget => found.fan_percent.map(|v| format!("{:.1}%", v as f32)),
         GpuMetric::MemoryUsed => found
             .memory
             .map(|(used, total)| format!("{} of {}", format::bytes(used), format::bytes(total))),

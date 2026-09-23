@@ -695,6 +695,11 @@ fn state_chip(state: &str, t: Tokens) -> Option<(&'static str, Color32)> {
 
 fn series_colors(card: &wall::Card<'_>, t: Tokens) -> Vec<Color32> {
     if card.series.len() > 1 {
+        if card.group == Group::Network {
+            // Receive/Send share one color rule with Performance > Wi-Fi:
+            // receive is the secondary token, send is the accent token.
+            return vec![t.secondary, t.accent];
+        }
         return vec![
             t.accent,
             t.secondary,
@@ -936,11 +941,7 @@ fn plot(
     let axis = painter.text(
         rect.left_top() + Vec2::new(7.0, 4.0),
         egui::Align2::LEFT_TOP,
-        // A whole-number percent axis reads "100%", not "100.0%".
-        match unit {
-            history::Unit::Percent if high.fract() == 0.0 => format!("{high:.0}%"),
-            _ => unit.format(high),
-        },
+        unit.axis_label(high),
         FontId::monospace(9.0),
         t.text_muted,
     );

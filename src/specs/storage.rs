@@ -597,11 +597,11 @@ mod tests {
         let text = crate::specs::probe_text(std::slice::from_ref(&section));
         assert!(text.contains("Interface: NVMe (PCIe 4.0 x4)"), "{text}");
         assert!(
-            text.contains("  TEAM TM8FP6002T (1.86 TB NVMe SSD)"),
+            text.contains("  TEAM TM8FP6002T (1.86 TiB NVMe SSD)"),
             "{text}"
         );
         assert!(
-            text.contains("Partition 3 (C:): 1.84 TB, Basic data, NTFS, 1.00 TB free"),
+            text.contains("Partition 3 (C:): 1.84 TiB, Basic data, NTFS, 1.00 TiB free"),
             "{text}"
         );
         assert!(text.contains("NVMe health log"), "{text}");

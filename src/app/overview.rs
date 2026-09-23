@@ -230,10 +230,6 @@ fn pct1(value: f32) -> String {
     format!("{value:.1}%")
 }
 
-fn gib(bytes: u64) -> f64 {
-    bytes as f64 / 1_073_741_824.0
-}
-
 /// A finite-only series from a plain history; NaN entries are gaps.
 fn finite(history: &VecDeque<f32>) -> Vec<Option<f32>> {
     history
@@ -529,9 +525,9 @@ impl TrontopApp {
             },
             sub: if s.memory_total_bytes > 0 {
                 format!(
-                    "{:.1} of {:.1} GB",
-                    gib(s.memory_used_bytes),
-                    gib(s.memory_total_bytes)
+                    "{} of {}",
+                    format::bytes(s.memory_used_bytes),
+                    format::bytes(s.memory_total_bytes)
                 )
             } else {
                 String::new()
@@ -582,7 +578,7 @@ impl TrontopApp {
                 |v| format!("{}{}", pct1(v), if partial { "+" } else { "" }),
             ),
             sub: vram.map_or_else(String::new, |(used, total)| {
-                format!("VRAM {:.1} of {:.1} GB", gib(used), gib(total))
+                format!("VRAM {} of {}", format::bytes(used), format::bytes(total))
             }),
             hover: format!(
                 "{}\nWindows PDH GPU Engine counters, busiest engine across adapters.",
@@ -635,11 +631,15 @@ impl TrontopApp {
             label: "Network".into(),
             value: network.map_or_else(|| "--".into(), |(rx, tx)| format::rate(rx + tx)),
             sub: network.map_or_else(String::new, |(rx, tx)| {
-                format!("in {} \u{b7} out {}", format::rate(rx), format::rate(tx))
+                format!(
+                    "receive {} \u{b7} send {}",
+                    format::rate(rx),
+                    format::rate(tx)
+                )
             }),
             hover: if network.is_some() {
                 format!(
-                    "Receive + send across {}. In is receive, out is send.",
+                    "Receive + send across {}.",
                     s.networks
                         .iter()
                         .map(|n| n.name.as_str())

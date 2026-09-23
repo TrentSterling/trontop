@@ -2188,7 +2188,7 @@ Counters: {state}."
             None,
             t,
             ("120 s", HISTORY_LENGTH),
-            Some(&|v: f32| format::rate_mib(v)),
+            Some(&|v: f32| format::rate_mib_axis(v)),
         );
         ui.add_space(theme::space::L);
         let used = (disk.total_bytes > 0).then(|| {

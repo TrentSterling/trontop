@@ -81,6 +81,23 @@ impl Unit {
             Self::Requests => crate::format::count(value, "req"),
         }
     }
+    /// An axis top, already rounded to a readable step by [`Chart::range`]:
+    /// a clean whole number in this unit ("60 W", "8 GiB", "20000 MHz"),
+    /// never the decimal-bearing text [`Self::format`] uses for a live
+    /// value.
+    pub(super) fn axis_label(self, value: f32) -> String {
+        match self {
+            Self::Percent => format!("{value:.0}%"),
+            Self::Celsius => format!("{value:.0} \u{b0}C"),
+            Self::Watts => format!("{value:.0} W"),
+            Self::Mhz => format!("{value:.0} MHz"),
+            Self::Gib => format!("{value:.0} GiB"),
+            Self::Rate => crate::format::rate_axis(f64::from(value)),
+            Self::Millis => format!("{value:.0} ms"),
+            Self::Count => crate::format::count(value, ""),
+            Self::Requests => crate::format::count(value, "req"),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -173,23 +190,23 @@ impl Chart {
             low = low.min(value);
             high = high.max(value);
         }
-        let high = self.maximum.unwrap_or(high * 1.15).max(high);
-        let high = match self.unit {
-            // Integer quantities get an integer axis top, e.g. 450 rather than 447.3.
-            Unit::Count | Unit::Requests if self.maximum.is_none() => whole_axis_top(high),
-            _ => high,
+        // A fixed maximum (percent, a known capacity) always wins; anything
+        // else rounds up to one readable step, so an axis top always reads
+        // as a whole, plain number in its own unit, never "MAX 215.7".
+        let high = match self.maximum {
+            Some(fixed) => fixed.max(high),
+            None => match self.unit {
+                // GPU and drive temperature share one rule: a familiar 0-100
+                // band, unless a reading genuinely runs hot.
+                Unit::Celsius => crate::format::celsius_axis_top(high),
+                // Rates round in the bucket they will be labeled in (KB/MB/GB),
+                // not in raw bytes, so the relabeled top is exact.
+                Unit::Rate => crate::format::nice_rate_top(f64::from(high) * 1.15) as f32,
+                _ => crate::format::nice_top(high * 1.15),
+            },
         };
         (low.min(0.0), high)
     }
-}
-
-/// Round an axis top up to a whole, readable step (1, 5, 50, 500, ...).
-pub(super) fn whole_axis_top(value: f32) -> f32 {
-    if !value.is_finite() || value <= 1.0 {
-        return 1.0;
-    }
-    let step = (10_f32.powf(value.log10().floor()) / 2.0).max(1.0);
-    (value / step).ceil() * step
 }
 
 #[derive(Default)]
@@ -644,7 +661,7 @@ impl History {
                     adapter.temperature_c.map(|v| v as f32),
                     Unit::Celsius,
                     Group::Thermal,
-                    Some(110.0),
+                    None,
                 ),
                 (
                     "Board power",
@@ -738,7 +755,7 @@ impl History {
                         } else {
                             drive.status(now)
                         },
-                        maximum: Some(100.0),
+                        maximum: None,
                         cadence: Duration::from_secs(5),
                         partial: false,
                         device: device.clone(),
@@ -758,7 +775,7 @@ impl History {
                         value: None,
                         at: drive.last_attempt,
                         state: drive.status(now),
-                        maximum: Some(100.0),
+                        maximum: None,
                         cadence: Duration::from_secs(5),
                         partial: false,
                         device: device.clone(),

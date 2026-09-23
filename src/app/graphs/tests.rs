@@ -279,6 +279,7 @@ fn integer_counts_have_whole_values_and_whole_axis_labels() {
         "389 * 1.15 = 447.35 must round to a whole step"
     );
     assert_eq!(chart.unit.format(high), "450");
+    assert_eq!(chart.unit.axis_label(high), "450");
     for (value, top) in [
         (0.0, 1.0),
         (1.15, 2.0),
@@ -286,7 +287,7 @@ fn integer_counts_have_whole_values_and_whole_axis_labels() {
         (11.5, 15.0),
         (447.35, 450.0),
     ] {
-        assert_eq!(history::whole_axis_top(value), top, "{value}");
+        assert_eq!(crate::format::nice_top(value), top, "{value}");
     }
 }
 
@@ -889,11 +890,11 @@ fn a_fully_idle_adapter_folds_into_one_line_on_everything_and_stays_on_the_gpu_t
     assert!(!everything.cards.iter().any(intel), "idle adapter folds");
     assert_eq!(everything.idle_adapters.len(), 1);
     let (line, hover) = &everything.idle_adapters[0];
-    assert_eq!(line, "Intel Graphics idle (0% busy, 0 GiB used)");
+    assert_eq!(line, "Intel Graphics idle (0% busy, 0 B used)");
     for measured in [
         "Busiest engine: 0.0%",
-        "Dedicated VRAM: 0.00 GiB",
-        "Shared memory: 0.00 GiB",
+        "Dedicated VRAM: 0 B",
+        "Shared memory: 0 B",
     ] {
         assert!(hover.contains(measured), "{hover}");
     }
@@ -908,7 +909,7 @@ fn a_fully_idle_adapter_folds_into_one_line_on_everything_and_stays_on_the_gpu_t
     assert_eq!(gpu.cards.iter().filter(|c| intel(c)).count(), 3);
     assert!(gpu.idle_adapters.is_empty());
 
-    // A trickle (0.2% busy, 776 KB of shared memory) still folds, and the
+    // A trickle (0.2% busy, 776 KiB of shared memory) still folds, and the
     // line states the measured peaks instead of rounding them to zero.
     let later = now + Duration::from_secs(1);
     let mut trickle = s.clone();
@@ -919,7 +920,7 @@ fn a_fully_idle_adapter_folds_into_one_line_on_everything_and_stays_on_the_gpu_t
     let everything = wall::compose(&history, None, later);
     assert_eq!(
         everything.idle_adapters[0].0,
-        "Intel Graphics near idle (peak 0.2% busy, up to 776 KB used)"
+        "Intel Graphics near idle (peak 0.2% busy, up to 776 KiB used)"
     );
     assert!(!everything.cards.iter().any(intel));
 
@@ -939,4 +940,76 @@ fn a_fully_idle_adapter_folds_into_one_line_on_everything_and_stays_on_the_gpu_t
     holding.gpu.adapters[1].memory[1].record(Some(256 << 20), now);
     history.sample(&holding, now);
     assert!(wall::compose(&history, None, now).idle_adapters.is_empty());
+}
+
+#[test]
+fn network_legend_and_colors_match_performance_page() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.networks = vec![crate::model::NetworkRow {
+        name: "Wi-Fi".into(),
+        received_bytes_per_sec: 4_000.0,
+        transmitted_bytes_per_sec: 1_000.0,
+        ..Default::default()
+    }];
+    let mut history = History::default();
+    history.sample(&s, now);
+    let wall = wall::compose(&history, Some(Group::Network), now);
+    let card = &wall.cards[0];
+    assert_eq!(
+        card.series.iter().map(|s| s.label).collect::<Vec<_>>(),
+        ["Receive", "Send"],
+        "Graphs uses the same full words as Performance > Wi-Fi, not In/Out"
+    );
+    // Receive is the secondary (teal) token, Send is the accent (purple)
+    // token: the same order `network_graph` hardcodes for Performance.
+    let settings = ThemeSettings::default();
+    let t = theme::tokens(settings);
+    assert_eq!(
+        series_colors(card, t),
+        vec![t.secondary, t.accent],
+        "Graphs card colors must match Performance > Wi-Fi's [secondary, accent]"
+    );
+}
+
+#[test]
+fn unreported_footer_count_matches_the_listed_signal_names() {
+    use crate::gpu_adapters::{Adapter, Description, Key};
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.gpu.adapters = vec![Adapter {
+        key: Key {
+            low: 5,
+            ..Default::default()
+        },
+        description: Some(Description {
+            name: "Fixture GPU".into(),
+            vendor_id: 0x10de,
+            device_id: 0,
+            dedicated_video: 0,
+            dedicated_system: 0,
+            shared_limit: 0,
+            software: false,
+        }),
+        sampled_at: Some(now),
+        activity: crate::gpu_activity::Usage::Measured(5.0),
+        ..Default::default()
+    }];
+    // memory[0] (Dedicated VRAM) and memory[1] (Shared memory) never record a
+    // value, so both charts stay unreported.
+    let mut history = History::default();
+    history.sample(&s, now);
+    let wall = wall::compose(&history, Some(Group::Gpu), now);
+    let n = wall.unreported.len();
+    assert!(n >= 2, "{:?}", wall.unreported);
+    // The footer text the page draws, and the hover that explains it: the
+    // visible count must equal exactly the number of listed names, never a
+    // rounder or vaguer number.
+    let footer = format!(
+        "{n} {} not reported",
+        if n == 1 { "signal" } else { "signals" }
+    );
+    let hover = wall.unreported.join("\n");
+    assert_eq!(hover.lines().count(), n, "{footer}\n{hover}");
+    assert!(footer.starts_with(&n.to_string()));
 }

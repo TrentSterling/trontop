@@ -372,7 +372,7 @@ fn sensor_details(adapter: &AdapterSensors) -> [(&'static str, String); 4] {
             "Fan target",
             adapter
                 .fan_percent
-                .map_or_else(|| "--".into(), |v| format!("{v}%")),
+                .map_or_else(|| "--".into(), |v| format!("{:.1}%", v as f32)),
         ),
         (
             "VRAM used",
@@ -544,12 +544,13 @@ fn sensor_graph(
         );
     }
     let peak = history.and_then(|h| h.peak(power));
-    // Readable axis tops: temperatures never below 100 °C, power rounded up
-    // to a whole step ("150 W", never "131.6").
+    // Readable axis tops: GPU temperature shares Graphs' one rule with drive
+    // temperature (a familiar 0-100 band, unless a reading runs hot), power
+    // rounds up to a whole step ("150 W", never "131.6").
     let maximum = if power {
-        format::nice_top(peak.unwrap_or(1.0) * 1.05)
+        format::nice_top(peak.unwrap_or(1.0) * 1.15)
     } else {
-        format::nice_top(peak.unwrap_or(0.0) * 1.1).max(100.0)
+        format::celsius_axis_top(peak.unwrap_or(0.0))
     };
     let unit = if power { "W" } else { "°C" };
     for (anchor, offset, text) in [

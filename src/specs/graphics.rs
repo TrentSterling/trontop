@@ -492,9 +492,12 @@ mod tests {
             &[("Fixture Virtual Display".into(), None)],
         );
         let text = crate::specs::probe_text(std::slice::from_ref(&section));
-        assert!(text.contains("Video memory: 15.9 GB"), "{text}");
-        assert!(text.contains("Dedicated to the adapter: 16.0 GB"), "{text}");
-        assert!(text.contains("  Fixture GPU (15.9 GB, PNY)"), "{text}");
+        assert!(text.contains("Video memory: 15.9 GiB"), "{text}");
+        assert!(
+            text.contains("Dedicated to the adapter: 16.0 GiB"),
+            "{text}"
+        );
+        assert!(text.contains("  Fixture GPU (15.9 GiB, PNY)"), "{text}");
         assert!(
             text.contains("Current mode: 3840 x 2160 @ 59.94 Hz"),
             "{text}"

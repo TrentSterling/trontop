@@ -20,7 +20,7 @@ pub(super) enum Combine {
 
 pub(super) struct Series<'a> {
     pub chart: &'a Chart,
-    /// Short legend label ("R", "In", "S0"); empty on single-series cards.
+    /// Short legend label ("R", "Receive", "S0"); empty on single-series cards.
     pub label: &'static str,
 }
 
@@ -250,7 +250,7 @@ fn place(chart: &Chart) -> (String, String, &'static str, Combine, u8) {
         Id::Network(name, direction) => (
             format!("net-{name}"),
             "Network traffic".into(),
-            if *direction == 0 { "In" } else { "Out" },
+            if *direction == 0 { "Receive" } else { "Send" },
             Combine::Sum,
             0,
         ),
@@ -407,9 +407,9 @@ fn idle_adapter_keys(history: &History, now: Instant) -> Vec<crate::gpu_adapters
 }
 
 /// The folded line with the measured window peaks, never rounded to a
-/// flattering zero: "Intel Graphics idle (0% busy, 0 GiB used)" only when
+/// flattering zero: "Intel Graphics idle (0% busy, 0 B used)" only when
 /// every value was exactly 0, otherwise "Intel Graphics near idle (peak 0.2%
-/// busy, up to 776 KB used)". The hover lists every value.
+/// busy, up to 776 KiB used)". The hover lists every value.
 fn idle_adapter_line(
     history: &History,
     key: crate::gpu_adapters::Key,
@@ -428,7 +428,7 @@ fn idle_adapter_line(
     let busy = peak(3);
     let memory_bytes = (f64::from(peak(0)) + f64::from(peak(1))) * 1_073_741_824.0;
     let line = if busy == 0.0 && memory_bytes == 0.0 {
-        format!("{name} idle (0% busy, 0 GiB used)")
+        format!("{name} idle (0% busy, 0 B used)")
     } else {
         format!(
             "{name} near idle (peak {} busy, up to {} used)",

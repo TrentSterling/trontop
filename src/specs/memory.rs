@@ -540,12 +540,12 @@ mod tests {
         );
         let text = crate::specs::probe_text(std::slice::from_ref(&section));
         assert!(
-            text.contains("64.0 GB DDR5 @ 6000 MT/s (1 of 2 slots)"),
+            text.contains("64.0 GiB DDR5 @ 6000 MT/s (1 of 2 slots)"),
             "{text}"
         );
-        assert!(text.contains("Reserved by hardware: 1.00 GB"), "{text}");
+        assert!(text.contains("Reserved by hardware: 1.00 GiB"), "{text}");
         assert!(
-            text.contains("Controller0-ChannelA-DIMM1: 32.0 GB"),
+            text.contains("Controller0-ChannelA-DIMM1: 32.0 GiB"),
             "{text}"
         );
         assert!(text.contains("Controller0-ChannelA-DIMM0: empty"), "{text}");

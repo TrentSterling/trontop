@@ -758,7 +758,7 @@ fn preview(ui: &mut egui::Ui, s: ThemeSettings) {
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new(if i == 0 { "84.6 MB" } else { "12.8 MB" })
+                            RichText::new(if i == 0 { "84.6 MiB" } else { "12.8 MiB" })
                                 .monospace()
                                 .color(t.text),
                         );

@@ -58,7 +58,7 @@ impl Metric {
             |v| match self {
                 Self::Active => format!("{v:.1}%"),
                 Self::Response => format!("{v:.2} ms"),
-                Self::Queue => format!("{v:.0}"),
+                Self::Queue => crate::format::count(v as f32, "req"),
                 Self::Read | Self::Write => crate::format::rate(v),
             },
         )
