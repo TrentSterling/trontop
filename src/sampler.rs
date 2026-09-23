@@ -12,13 +12,56 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-use sysinfo::{Disks, Networks, ProcessesToUpdate, System, Users};
+use sysinfo::{Disks, Networks, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, Users};
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 // A GPU engine inventory costs about 4 ms on a 650-instance box. Every 5 s keeps
 // new GPU clients from staying unreported (and ended ones lingering) for long.
 const GPU_INVENTORY_INTERVAL: u64 = 5;
 const CONTROL_REFRESH_INTERVAL: u64 = 5;
+
+/// Everything the process table shows except CPU time. Per-process CPU comes
+/// from `process_cpu` instead: sysinfo's CPU path calls `GetSystemTimes` once
+/// per process, which measured 100 to 670 ms per call on a busy 24-thread box
+/// (a 40 to 65 s refresh). Static strings are read once per process instance,
+/// and environment blocks are never read.
+fn process_refresh_kind() -> ProcessRefreshKind {
+    ProcessRefreshKind::nothing()
+        .with_memory()
+        .with_disk_usage()
+        .with_exe(UpdateKind::OnlyIfNotSet)
+        .with_user(UpdateKind::OnlyIfNotSet)
+        .with_cmd(UpdateKind::OnlyIfNotSet)
+        .with_cwd(UpdateKind::OnlyIfNotSet)
+}
+
+/// Process refresh plus native CPU times: the work the sampler does per sample
+/// for the process table. Shared with the read-only timing probe.
+fn refresh_process_table(system: &mut System, cpu_times: &mut crate::process_cpu::Tracker) -> bool {
+    system.refresh_processes_specifics(ProcessesToUpdate::All, true, process_refresh_kind());
+    let reading = crate::process_cpu::read();
+    let ok = reading.is_ok();
+    cpu_times.update(reading.ok());
+    ok
+}
+
+/// CPU share and cumulative CPU time for one sysinfo process, joined to the
+/// native snapshot by PID and verified by creation time (same instance).
+fn process_cpu(
+    cpu_times: &crate::process_cpu::Tracker,
+    pid: u32,
+    started_at_unix: u64,
+) -> (f32, u64) {
+    cpu_times
+        .times(pid)
+        .filter(|times| times.started_at_unix() == Some(started_at_unix))
+        .map_or((0.0, 0), |times| {
+            (
+                cpu_times.percent(pid).unwrap_or(0.0),
+                times.accumulated_millis(),
+            )
+        })
+}
 
 fn cpu_info(system: &System, physical_cores: usize) -> CpuInfo {
     CpuInfo {
@@ -145,7 +188,11 @@ fn sample_loop(
     // immutable snapshots can be read even while a provider call is stuck.
     let mut inventories = crate::inventory::Inventories::spawn();
     let mut disk_activity = crate::disk_activity::Monitor::spawn();
-    let mut system = System::new_all();
+    let mut system = System::new();
+    system.refresh_cpu_all();
+    system.refresh_memory();
+    let mut cpu_times = crate::process_cpu::Tracker::default();
+    refresh_process_table(&mut system, &mut cpu_times);
     let mut disks = Disks::new_with_refreshed_list();
     let mut networks = Networks::new_with_refreshed_list();
     let mut network_filters = crate::network_identity::FilterAliases::default();
@@ -186,14 +233,14 @@ fn sample_loop(
         *diagnostics.get_mut(Provider::MemoryCounters) = memory.health.clone();
         cpu_clock.refresh();
         *diagnostics.get_mut(Provider::CpuClock) = cpu_clock.health.clone();
-        system.refresh_processes(ProcessesToUpdate::All, true);
+        let process_times_ok = refresh_process_table(&mut system, &mut cpu_times);
         disks.refresh(true);
         networks.refresh(true);
         network_filters.refresh(networks.keys());
         if sequence.is_multiple_of(CONTROL_REFRESH_INTERVAL) {
             system.refresh_cpu_frequency();
         }
-        let system_ok = !system.cpus().is_empty() && system.total_memory() > 0;
+        let system_ok = !system.cpus().is_empty() && system.total_memory() > 0 && process_times_ok;
         diagnostics.get_mut(Provider::System).record(
             cycle_started,
             cycle_started.elapsed(),
@@ -280,7 +327,6 @@ fn sample_loop(
         *diagnostics.get_mut(Provider::Services) = service_health;
 
         sequence += 1;
-        let logical_cpu_count = system.cpus().len().max(1) as f32;
         let processes = system
             .processes()
             .values()
@@ -291,13 +337,15 @@ fn sample_loop(
                     .and_then(|id| users.get_user_by_id(id))
                     .map(|user| user.name().to_string())
                     .unwrap_or_else(|| "Unknown account".into());
+                let (cpu_percent, accumulated_cpu_millis) =
+                    process_cpu(&cpu_times, process.pid().as_u32(), process.start_time());
                 ProcessRow {
                     pid: process.pid().as_u32(),
                     parent_pid: process.parent().map(|pid| pid.as_u32()),
                     name: process.name().to_string_lossy().into_owned(),
                     status: format!("{:?}", process.status()),
                     user,
-                    cpu_percent: (process.cpu_usage() / logical_cpu_count).clamp(0.0, 100.0),
+                    cpu_percent,
                     gpu_percent: gpu.for_process(&gpu_by_pid, process.pid().as_u32()),
                     memory_bytes: process.memory(),
                     virtual_memory_bytes: process.virtual_memory(),
@@ -305,7 +353,7 @@ fn sample_loop(
                     write_bytes_per_sec: disk.written_bytes as f64 / sample_seconds,
                     total_read_bytes: disk.total_read_bytes,
                     total_write_bytes: disk.total_written_bytes,
-                    accumulated_cpu_millis: process.accumulated_cpu_time(),
+                    accumulated_cpu_millis,
                     started_at_unix: process.start_time(),
                     executable: process.exe().map(ToOwned::to_owned),
                     command: process
@@ -531,6 +579,146 @@ mod tests {
         );
     }
     use super::*;
+
+    fn summary(label: &str, mut seconds: Vec<f64>) {
+        seconds.sort_by(f64::total_cmp);
+        let at = |q: f64| {
+            seconds
+                .get(((seconds.len() as f64 - 1.0) * q).round() as usize)
+                .copied()
+                .unwrap_or(f64::NAN)
+        };
+        println!(
+            "{label}: n={} p50={:.3}s p95={:.3}s max={:.3}s",
+            seconds.len(),
+            at(0.5),
+            at(0.95),
+            seconds.last().copied().unwrap_or(f64::NAN)
+        );
+    }
+
+    fn probe_seconds() -> Duration {
+        Duration::from_secs(
+            std::env::var("TRONTOP_PROBE_SECONDS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(60),
+        )
+    }
+
+    #[test]
+    #[ignore = "Read-only native timing probe (>= 60 s): real sampler worker, no window, tray, input or process control"]
+    fn native_sampler_cadence_read_only_probe() {
+        let budget = probe_seconds();
+        // Before: the pre-fix per-sample process refresh (sysinfo's default kind,
+        // whose CPU path calls GetSystemTimes once per process).
+        if std::env::var_os("TRONTOP_PROBE_SKIP_LEGACY").is_none() {
+            let mut system = System::new_all();
+            let started = Instant::now();
+            let mut legacy = Vec::new();
+            while started.elapsed() < budget || legacy.len() < 2 {
+                thread::sleep(Duration::from_secs(1));
+                let at = Instant::now();
+                system.refresh_processes(ProcessesToUpdate::All, true);
+                legacy.push(at.elapsed().as_secs_f64());
+                println!(
+                    "SAMPLER_PROBE before refresh[{}] {:.3}s processes={}",
+                    legacy.len() - 1,
+                    legacy.last().unwrap(),
+                    system.processes().len()
+                );
+            }
+            summary("SAMPLER_PROBE before refresh_processes(All)", legacy);
+        }
+        // After: the real sampler thread, exactly as the app runs it.
+        let sampler = Sampler::spawn(egui::Context::default(), None);
+        let started = Instant::now();
+        let mut seen = 0;
+        let mut last = None;
+        let mut gaps = Vec::new();
+        let mut intervals = Vec::new();
+        let mut system_query = Vec::new();
+        let mut processes = 0;
+        while started.elapsed() < budget {
+            if let Some(snapshot) = sampler.latest_after(seen) {
+                let now = Instant::now();
+                if let Some(previous) = last.replace(now) {
+                    gaps.push(now.duration_since(previous).as_secs_f64());
+                }
+                if let Some(millis) = snapshot.diagnostics.get(Provider::System).query_millis {
+                    system_query.push(millis / 1000.0);
+                }
+                // Measured on the worker between cycle starts; the most direct
+                // cadence figure (observer polling jitter is not included).
+                if snapshot.sequence > 1 {
+                    intervals.push(snapshot.sample_seconds);
+                }
+                seen = snapshot.sequence;
+                processes = snapshot.process_count;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        drop(sampler);
+        println!(
+            "SAMPLER_PROBE after: {seen} samples in {:.1}s, {processes} processes",
+            budget.as_secs_f64()
+        );
+        summary(
+            "SAMPLER_PROBE after worker interval between samples",
+            intervals,
+        );
+        summary("SAMPLER_PROBE after observed gap between samples", gaps);
+        summary("SAMPLER_PROBE after system+process refresh", system_query);
+        assert!(
+            seen >= budget.as_secs() / 2,
+            "sampler produced only {seen} samples"
+        );
+    }
+
+    #[test]
+    #[ignore = "Read-only native CPU parity probe: spins one thread in this test process only"]
+    fn native_process_cpu_matches_sysinfo_read_only_probe() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let spinner = {
+            let stop = Arc::clone(&stop);
+            thread::spawn(move || {
+                let mut value = 0_u64;
+                while !stop.load(Ordering::Relaxed) {
+                    value = std::hint::black_box(value.wrapping_add(1));
+                }
+            })
+        };
+        let own = std::process::id();
+        let pid = sysinfo::Pid::from_u32(own);
+        let mut system = System::new();
+        system.refresh_cpu_all();
+        let kind = ProcessRefreshKind::nothing().with_cpu();
+        let mut tracker = crate::process_cpu::Tracker::default();
+        let cpus = system.cpus().len().max(1) as f32;
+        let mut worst = 0.0_f32;
+        for round in 0..8 {
+            system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, kind);
+            tracker.update(crate::process_cpu::read().ok());
+            // sysinfo needs three refreshes of a new PID before its first real
+            // delta (the first stores no baseline); the native tracker needs two.
+            if round > 1 {
+                let process = system.process(pid).unwrap();
+                let old = (process.cpu_usage() / cpus).clamp(0.0, 100.0);
+                let (new, millis) = process_cpu(&tracker, own, process.start_time());
+                worst = worst.max((old - new).abs());
+                println!(
+                    "CPU_PARITY round={round} sysinfo={old:.3}% native={new:.3}% accumulated sysinfo={}ms native={millis}ms",
+                    process.accumulated_cpu_time()
+                );
+                assert!(new > 0.0);
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
+        stop.store(true, Ordering::Relaxed);
+        spinner.join().unwrap();
+        println!("CPU_PARITY worst difference {worst:.3} percentage points ({cpus} logical CPUs)");
+        assert!(worst < 1.0, "native CPU differs from sysinfo by {worst}");
+    }
 
     fn snapshot(sequence: u64) -> SystemSnapshot {
         SystemSnapshot {

@@ -18,6 +18,7 @@ mod network_identity;
 mod platform;
 mod preferences;
 mod process_actions;
+mod process_cpu;
 mod process_icons;
 mod sampler;
 mod service_control;

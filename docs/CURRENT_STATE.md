@@ -3,6 +3,33 @@
 Last updated: 2026-09-23 (alpha.37 polish gauntlet; the checklist below is
 the saved 2026-09-06 handoff)
 
+## Sampler stall fix (2026-09-23, alpha.37 line)
+
+The sampler published about one sample per minute on a busy box (about 470
+processes). Root cause: sysinfo 0.38.4 calls `GetSystemTimes`
+(`NtQuerySystemInformation(SystemProcessorPerformanceInformation)`) once per process
+in its per-process CPU path, and that query intermittently costs 100 to 670 ms per
+call on this machine, so each `refresh_processes(All)` took 45 to 65 s. Per-process
+CPU now comes from one `SystemProcessInformation` snapshot plus one `GetSystemTimes`
+per sample (`src/process_cpu.rs`); sysinfo refreshes processes without CPU and reads
+exe/user/command line/working directory once per instance (later processes now get
+them too). Same CPU formula; parity probe worst difference 0.164 points.
+
+- Before: refresh calls 3+ took 50.2 to 58.2 s. After (real sampler, 60 s):
+  samples every 1.000 s p50 / 1.001 s p95; System step p95 0.048 s in the fast
+  kernel phase, 0.82 to 0.86 s in the slow phase. Gauntlet warmup: 20 samples in
+  20 s (was about 3). The alpha.37 note below that called the 5.06 s gauntlet gap
+  "a harness-timing artifact" was this bug. Details in `docs/TELEMETRY.md`.
+- Gate: `cargo fmt --check` clean; `cargo clippy --all-targets -- -D warnings`
+  clean; `cargo test` 3x: 414 passed, 0 failed, 44 ignored each; `cargo build
+  --release --target-dir target-agent` OK, `target-agent/release/trontop.exe`
+  14,666,240 bytes, SHA-256
+  `A89D6CD0373B7CFA52E7F78E6107C728F529E0277E52CD82D8588AFBEFB7728B` (not
+  launched; `target/release` untouched). Gauntlet `render_gauntlet_all_pages`
+  wrote 157 PNGs; worst accepted-sample gap 1.54 s.
+- Remaining per-sample cost in the slow kernel phase: sysinfo PDH CPU refresh
+  (about 250 ms) and `Networks::refresh` (about 150 ms). Not changed here.
+
 ## Thread shutdown: saved resume checklist
 
 Trent explicitly requested notes saved and this thread closed. **No further
