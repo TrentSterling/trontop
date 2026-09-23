@@ -126,9 +126,19 @@ fn adapter_selection_tracks_identity_and_memory_layout_survives_missing_values()
                     text.iter()
                         .any(|(t, _)| t.galley.job.text == "3D / engine 0")
                 );
-                assert!(
-                    text.iter()
-                        .any(|(t, _)| t.galley.job.text == "Dedicated GPU memory")
+                // Never-measured memory counters fold into one compact gap row
+                // instead of empty "No data" charts.
+                let expected = if missing {
+                    "3 counters with no value in the last 2 minutes"
+                } else {
+                    "Dedicated VRAM"
+                };
+                assert!(text.iter().any(|(t, _)| t.galley.job.text == expected));
+                assert_eq!(
+                    missing,
+                    !text
+                        .iter()
+                        .any(|(t, _)| t.galley.job.text == "Dedicated VRAM")
                 );
             }
         }

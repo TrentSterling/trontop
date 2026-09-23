@@ -44,7 +44,7 @@ impl Group {
         match self {
             Self::System => "Load",
             Self::Memory => "Memory",
-            Self::Thermal => "Temperatures & power",
+            Self::Thermal => "Thermal & power",
             Self::Gpu => "GPU",
             Self::Storage => "Disks",
             Self::Network => "Network",
@@ -102,6 +102,11 @@ pub(super) struct Chart {
     pub last_seen: Instant,
     pub cadence: Duration,
     pub partial: bool,
+    /// Short device name for the card's chip, e.g. "RTX 5070 Ti" or "Disk 0 C:".
+    pub device: Option<String>,
+    /// Shown on the Graphs wall. Per-engine-instance charts, committed GPU
+    /// memory and software adapters stay on Performance > GPU only.
+    pub wall: bool,
 }
 
 impl Chart {
@@ -121,7 +126,8 @@ impl Chart {
     }
     pub(super) fn value_label(&self) -> String {
         self.current.map_or_else(
-            || "Unavailable".into(),
+            // Never a giant "Unavailable": a muted gap with the reason on hover.
+            || "--".into(),
             |v| {
                 format!(
                     "{}{}",
@@ -202,6 +208,8 @@ struct Field<'a> {
     maximum: Option<f32>,
     cadence: Duration,
     partial: bool,
+    device: Option<String>,
+    wall: bool,
 }
 
 impl History {
@@ -238,6 +246,8 @@ impl History {
                 last_seen: now,
                 cadence: field.cadence,
                 partial: false,
+                device: None,
+                wall: true,
             });
             index
         };
@@ -247,6 +257,8 @@ impl History {
         chart.detail = field.detail.into();
         chart.maximum = field.maximum;
         chart.state = field.state;
+        chart.device = field.device;
+        chart.wall = field.wall;
         let measured = field.value.filter(|v| v.is_finite());
         if measured.is_some() {
             chart.partial = field.partial;
@@ -349,6 +361,8 @@ impl History {
                     maximum,
                     cadence: Duration::from_secs(1),
                     partial: false,
+                    device: None,
+                    wall: true,
                 },
                 now,
             );
@@ -387,6 +401,8 @@ impl History {
                     maximum: None,
                     cadence: Duration::from_secs(1),
                     partial: false,
+                    device: None,
+                    wall: true,
                 },
                 now,
             );
@@ -418,6 +434,8 @@ impl History {
                     maximum: Some(100.0),
                     cadence: Duration::from_secs(1),
                     partial: false,
+                    device: None,
+                    wall: true,
                 },
                 now,
             );
@@ -483,6 +501,8 @@ impl History {
                     maximum,
                     cadence: Duration::from_secs(1),
                     partial: false,
+                    device: None,
+                    wall: true,
                 },
                 now,
             );
@@ -503,7 +523,11 @@ impl History {
                 Field {
                     id: Id::Activity(name.into()),
                     title: name,
-                    detail: "Busiest engine, all adapters",
+                    detail: if name == "GPU activity" {
+                        "Busiest engine across all adapters, Windows GPU Engine counters"
+                    } else {
+                        "Busiest engine of this type across all adapters, Windows GPU Engine counters"
+                    },
                     group: if name == "GPU activity" {
                         Group::System
                     } else {
@@ -524,19 +548,23 @@ impl History {
                     maximum: Some(100.0),
                     cadence: Duration::from_secs(1),
                     partial,
+                    device: (name != "GPU activity").then(|| "All GPUs".to_owned()),
+                    wall: true,
                 },
                 now,
             );
         }
         for adapter in &s.gpu.adapters {
             let detail = format!("{} / {}", adapter.name(), adapter.key.label());
-            for (metric, title) in [
-                "Dedicated GPU memory",
-                "Shared GPU memory",
-                "GPU committed memory",
-            ]
-            .iter()
-            .enumerate()
+            let device = Some(gpu_short_name(&adapter.name()));
+            // Software adapters (Microsoft Basic Render Driver) stay selectable
+            // on Performance > GPU but never crowd the wall.
+            // Counter LUIDs with no DXGI description are not a known device:
+            // they stay on Performance > GPU, labelled, and off the wall.
+            let software = adapter.description.as_ref().is_none_or(|d| d.software);
+            for (metric, title) in ["Dedicated VRAM", "Shared memory", "Committed memory"]
+                .iter()
+                .enumerate()
             {
                 let value = &adapter.memory[metric];
                 self.field(
@@ -552,6 +580,8 @@ impl History {
                         maximum: None,
                         cadence: Duration::from_secs(1),
                         partial: false,
+                        device: device.clone(),
+                        wall: !software && metric < 2,
                     },
                     now,
                 );
@@ -587,6 +617,9 @@ impl History {
                         maximum: Some(100.),
                         cadence: Duration::from_secs(1),
                         partial,
+                        device: device.clone(),
+                        // Per-instance engines live on Performance > GPU only.
+                        wall: !software && index == 3,
                     },
                     now,
                 );
@@ -646,6 +679,7 @@ impl History {
                     adapter.memory.map(|v| v.1 as f32 / 1_073_741_824.0),
                 ),
             ];
+            let device = Some(gpu_short_name(&adapter.name));
             for (metric, (title, value, unit, group, maximum)) in values.into_iter().enumerate() {
                 let detail = format!(
                     "{}{}",
@@ -677,17 +711,20 @@ impl History {
                         maximum,
                         cadence: Duration::from_secs(1),
                         partial: false,
+                        device: device.clone(),
+                        wall: true,
                     },
                     now,
                 );
             }
         }
         for drive in &s.storage_sensors.drives {
+            let device = Some(crate::app::overview::drive_short_name(&drive.device.name));
             for sensor in &drive.temperatures.sensors {
                 self.field(
                     Field {
                         id: Id::Temperature(drive.device.id.clone(), sensor.index),
-                        title: &format!("Drive temperature / sensor {}", sensor.index),
+                        title: &format!("Drive temperature sensor {}", sensor.index),
                         detail: &drive.device.name,
                         group: Group::Thermal,
                         unit: Unit::Celsius,
@@ -701,6 +738,8 @@ impl History {
                         maximum: Some(100.0),
                         cadence: Duration::from_secs(5),
                         partial: false,
+                        device: device.clone(),
+                        wall: true,
                     },
                     now,
                 );
@@ -719,19 +758,22 @@ impl History {
                         maximum: Some(100.0),
                         cadence: Duration::from_secs(5),
                         partial: false,
+                        device: device.clone(),
+                        wall: true,
                     },
                     now,
                 );
             }
         }
         for disk in &s.physical_disks.devices {
+            let device = Some(disk_short_name(disk.number, &disk.instance));
             for metric in crate::disk_activity::Metric::ALL {
                 let index = metric as usize;
                 let reading = disk.readings[index];
                 self.field(
                     Field {
                         id: Id::Disk(disk.instance.clone(), index),
-                        title: &format!("Disk {} / {}", disk.number, metric.label()),
+                        title: metric.label(),
                         detail: metric.explanation(),
                         group: Group::Storage,
                         unit: [
@@ -747,6 +789,8 @@ impl History {
                         maximum: (index == 0).then_some(100.0),
                         cadence: Duration::from_secs(1),
                         partial: false,
+                        device: device.clone(),
+                        wall: true,
                     },
                     now,
                 );
@@ -773,10 +817,44 @@ impl History {
                         maximum: None,
                         cadence: Duration::from_secs(1),
                         partial: false,
+                        device: Some(network.name.clone()),
+                        wall: true,
                     },
                     now,
                 );
             }
         }
+    }
+}
+
+/// A short adapter name for a card chip: "NVIDIA GeForce RTX 5070 Ti" becomes
+/// "RTX 5070 Ti", "Intel(R) UHD Graphics 770" becomes "Intel UHD Graphics 770".
+pub(super) fn gpu_short_name(name: &str) -> String {
+    let cleaned = name
+        .replace("(R)", "")
+        .replace("(TM)", "")
+        .replace("(tm)", "");
+    let mut rest = cleaned.trim();
+    for prefix in ["NVIDIA ", "GeForce ", "AMD ", "Radeon "] {
+        if let Some(stripped) = rest.strip_prefix(prefix)
+            && !stripped.trim().is_empty()
+        {
+            rest = stripped.trim_start();
+        }
+    }
+    rest.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// "Disk 0 C: D:" from the PDH instance "0 C: D:". Instances without volume
+/// letters keep only the number; nothing is guessed.
+pub(super) fn disk_short_name(number: u32, instance: &str) -> String {
+    let letters: Vec<_> = instance
+        .split_whitespace()
+        .filter(|word| word.len() == 2 && word.ends_with(':'))
+        .collect();
+    if letters.is_empty() {
+        format!("Disk {number}")
+    } else {
+        format!("Disk {number} \u{b7} {}", letters.join(" "))
     }
 }

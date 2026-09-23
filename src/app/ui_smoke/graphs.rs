@@ -450,9 +450,12 @@ fn graph_wall_visible_rows_match_full_layout_through_scroll_and_scale() {
                         "{text} moved: {rect:?} vs {expected_rect:?} at {size:?}/{scale}/{scroll}"
                     );
                 }
-                assert_eq!(reference.graphs.laid_out_cards, 512);
+                // Every composed card is laid out on the reference path; 256
+                // adapters fold Receive and Send into one card each.
+                assert_eq!(reference.graphs.laid_out_cards, reference.graphs.wall_cards);
+                assert!(reference.graphs.wall_cards > 200);
                 assert!(
-                    actual.graphs.laid_out_cards <= 24,
+                    actual.graphs.laid_out_cards <= 32,
                     "offscreen cards still laid out: {}",
                     actual.graphs.laid_out_cards
                 );
@@ -471,7 +474,7 @@ fn graph_wall_controls_respond_to_local_input_without_native_commands() {
         frame(&ctx, &mut app, size, vec![]);
     }
     click_local_text(&ctx, &mut app, size, "Bars");
-    click_local_text(&ctx, &mut app, size, "Temperatures & power");
+    click_local_text(&ctx, &mut app, size, "Thermal & power");
     let output = frame(&ctx, &mut app, size, vec![]);
     let texts = text_shapes(&output);
     assert!(
@@ -523,8 +526,11 @@ fn graph_wall_filter_returns_to_first_row_after_deep_scroll() {
     assert!(
         visible_text(&output)
             .iter()
-            .any(|(text, _)| text == "CPU 31"),
-        "scroll must actually reach the all-core tail after the network graphs"
+            .any(|(text, _)| text == "Network traffic")
+            && !visible_text(&output)
+                .iter()
+                .any(|(text, _)| text == "CPU usage"),
+        "scroll must actually reach the network tail of the wall"
     );
     click_local_text(&ctx, &mut app, size, "Memory");
     for _ in 0..4 {
@@ -591,7 +597,7 @@ fn graph_visual_click_preserves_complete_font_texture_updates() {
         &ctx,
         &mut app,
         size,
-        "Temperatures & power",
+        "Thermal & power",
     ));
     for _ in 0..3 {
         let next = frame(&ctx, &mut app, size, vec![]);
@@ -690,7 +696,7 @@ fn render_graph_wall_visual_pass() {
                 &ctx,
                 &mut app,
                 size,
-                "Temperatures & power",
+                "Thermal & power",
             ));
         }
         for _ in 0..3 {
@@ -699,4 +705,46 @@ fn render_graph_wall_visual_pass() {
         renderer.save(&ctx, output, size, &directory.join(format!("{name}.png")));
     }
     println!("Graph wall: 6 offscreen PNGs; synthetic data only; no native windows or OS input");
+}
+
+#[test]
+fn graph_tabs_and_style_toggle_fit_one_row_at_the_smallest_window() {
+    let size = Vec2::new(1000.0, 580.0);
+    let mut app = populated(ThemeSettings::default());
+    app.page = Page::Graphs;
+    let ctx = egui::Context::default();
+    theme::install(&ctx, app.theme);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..4 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let text = visible_text(&output);
+    let row = |label: &str| {
+        text.iter()
+            // Skip the sidebar's meters (CPU, MEMORY, GPU).
+            .find(|(t, rect)| t == label && rect.left() > 205.0)
+            .unwrap_or_else(|| panic!("missing {label}"))
+            .1
+    };
+    let everything = row("Everything");
+    for label in [
+        "Load",
+        "Memory",
+        "Thermal & power",
+        "GPU",
+        "Disks",
+        "Network",
+        "All cores",
+        "Lines",
+        "Bars",
+    ] {
+        let rect = row(label);
+        assert!(
+            (rect.center().y - everything.center().y).abs() < 3.0,
+            "{label} wrapped to another row: {rect:?} vs {everything:?}"
+        );
+        assert!(rect.right() <= size.x, "{label} is clipped: {rect:?}");
+    }
+    assert!(row("Everything").left() < row("All cores").left());
+    assert!(row("All cores").right() < row("Lines").left());
 }

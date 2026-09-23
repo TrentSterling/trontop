@@ -2,7 +2,8 @@
 use super::*;
 use std::time::{Duration, Instant};
 mod history;
-use history::{Chart, Group, History, WINDOW};
+mod wall;
+use history::{Group, History, WINDOW};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Style {
@@ -46,10 +47,15 @@ pub(super) struct Dashboard {
     pub(super) draw_all_rows: bool,
     #[cfg(test)]
     pub(super) laid_out_cards: usize,
+    /// Cards the current tab composes (measured, not folded), for tests.
+    #[cfg(test)]
+    pub(super) wall_cards: usize,
     #[cfg(test)]
     pub(super) fixed_now: Option<Instant>,
 }
 impl Dashboard {
+    /// Performance > GPU: the selected adapter's per-engine or memory charts.
+    /// Per-engine-instance charts appear only here, never on the wall.
     pub(super) fn adapter_charts(
         &self,
         ui: &mut egui::Ui,
@@ -57,7 +63,8 @@ impl Dashboard {
         memory: bool,
         t: Tokens,
     ) {
-        let charts: Vec<_> = self
+        let now = self.now();
+        let all: Vec<_> = self
             .history
             .charts
             .iter()
@@ -68,10 +75,36 @@ impl Dashboard {
                 _ => false,
             })
             .collect();
+        let charts: Vec<_> = all
+            .iter()
+            .filter(|c| wall::measured(c, now))
+            .map(|c| wall::Card::single(c))
+            .collect();
+        if charts.len() < all.len() {
+            let missing: Vec<_> = all
+                .iter()
+                .filter(|c| !wall::measured(c, now))
+                .map(|c| c.title.as_str())
+                .collect();
+            widgets::gap_row(
+                ui,
+                &format!(
+                    "{} {} with no value in the last 2 minutes",
+                    missing.len(),
+                    if missing.len() == 1 {
+                        "counter"
+                    } else {
+                        "counters"
+                    }
+                ),
+                "Not reported",
+                &missing.join(", "),
+                t,
+            );
+        }
         let cols = if ui.available_width() >= 480.0 { 2 } else { 1 };
         let width = ui.available_width();
         let mut height = 0.0;
-        let now = self.now();
         for (row, chunk) in charts.chunks(cols).enumerate() {
             let size = Vec2::new(width, height);
             if row == 0
@@ -79,10 +112,11 @@ impl Dashboard {
             {
                 let response = ui.push_id(("gpu-charts", key, memory, row), |ui| {
                     ui.set_width(width);
-                    ui.columns(cols, |columns| {
-                        for (index, (column, chart)) in columns.iter_mut().zip(chunk).enumerate() {
-                            column.push_id(&chart.id, |ui| {
-                                card(ui, chart, now, self.style, (row + index) % 2 == 1, t)
+                    ui.spacing_mut().item_spacing.x = theme::space::GAP;
+                    ui.columns(chunk.len(), |columns| {
+                        for (index, (column, card)) in columns.iter_mut().zip(chunk).enumerate() {
+                            column.push_id(&card.key, |ui| {
+                                card_view(ui, card, now, self.style, (row + index) % 2 == 1, t)
                             });
                         }
                     });
@@ -93,7 +127,7 @@ impl Dashboard {
             } else {
                 ui.allocate_space(size);
             }
-            ui.add_space(6.0);
+            ui.add_space(theme::space::GAP);
         }
     }
     pub(super) fn now(&self) -> Instant {
@@ -109,20 +143,9 @@ impl Dashboard {
         }
     }
 
+    /// The Lines / Bars choice as one compact segmented control.
     pub(super) fn controls(&mut self, ui: &mut egui::Ui, t: Tokens) {
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.style, Style::Lines, "Lines");
-            ui.selectable_value(&mut self.style, Style::Bars, "Bars");
-            widgets::hover_label(
-                ui,
-                RichText::new(format!(
-                    "{} signals / 120 seconds / hover to inspect",
-                    self.history.charts.len()
-                ))
-                .size(11.0)
-                .color(t.text_muted),
-            );
-        });
+        style_toggle(ui, &mut self.style, t);
     }
 
     pub(super) fn cpu_grid(&self, ui: &mut egui::Ui, logical_count: usize, t: Tokens) {
@@ -168,7 +191,7 @@ impl Dashboard {
                                     });
                                 });
                                 if let Some(chart) = chart {
-                                    plot(ui, chart, now, self.style, t.accent, t, 72.0);
+                                    plot(ui, &wall::Card::single(chart), now, self.style, &[t.accent], t, 72.0);
                                 } else {
                                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 72.0), Sense::hover());
                                     ui.painter().rect_filled(rect, 4.0, t.graph_bg);
@@ -222,11 +245,44 @@ impl Dashboard {
 }
 
 impl TrontopApp {
+    /// `(short chip text, full reason)` when the sensor bridge publishes no CPU
+    /// temperature. Graphs never substitutes an ACPI zone or a guess.
+    fn cpu_temperature_gap(&self) -> Option<(&'static str, String)> {
+        let bridge = &self.specs_view.bridge;
+        let fresh = bridge.collected_at.is_some_and(|at| {
+            Instant::now().saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
+        });
+        let published = fresh
+            && bridge.readings.iter().any(|r| {
+                r.key == crate::specs::LiveKey::CpuPackageTemperature && r.value.is_finite()
+            });
+        if published {
+            return None;
+        }
+        const SOURCES: &str = "Trontop reads CPU temperature only from an already-running LibreHardwareMonitor, OpenHardwareMonitor or HWiNFO (read-only). It never substitutes an ACPI thermal zone or invents a value, and installs no driver. Click for Hardware sensors.";
+        Some(match (&bridge.status, fresh) {
+            _ if self.specs.is_none() => (
+                "CPU temp: not checked",
+                format!("CPU temperature: not checked yet. {SOURCES}"),
+            ),
+            (crate::specs::Value::Known(_), true) => (
+                "CPU temp: not reported",
+                format!("CPU temperature: the running sensor app does not report it. {SOURCES}"),
+            ),
+            (crate::specs::Value::Known(_), false) => (
+                "CPU temp: sensor app stopped",
+                format!("CPU temperature: the sensor app stopped responding. {SOURCES}"),
+            ),
+            (crate::specs::Value::Unavailable(reason), _) => (
+                "CPU temp: no sensor app",
+                format!("CPU temperature: no sensor app is running ({reason}). {SOURCES}"),
+            ),
+        })
+    }
+
     pub(super) fn graphs_page(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let now = Instant::now();
-        #[cfg(test)]
-        let now = self.graphs.fixed_now.unwrap_or(now);
+        let now = self.graphs.now();
         if self.graphs.history.charts.is_empty() {
             self.graphs.sample(&self.snapshot, now);
         }
@@ -237,67 +293,79 @@ impl TrontopApp {
             false,
         );
         let previous_filter = self.graphs.filter;
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.graphs.style, Style::Lines, "Lines");
-            ui.selectable_value(&mut self.graphs.style, Style::Bars, "Bars");
-            ui.separator();
+        let cpu_temperature = self.cpu_temperature_gap();
+        let mut chip_placed = false;
+        let mut open_sensors = false;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = theme::space::XS;
+            ui.spacing_mut().button_padding = Vec2::new(8.0, 4.0);
             ui.selectable_value(&mut self.graphs.filter, None, "Everything");
             for group in Group::ALL {
                 ui.selectable_value(&mut self.graphs.filter, Some(group), group.label());
             }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                style_toggle(ui, &mut self.graphs.style, t);
+                if let Some((short, reason)) = cpu_temperature
+                    .as_ref()
+                    .filter(|_| matches!(self.graphs.filter, None | Some(Group::Thermal)))
+                {
+                    let needed = ui
+                        .painter()
+                        .layout_no_wrap((*short).into(), FontId::proportional(10.0), t.text_muted)
+                        .size()
+                        .x
+                        + 24.0;
+                    if ui.available_width() >= needed {
+                        ui.add_space(theme::space::S);
+                        open_sensors |= gap_chip(ui, short, reason, t);
+                        chip_placed = true;
+                    }
+                }
+            });
         });
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            widgets::status_pill(ui, "120 seconds", t.secondary);
-            widgets::hover_label(ui, RichText::new("CPU temperature: not graphed; live on Hardware sensors when a provider runs").size(11.0).color(t.text_muted))
-                .on_hover_text("CPU package/core temperature comes only from an already-running LibreHardwareMonitor, OpenHardwareMonitor or HWiNFO (read-only). We do not substitute an ACPI thermal zone or invent a temperature. No driver is installed by Trontop.");
-            if ui.small_button("Sensor details").clicked() { self.page = Page::Sensors; }
-        });
-        ui.add_space(8.0);
+        ui.add_space(theme::space::M);
         let mut scroll = egui::ScrollArea::vertical()
             .id_salt("graph_wall_scroll")
             .auto_shrink([false, false]);
         if self.graphs.filter != previous_filter {
             scroll = scroll.vertical_scroll_offset(0.0);
         }
+        #[cfg(test)]
+        let mut laid_out = 0;
+        #[cfg(test)]
+        let draw_all_rows = self.graphs.draw_all_rows;
+        #[cfg(test)]
+        let mut wall_cards = 0;
         scroll.show(ui, |ui| {
             if self.graphs.filter == Some(Group::Cores) {
                 self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
                 return;
             }
-            let count = columns(ui.available_width());
-            // A continuous wall avoids mostly empty rows at section boundaries.
-            let charts: Vec<_> = Group::ALL
-                .into_iter()
-                .filter(|group| self.graphs.filter.is_none_or(|filter| filter == *group))
-                .flat_map(|group| {
-                    self.graphs
-                        .history
-                        .charts
-                        .iter()
-                        .filter(move |chart| chart.group == group)
-                })
-                .collect();
-            if charts.is_empty() {
-                widgets::hover_label(
+            let graphs = &self.graphs;
+            let wall = wall::compose(&graphs.history, graphs.filter, now);
+            #[cfg(test)]
+            {
+                wall_cards = wall.cards.len();
+            }
+            let count = widgets::tile_grid_columns(ui.available_width());
+            if wall.cards.is_empty() {
+                widgets::gap_row(
                     ui,
-                    RichText::new(
-                        "No reporting devices in this category. Other graphs keep running.",
-                    )
-                    .size(11.0)
-                    .color(t.text_muted),
+                    if graphs.history.charts.is_empty() {
+                        "Waiting for the first samples"
+                    } else {
+                        "Nothing in this category is reporting"
+                    },
+                    "No data",
+                    "Only measured values are graphed. Other categories keep running.",
+                    t,
                 );
             }
             let mut row_height = 0.0;
             let row_width = ui.available_width();
-            #[cfg(test)]
-            {
-                self.graphs.laid_out_cards = 0;
-            }
-            for (row, chunk) in charts.chunks(count).enumerate() {
-                // All card captions are single-line. Measure one real row
-                // each frame so font scale, theme margins and pixel rounding
-                // remain authoritative, without cached guessed dimensions.
+            for (row, chunk) in wall.cards.chunks(count).enumerate() {
+                // Every card has the same single-line anatomy, so one measured
+                // row height places every offscreen row exactly.
                 let row_size = Vec2::new(row_width, row_height);
                 let visible = row == 0
                     || ui.is_rect_visible(egui::Rect::from_min_size(
@@ -305,22 +373,24 @@ impl TrontopApp {
                         row_size,
                     ));
                 #[cfg(test)]
-                let visible = visible || self.graphs.draw_all_rows;
+                let visible = visible || draw_all_rows;
                 if visible {
                     let response = ui.push_id(("graph-row", row), |ui| {
                         // Do not let pixel rounding in an earlier row grow
                         // later columns cumulatively at fractional UI scale.
                         ui.set_width(row_width);
-                        ui.columns(count, |columns| {
-                            for (index, (column, chart)) in
+                        ui.spacing_mut().item_spacing.x = theme::space::GAP;
+                        // A short last row stretches: no orphan cards.
+                        ui.columns(chunk.len(), |columns| {
+                            for (index, (column, card)) in
                                 columns.iter_mut().zip(chunk).enumerate()
                             {
-                                column.push_id(&chart.id, |ui| {
-                                    card(
+                                column.push_id(&card.key, |ui| {
+                                    card_view(
                                         ui,
-                                        chart,
+                                        card,
                                         now,
-                                        self.graphs.style,
+                                        graphs.style,
                                         (row + index) % 2 == 1,
                                         t,
                                     );
@@ -333,78 +403,274 @@ impl TrontopApp {
                     }
                     #[cfg(test)]
                     {
-                        self.graphs.laid_out_cards += chunk.len();
+                        laid_out += chunk.len();
                     }
                 } else {
                     // scope/push_id and allocate_space each consume one auto
                     // ID, keeping later rows' hover IDs and geometry stable.
                     ui.allocate_space(row_size);
                 }
-                ui.add_space(8.0);
+                ui.add_space(theme::space::GAP);
             }
-            if self.graphs.history.omitted > 0 {
-                widgets::hover_label(
+            let footer = |ui: &mut egui::Ui, text: String, hover: String| {
+                ui.add(
+                    egui::Label::new(RichText::new(text).size(11.0).color(t.text_muted))
+                        .truncate(),
+                )
+                .on_hover_text(hover);
+            };
+            if !wall.idle.is_empty() {
+                footer(
                     ui,
-                    RichText::new(format!(
-                        "Dashboard limit: 512 series. {} additional fields are not charted.",
-                        self.graphs.history.omitted
-                    ))
-                    .color(t.text),
+                    format!("Idle engines: {}", wall.idle.join(", ")),
+                    format!(
+                        "These GPU engine types stayed at exactly 0.0% for the whole 2 minute window, so they are listed here instead of drawing flat cards:\n{}",
+                        wall.idle.join("\n")
+                    ),
+                );
+            }
+            if !wall.unreported.is_empty() {
+                let n = wall.unreported.len();
+                footer(
+                    ui,
+                    format!(
+                        "{n} {} not reported",
+                        if n == 1 { "signal" } else { "signals" }
+                    ),
+                    format!(
+                        "Left off the wall because they produced no value in the last 2 minutes:\n{}",
+                        wall.unreported.join("\n")
+                    ),
+                );
+            }
+            let thermal_view = matches!(graphs.filter, None | Some(Group::Thermal));
+            if !chip_placed
+                && thermal_view
+                && let Some((short, reason)) = &cpu_temperature
+            {
+                open_sensors |= gap_chip(ui, short, reason, t);
+            }
+            if graphs.history.omitted > 0 {
+                footer(
+                    ui,
+                    format!(
+                        "Graph budget: 512 series. {} more are not charted.",
+                        graphs.history.omitted
+                    ),
+                    "Trontop keeps at most 512 histories so the wall stays fast.".into(),
                 );
             }
         });
+        #[cfg(test)]
+        {
+            self.graphs.laid_out_cards = laid_out;
+            self.graphs.wall_cards = wall_cards;
+        }
+        if open_sensors {
+            self.page = Page::Sensors;
+        }
     }
 }
 
-fn columns(width: f32) -> usize {
-    ((width + 8.0) / 300.0).floor().clamp(1.0, 4.0) as usize
-}
-
-fn card(ui: &mut egui::Ui, chart: &Chart, now: Instant, style: Style, banded: bool, t: Tokens) {
-    let color = match chart.group {
-        Group::System => t.accent,
-        Group::Cores => t.accent,
-        Group::Memory => t.secondary,
-        Group::Thermal => t.secondary,
-        Group::Gpu => theme::mix(t.accent, t.secondary, 0.5),
-        Group::Storage => t.good,
-        Group::Network => t.secondary,
-    };
-    widgets::hover_frame(ui, widgets::surface(ui, t, banded), |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.spacing_mut().item_spacing.y = 3.0;
-        ui.add(
-            egui::Label::new(
-                RichText::new(&chart.title)
-                    .size(13.0)
-                    .strong()
-                    .color(t.text),
-            )
-            .truncate(),
-        )
-        .on_hover_text(&chart.title);
-        ui.add(
-            egui::Label::new(RichText::new(&chart.detail).size(10.0).color(t.text_muted))
-                .truncate(),
-        )
-        .on_hover_text(&chart.detail);
-        ui.horizontal(|ui| {
-            ui.add(egui::Label::new(RichText::new(chart.value_label()).size(21.0).monospace().color(t.text)).truncate());
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.add(egui::Label::new(RichText::new(chart.state(now)).size(10.0).color(t.text_muted)).truncate())
-                    .on_hover_text("Only measured values enter the graph. Gaps indicate missing or stale samples; hollow rings mark partial (lower-bound) samples. Cached values are not extended into fake history.");
+/// Compact Lines / Bars segmented control.
+fn style_toggle(ui: &mut egui::Ui, style: &mut Style, t: Tokens) {
+    egui::Frame::new()
+        .fill(t.graph_bg)
+        .stroke(Stroke::new(1.0, t.border))
+        .corner_radius(ui.visuals().widgets.inactive.corner_radius)
+        .inner_margin(egui::Margin::same(2))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.spacing_mut().button_padding = Vec2::new(7.0, 2.0);
+            // right_to_left parents add Bars first so Lines stays on the left.
+            let reversed = ui.layout().prefer_right_to_left();
+            let order = if reversed {
+                [(Style::Bars, "Bars"), (Style::Lines, "Lines")]
+            } else {
+                [(Style::Lines, "Lines"), (Style::Bars, "Bars")]
+            };
+            ui.horizontal(|ui| {
+                for (value, label) in order {
+                    ui.selectable_value(style, value, RichText::new(label).size(12.0));
+                }
             });
         });
-        plot(ui, chart, now, style, color, t, 106.0);
-    });
+}
+
+/// A muted, clickable gap chip; returns true when clicked.
+fn gap_chip(ui: &mut egui::Ui, short: &str, reason: &str, t: Tokens) -> bool {
+    ui.add(
+        egui::Button::new(RichText::new(short).size(10.0).color(t.text_muted))
+            .fill(theme::mix(t.panel_raised, t.text_muted, 0.12))
+            .stroke(Stroke::NONE)
+            .corner_radius(10.0)
+            .small(),
+    )
+    .on_hover_text(reason)
+    .clicked()
+}
+
+/// A right-aligned pill ending at `right`; returns its left edge.
+#[allow(clippy::too_many_arguments)]
+fn paint_pill(
+    ui: &egui::Ui,
+    right: f32,
+    center_y: f32,
+    text: &str,
+    size: f32,
+    max_width: f32,
+    fill: Color32,
+    color: Color32,
+) -> f32 {
+    let pad = 6.0;
+    let mut job =
+        egui::text::LayoutJob::simple_singleline(text.into(), FontId::proportional(size), color);
+    job.wrap.max_width = (max_width - pad * 2.0).max(8.0);
+    job.wrap.max_rows = 1;
+    job.wrap.break_anywhere = true;
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    let pill = egui::Rect::from_min_max(
+        egui::pos2(
+            right - galley.size().x - pad * 2.0,
+            center_y - galley.size().y / 2.0 - 2.0,
+        ),
+        egui::pos2(right, center_y + galley.size().y / 2.0 + 2.0),
+    );
+    ui.painter().rect_filled(pill, pill.height() / 2.0, fill);
+    ui.painter().galley(
+        egui::pos2(pill.left() + pad, center_y - galley.size().y / 2.0),
+        galley,
+        color,
+    );
+    pill.left()
+}
+
+/// Short state chip text and color, or `None` for Live.
+fn state_chip(state: &str, t: Tokens) -> Option<(&'static str, Color32)> {
+    match state {
+        "Live" => None,
+        "Partial" => Some(("Partial", t.secondary)),
+        "Cached" => Some(("Cached", t.text_muted)),
+        "Starting" | "Warming" => Some(("Starting", t.text_muted)),
+        _ => Some(("Stale", t.danger)),
+    }
+}
+
+fn series_colors(card: &wall::Card<'_>, t: Tokens) -> Vec<Color32> {
+    if card.series.len() > 1 {
+        return vec![
+            t.accent,
+            t.secondary,
+            theme::mix(t.accent, t.secondary, 0.5),
+        ];
+    }
+    vec![match card.group {
+        Group::System | Group::Cores => t.accent,
+        Group::Memory | Group::Thermal | Group::Network => t.secondary,
+        Group::Gpu => theme::mix(t.accent, t.secondary, 0.5),
+        Group::Storage => t.good,
+    }]
+}
+
+/// Card anatomy: a 13 px title with a device chip, a 21 px value with a state
+/// chip only when not Live, then the plot. Provenance lives in hover text.
+fn card_view(
+    ui: &mut egui::Ui,
+    card: &wall::Card<'_>,
+    now: Instant,
+    style: Style,
+    banded: bool,
+    t: Tokens,
+) {
+    let colors = series_colors(card, t);
+    widgets::hover_frame(
+        ui,
+        widgets::surface(ui, t, banded).inner_margin(theme::CARD_PAD),
+        |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = theme::space::XS;
+            let width = ui.available_width();
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 17.0), Sense::hover());
+            let mut title_right = rect.right();
+            if let Some(device) = &card.device {
+                title_right = paint_pill(
+                    ui,
+                    rect.right(),
+                    rect.center().y,
+                    device,
+                    9.5,
+                    (width * 0.5).max(48.0),
+                    t.surface(theme::mix(t.panel_raised, t.text_muted, 0.2)),
+                    t.text_muted,
+                ) - theme::space::S;
+            }
+            widgets::paint_text(
+                ui,
+                egui::Rect::from_min_max(rect.min, egui::pos2(title_right, rect.bottom())),
+                &card.title,
+                FontId::proportional(13.0),
+                t.text,
+                Align::Min,
+            );
+            response.on_hover_text(card.hover(now));
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 26.0), Sense::hover());
+            let mut value_right = rect.right();
+            if let Some((label, color)) = state_chip(card.state(now), t) {
+                value_right = paint_pill(
+                    ui,
+                    rect.right(),
+                    rect.center().y,
+                    label,
+                    10.0,
+                    80.0,
+                    t.surface(theme::mix(t.panel_raised, color, 0.18)),
+                    t.ink(color),
+                ) - theme::space::S;
+            }
+            let value = card.value_label();
+            widgets::paint_text(
+                ui,
+                egui::Rect::from_min_max(rect.min, egui::pos2(value_right, rect.bottom())),
+                &value,
+                FontId::monospace(21.0),
+                if value == "--" { t.text_muted } else { t.text },
+                Align::Min,
+            );
+            response.on_hover_text(
+                "Only measured values enter the graph. Gaps mark missing or stale samples; hollow rings and a trailing + mark partial (lower-bound) samples. Cached values are never extended into fake history.",
+            );
+            plot(ui, card, now, style, &colors, t, 106.0);
+        },
+    );
+}
+
+/// "S0 44  S1 44  S2 41 °C" style legend entries, or labels only.
+fn legend_entries(card: &wall::Card<'_>, with_values: bool) -> Vec<String> {
+    let celsius = matches!(card.series[0].chart.unit, history::Unit::Celsius);
+    let last = card.series.len() - 1;
+    card.series
+        .iter()
+        .enumerate()
+        .map(|(index, series)| {
+            if !with_values {
+                return series.label.to_owned();
+            }
+            let value = match (series.chart.current, celsius) {
+                (None, _) => "--".to_owned(),
+                (Some(v), true) if index != last => format!("{v:.0}"),
+                (Some(_), _) => series.chart.value_label(),
+            };
+            format!("{} {value}", series.label)
+        })
+        .collect()
 }
 
 fn plot(
     ui: &mut egui::Ui,
-    chart: &Chart,
+    card: &wall::Card<'_>,
     now: Instant,
     style: Style,
-    color: Color32,
+    colors: &[Color32],
     t: Tokens,
     height: f32,
 ) {
@@ -425,7 +691,7 @@ fn plot(
         },
     );
     let plot = rect.shrink2(Vec2::new(7.0, 19.0));
-    let (low, high) = chart.range(now);
+    let (low, high) = card.range(now);
     for index in 0..=3 {
         let y = egui::lerp(plot.top()..=plot.bottom(), index as f32 / 3.0);
         painter.line_segment(
@@ -448,30 +714,39 @@ fn plot(
             plot.bottom() - (value - low) / (high - low) * plot.height(),
         )
     };
-    let visible: Vec<_> = chart
-        .points
-        .iter()
-        .filter(|p| p.at <= now && now.duration_since(p.at) <= WINDOW)
-        .collect();
-    let ink = t.ink(color);
-    if style == Style::Bars {
-        let bar_width = (plot.width() * chart.cadence.as_secs_f32() / WINDOW.as_secs_f32() * 0.72)
-            .clamp(1.0, 12.0);
-        let baseline = position(now, 0.0).y;
-        for point in &visible {
-            if let Some(value) = point.value {
-                let p = position(point.at, value);
-                let bar = egui::Rect::from_two_pos(
-                    egui::pos2((p.x - bar_width).max(plot.left()), baseline),
-                    p,
-                );
-                painter.rect_filled(bar, 0.5, ink);
-                if value == 0.0 {
-                    painter.circle_filled(p, 1.0, ink);
+    let lanes = card.series.len();
+    let fill_alpha = if lanes > 1 { 0.10 } else { 0.22 };
+    let mut any_value = false;
+    for (lane, series) in card.series.iter().enumerate() {
+        let chart = series.chart;
+        let ink = t.ink(colors[lane.min(colors.len() - 1)]);
+        let visible: Vec<_> = chart
+            .points
+            .iter()
+            .filter(|p| p.at <= now && now.duration_since(p.at) <= WINDOW)
+            .collect();
+        any_value |= visible.iter().any(|p| p.value.is_some());
+        if style == Style::Bars {
+            let slot = (plot.width() * chart.cadence.as_secs_f32() / WINDOW.as_secs_f32() * 0.72)
+                .clamp(1.0, 12.0);
+            let bar_width = (slot / lanes as f32).max(1.0);
+            let baseline = position(now, 0.0).y;
+            for point in &visible {
+                if let Some(value) = point.value {
+                    let p = position(point.at, value);
+                    let right = p.x - bar_width * (lanes - 1 - lane) as f32;
+                    let bar = egui::Rect::from_two_pos(
+                        egui::pos2((right - bar_width).max(plot.left()), baseline),
+                        egui::pos2(right, p.y),
+                    );
+                    painter.rect_filled(bar, 0.5, ink);
+                    if value == 0.0 {
+                        painter.circle_filled(egui::pos2(right, p.y), 1.0, ink);
+                    }
                 }
             }
+            continue;
         }
-    } else {
         let mut fill = egui::Mesh::default();
         for pair in visible.windows(2) {
             let [a, b] = pair else {
@@ -486,8 +761,8 @@ fn plot(
             let a = position(a.at, av);
             let b = position(b.at, bv);
             let base = fill.vertices.len() as u32;
-            fill.colored_vertex(a, ink.gamma_multiply(0.22));
-            fill.colored_vertex(b, ink.gamma_multiply(0.22));
+            fill.colored_vertex(a, ink.gamma_multiply(fill_alpha));
+            fill.colored_vertex(b, ink.gamma_multiply(fill_alpha));
             fill.colored_vertex(egui::pos2(b.x, plot.bottom()), Color32::TRANSPARENT);
             fill.colored_vertex(egui::pos2(a.x, plot.bottom()), Color32::TRANSPARENT);
             fill.add_triangle(base, base + 1, base + 2);
@@ -515,10 +790,11 @@ fn plot(
             }
         }
     }
-    painter.text(
+    let unit = card.series[0].chart.unit;
+    let axis = painter.text(
         rect.left_top() + Vec2::new(7.0, 4.0),
         egui::Align2::LEFT_TOP,
-        chart.unit.format(high),
+        unit.format(high),
         FontId::monospace(9.0),
         t.text_muted,
     );
@@ -536,39 +812,100 @@ fn plot(
         FontId::monospace(9.0),
         t.text_muted,
     );
-    if !visible.iter().any(|p| p.value.is_some()) {
+    if lanes > 1 {
+        // Legend in the top strip, right of the axis label.
+        let room = rect.right() - 7.0 - (axis.right() + 10.0);
+        let layout = |with_values: bool| {
+            legend_entries(card, with_values)
+                .into_iter()
+                .map(|text| {
+                    ui.fonts_mut(|f| f.layout_no_wrap(text, FontId::monospace(9.0), t.text_muted))
+                })
+                .collect::<Vec<_>>()
+        };
+        let width = |galleys: &[std::sync::Arc<egui::Galley>]| {
+            galleys.iter().map(|g| g.size().x + 10.0).sum::<f32>()
+                + 8.0 * (galleys.len() - 1) as f32
+        };
+        let mut galleys = layout(true);
+        if width(&galleys) > room {
+            galleys = layout(false);
+        }
+        if width(&galleys) <= room {
+            let mut x = rect.right() - 7.0 - width(&galleys);
+            let y = rect.top() + 4.0;
+            for (lane, galley) in galleys.into_iter().enumerate() {
+                let ink = t.ink(colors[lane.min(colors.len() - 1)]);
+                let h = galley.size().y;
+                painter.rect_filled(
+                    egui::Rect::from_min_size(egui::pos2(x, y + h / 2.0 - 3.0), Vec2::splat(6.0)),
+                    1.0,
+                    ink,
+                );
+                x += 10.0;
+                let w = galley.size().x;
+                painter.galley(egui::pos2(x, y), galley, t.text_muted);
+                x += w + 8.0;
+            }
+        }
+    }
+    if !any_value {
         painter.text(
             plot.center(),
             egui::Align2::CENTER_CENTER,
-            if rect.width() < 200.0 {
-                "No data"
-            } else {
-                "No measured samples yet"
-            },
-            FontId::proportional(11.0),
+            "No data",
+            FontId::proportional(10.0),
             t.text_muted,
         );
     }
-    if let Some(pointer) = response.hover_pos()
-        && let Some(point) = visible.iter().min_by(|a, b| {
-            let ax = (position(a.at, 0.0).x - pointer.x).abs();
-            let bx = (position(b.at, 0.0).x - pointer.x).abs();
-            ax.total_cmp(&bx)
-        })
-    {
-        let x = position(point.at, 0.0).x;
-        painter.line_segment(
-            [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
-            Stroke::new(1.0, t.text_muted),
-        );
-        response.on_hover_text(format!(
-            "{}\n{}\n{:.1} seconds ago",
-            chart.title,
-            point
-                .value
-                .map_or_else(|| "No exact measurement".into(), |v| chart.unit.format(v)),
-            now.saturating_duration_since(point.at).as_secs_f32()
-        ));
+    if let Some(pointer) = response.hover_pos() {
+        let first = card.series[0].chart;
+        let nearest = first
+            .points
+            .iter()
+            .filter(|p| p.at <= now && now.duration_since(p.at) <= WINDOW)
+            .min_by(|a, b| {
+                let ax = (position(a.at, 0.0).x - pointer.x).abs();
+                let bx = (position(b.at, 0.0).x - pointer.x).abs();
+                ax.total_cmp(&bx)
+            });
+        if let Some(point) = nearest {
+            let x = position(point.at, 0.0).x;
+            painter.line_segment(
+                [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+                Stroke::new(1.0, t.text_muted),
+            );
+            let mut text = card.title.clone();
+            for series in &card.series {
+                // Each series' own sample nearest in time to the hovered one.
+                let value = series
+                    .chart
+                    .points
+                    .iter()
+                    .min_by_key(|p| {
+                        if p.at > point.at {
+                            p.at - point.at
+                        } else {
+                            point.at - p.at
+                        }
+                    })
+                    .and_then(|p| p.value);
+                let value = value.map_or_else(
+                    || "No exact measurement".into(),
+                    |v| series.chart.unit.format(v),
+                );
+                if series.label.is_empty() {
+                    text.push_str(&format!("\n{value}"));
+                } else {
+                    text.push_str(&format!("\n{}: {value}", series.chart.title));
+                }
+            }
+            text.push_str(&format!(
+                "\n{:.1} seconds ago",
+                now.saturating_duration_since(point.at).as_secs_f32()
+            ));
+            response.on_hover_text(text);
+        }
     }
 }
 

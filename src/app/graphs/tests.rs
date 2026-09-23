@@ -426,7 +426,7 @@ fn empty_snapshot_never_becomes_zero_cpu_and_responsive_columns_are_bounded() {
             .all(|c| c.current.is_none() && c.points.is_empty())
     );
     for (width, expected) in [(180.0, 1), (600.0, 2), (900.0, 3), (1600.0, 4)] {
-        assert_eq!(columns(width), expected);
+        assert_eq!(widgets::tile_grid_columns(width), expected);
     }
 }
 
@@ -499,4 +499,287 @@ fn memory_graphs_use_commit_counters_and_preserve_missing_intervals() {
         .unwrap();
     assert_eq!(c.points.back().unwrap().value, Some(16.0));
     assert_eq!(c.state(recovery), "Live");
+}
+
+fn drive(
+    id: &str,
+    name: &str,
+    sensors: &[(u16, Option<i16>)],
+    at: Instant,
+) -> crate::storage_sensors::DriveReading {
+    crate::storage_sensors::DriveReading {
+        device: crate::storage_sensors::Device {
+            id: id.into(),
+            name: name.into(),
+        },
+        temperatures: crate::storage_sensors::Temperatures {
+            sensors: sensors
+                .iter()
+                .map(|(index, celsius)| crate::storage_sensors::Temperature {
+                    index: *index,
+                    celsius: *celsius,
+                    over_threshold: None,
+                    under_threshold: None,
+                    event: false,
+                })
+                .collect(),
+            ..Default::default()
+        },
+        last_attempt: Some(at),
+        last_success: Some(at),
+        present: true,
+        error: None,
+        query_millis: None,
+    }
+}
+
+#[test]
+fn a_multi_sensor_drive_is_one_card_with_a_line_per_sensor_and_the_hottest_headline() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.storage_sensors = std::sync::Arc::new(crate::storage_sensors::Snapshot {
+        drives: vec![
+            drive(
+                "team",
+                "TEAM TM8FP6002T",
+                &[(0, Some(44)), (1, Some(46)), (2, Some(41))],
+                now,
+            ),
+            // A drive with no sensors never becomes a card.
+            drive("wd", "WDC WD60EZAX-00C8VB0", &[], now),
+        ],
+        ..Default::default()
+    });
+    let mut history = History::default();
+    history.sample(&s, now);
+    let wall = wall::compose(&history, Some(Group::Thermal), now);
+    let drives: Vec<_> = wall
+        .cards
+        .iter()
+        .filter(|c| c.title == "Drive temperature")
+        .collect();
+    assert_eq!(drives.len(), 1, "one card per drive, not one per sensor");
+    let card = drives[0];
+    assert_eq!(card.series.len(), 3);
+    assert_eq!(
+        card.series.iter().map(|s| s.label).collect::<Vec<_>>(),
+        ["S0", "S1", "S2"]
+    );
+    assert_eq!(card.value_label(), "46 °C");
+    assert_eq!(card.device.as_deref(), Some("TEAM TM8FP6002T"));
+    assert_eq!(
+        legend_entries(card, true),
+        ["S0 44", "S1 46", "S2 41 °C"],
+        "one unit at the end of a temperature legend"
+    );
+    assert!(
+        wall.unreported
+            .iter()
+            .any(|line| line.starts_with("Drive temperature / WDC")),
+        "{:?}",
+        wall.unreported
+    );
+}
+
+#[test]
+fn never_measured_charts_are_folded_and_never_laid_out() {
+    use crate::gpu_adapters::{Adapter, Description, Key};
+    let now = Instant::now();
+    let mut s = sample(now);
+    let real = Key {
+        low: 1,
+        ..Default::default()
+    };
+    let ghost = Key {
+        low: 2,
+        ..Default::default()
+    };
+    s.gpu.adapters = [real, ghost]
+        .into_iter()
+        .map(|key| {
+            let mut a = Adapter {
+                key,
+                description: Some(Description {
+                    name: "NVIDIA GeForce RTX 5070 Ti".into(),
+                    vendor_id: 0x10de,
+                    device_id: 0,
+                    dedicated_video: 0,
+                    dedicated_system: 0,
+                    shared_limit: 0,
+                    software: false,
+                }),
+                sampled_at: Some(now),
+                activity: if key == real {
+                    crate::gpu_activity::Usage::Measured(12.0)
+                } else {
+                    crate::gpu_activity::Usage::Unavailable
+                },
+                ..Default::default()
+            };
+            a.memory[0].record((key == real).then_some(1 << 30), now);
+            a
+        })
+        .collect();
+    let mut history = History::default();
+    history.sample(&s, now);
+    let wall = wall::compose(&history, Some(Group::Gpu), now);
+    let ghost_cards = wall.cards.iter().filter(|c| {
+        c.series
+            .iter()
+            .any(|s| matches!(s.chart.id, Id::Adapter(k, _) if k == ghost))
+    });
+    assert_eq!(ghost_cards.count(), 0, "ghost adapter cards must fold");
+    assert!(
+        wall.cards
+            .iter()
+            .any(|c| c.title == "Busiest engine" && c.value_label() == "12.0%")
+    );
+    assert!(
+        wall.unreported.len() >= 3,
+        "ghost busiest engine, VRAM and shared memory are listed: {:?}",
+        wall.unreported
+    );
+    assert!(
+        wall.cards.iter().all(|c| c.value_label() != "Unavailable"),
+        "no giant Unavailable value"
+    );
+    // A signal that measured once and then went silent for over 120 s folds too.
+    let later = now + Duration::from_secs(121);
+    let mut quiet = s.clone();
+    quiet.gpu.adapters[0].activity = crate::gpu_activity::Usage::Unavailable;
+    quiet.gpu.adapters[0].sampled_at = Some(later);
+    history.sample(&quiet, later);
+    let wall = wall::compose(&history, Some(Group::Gpu), later);
+    assert!(!wall.cards.iter().any(|c| c.title == "Busiest engine"));
+}
+
+#[test]
+fn idle_engine_types_fold_into_one_line_and_software_adapters_leave_the_wall() {
+    use crate::gpu_activity::Usage;
+    use crate::gpu_adapters::{Adapter, Description, Engine, Key};
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.gpu.engine_utilization = vec![
+        ("3D".into(), Usage::Measured(31.0)),
+        ("VideoDecode".into(), Usage::Measured(0.0)),
+        ("Security".into(), Usage::Measured(0.0)),
+    ];
+    s.gpu.adapters = vec![Adapter {
+        key: Key {
+            low: 9,
+            ..Default::default()
+        },
+        description: Some(Description {
+            name: "Microsoft Basic Render Driver".into(),
+            vendor_id: 0x1414,
+            device_id: 0x8c,
+            dedicated_video: 0,
+            dedicated_system: 0,
+            shared_limit: 0,
+            software: true,
+        }),
+        sampled_at: Some(now),
+        activity: Usage::Measured(0.0),
+        engines: (0..24)
+            .map(|number| Engine {
+                number,
+                kind: "3D".into(),
+                usage: Usage::Measured(0.0),
+            })
+            .collect(),
+        ..Default::default()
+    }];
+    let mut history = History::default();
+    history.sample(&s, now);
+    for filter in [None, Some(Group::Gpu)] {
+        let wall = wall::compose(&history, filter, now);
+        assert_eq!(wall.idle, ["VideoDecode", "Security"], "{:?}", wall.idle);
+        assert!(wall.cards.iter().any(|c| c.title == "3D engines"));
+        assert!(
+            !wall
+                .cards
+                .iter()
+                .any(|c| matches!(c.series[0].chart.id, Id::Adapter(..))),
+            "software adapter and per-engine-instance charts stay off the wall"
+        );
+    }
+    // Per-instance engines remain in history for Performance > GPU.
+    assert_eq!(
+        history
+            .charts
+            .iter()
+            .filter(|c| matches!(c.id, Id::Adapter(_, n) if n >= 4))
+            .count(),
+        24
+    );
+    // Everything leaves the per-core grid to its own tab.
+    assert!(
+        wall::compose(&history, None, now)
+            .cards
+            .iter()
+            .all(|c| c.group != Group::Cores)
+    );
+}
+
+#[test]
+fn network_and_disk_io_are_one_card_per_device_with_a_summed_headline() {
+    let now = Instant::now();
+    let mut s = sample(now);
+    s.networks = vec![crate::model::NetworkRow {
+        name: "Wi-Fi".into(),
+        received_bytes_per_sec: 4_000.0,
+        transmitted_bytes_per_sec: 1_000.0,
+        ..Default::default()
+    }];
+    s.physical_disks = std::sync::Arc::new(crate::disk_activity::Snapshot {
+        at: Some(now),
+        generation: 3,
+        devices: vec![crate::disk_activity::Device {
+            number: 1,
+            instance: "1 C: D:".into(),
+            readings: [5.0, 1.0, 0.0, 2_000.0, 500.0].map(|value| crate::disk_activity::Reading {
+                value: Some(value),
+                at: Some(now),
+            }),
+        }],
+        ..Default::default()
+    });
+    let mut history = History::default();
+    history.sample(&s, now);
+    let network = wall::compose(&history, Some(Group::Network), now);
+    assert_eq!(network.cards.len(), 1);
+    assert_eq!(network.cards[0].series.len(), 2);
+    assert_eq!(network.cards[0].device.as_deref(), Some("Wi-Fi"));
+    assert_eq!(
+        network.cards[0].value(),
+        Some((5_000.0, false)),
+        "receive plus send"
+    );
+    let disks = wall::compose(&history, Some(Group::Storage), now);
+    let titles: Vec<_> = disks.cards.iter().map(|c| c.title.as_str()).collect();
+    assert_eq!(
+        titles,
+        [
+            "Read / write",
+            "Active time",
+            "Response time",
+            "Queue depth"
+        ]
+    );
+    assert!(
+        disks
+            .cards
+            .iter()
+            .all(|c| c.device.as_deref() == Some("Disk 1 \u{b7} C: D:"))
+    );
+    assert_eq!(disks.cards[0].series.len(), 2);
+    assert_eq!(history::disk_short_name(0, "0 Fixture NVMe"), "Disk 0");
+    assert_eq!(
+        history::gpu_short_name("NVIDIA GeForce RTX 5070 Ti"),
+        "RTX 5070 Ti"
+    );
+    assert_eq!(
+        history::gpu_short_name("Intel(R) UHD Graphics 770"),
+        "Intel UHD Graphics 770"
+    );
 }
