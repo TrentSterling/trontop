@@ -102,7 +102,7 @@ fn adapter_selection_tracks_identity_and_memory_layout_survives_missing_values()
                 }
                 assert_eq!(app.graphs.gpu_selected, Some(key));
                 let text = text_shapes(&output);
-                let positions: Vec<_> = ["DEDICATED USED", "SHARED USED", "COMMITTED"]
+                let positions: Vec<_> = ["Dedicated used", "Shared used", "Committed"]
                     .iter()
                     .map(|label| {
                         let (t, clip) = text
@@ -122,10 +122,9 @@ fn adapter_selection_tracks_identity_and_memory_layout_survives_missing_values()
                 } else {
                     baseline = Some(positions);
                 }
-                assert!(
-                    text.iter()
-                        .any(|(t, _)| t.galley.job.text == "3D / engine 0")
-                );
+                // "3D / engine 0" renders as a "3D" card with an "engine 0" chip.
+                assert!(text.iter().any(|(t, _)| t.galley.job.text == "3D"));
+                assert!(text.iter().any(|(t, _)| t.galley.job.text == "engine 0"));
                 // Never-measured memory counters fold into one compact gap row
                 // instead of empty "No data" charts.
                 let expected = if missing {
@@ -214,14 +213,14 @@ fn idle_engines_fold_into_one_muted_line_leaving_active_engines_as_cards() {
     }
     let text = text_shapes(&output);
     assert!(
-        text.iter()
-            .any(|(t, _)| t.galley.job.text == "3D / engine 0"),
+        text.iter().any(|(t, _)| t.galley.job.text == "3D")
+            && text.iter().any(|(t, _)| t.galley.job.text == "engine 0"),
         "the active engine keeps its own card"
     );
     assert!(
         !text
             .iter()
-            .any(|(t, _)| t.galley.job.text == "Copy / engine 1"),
+            .any(|(t, _)| t.galley.job.text == "Copy" || t.galley.job.text == "engine 1"),
         "a silent engine must not draw a flat 0% card"
     );
     assert!(

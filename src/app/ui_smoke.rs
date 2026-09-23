@@ -632,10 +632,10 @@ fn sensor_fields_keep_geometry_when_data_is_missing_or_cached_and_cache_does_not
         let current: Vec<_> = [
             "GPU temperature",
             "Board power",
-            "GRAPHICS CLOCK",
-            "MEMORY CLOCK",
-            "FAN TARGET",
-            "VRAM USED / TOTAL",
+            "Graphics clock",
+            "Memory clock",
+            "Fan target",
+            "VRAM used / total",
         ]
         .into_iter()
         .map(|label| {
@@ -659,7 +659,7 @@ fn sensor_fields_keep_geometry_when_data_is_missing_or_cached_and_cache_does_not
             assert!(
                 texts
                     .iter()
-                    .any(|(text, _)| text.galley.job.text.starts_with("Cached reading"))
+                    .any(|(text, _)| text.galley.job.text == "Cached")
             );
         }
     }
@@ -784,6 +784,125 @@ fn performance_rail_lists_devices_in_the_polish_gauntlet_order() {
 }
 
 #[test]
+fn cpu_detail_has_no_badge_row_and_defaults_to_total_cpu() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Performance;
+    app.performance_device = PerformanceDevice::Cpu;
+    assert!(!app.graphs.cpu_all_cores, "Total CPU is the default view");
+    for all_cores in [false, true] {
+        app.graphs.cpu_all_cores = all_cores;
+        let mut output = frame(&ctx, &mut app, Vec2::new(1280.0, 800.0), vec![]);
+        for _ in 0..2 {
+            output = frame(&ctx, &mut app, Vec2::new(1280.0, 800.0), vec![]);
+        }
+        for (text, _) in text_shapes(&output) {
+            let text = &text.galley.job.text;
+            for banned in [
+                "UTILIZATION",
+                "UPTIME",
+                "AVG CLOCK",
+                "CPU clocks: Live",
+                "Operating system",
+                "logical processors / 120 seconds",
+            ] {
+                assert!(
+                    !text.contains(banned),
+                    "CPU detail still shows {banned:?} in {text:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn all_cores_grid_leaves_no_orphan_row() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    app.page = Page::Performance;
+    app.performance_device = PerformanceDevice::Cpu;
+    app.graphs.cpu_all_cores = true;
+    app.graphs.draw_all_rows = true;
+    for (cores, size) in [
+        // Width picks the column count; a tall window keeps every row on
+        // screen so each label is counted.
+        (24, Vec2::new(1280.0, 2400.0)),
+        (24, Vec2::new(1000.0, 2400.0)),
+        (24, Vec2::new(1600.0, 2400.0)),
+        (16, Vec2::new(1280.0, 2400.0)),
+    ] {
+        app.snapshot.cpu.logical_cores = cores;
+        let mut output = frame(&ctx, &mut app, size, vec![]);
+        for _ in 0..3 {
+            output = frame(&ctx, &mut app, size, vec![]);
+        }
+        let mut rows = std::collections::BTreeMap::<i32, usize>::new();
+        for (text, _) in text_shapes(&output) {
+            let label = &text.galley.job.text;
+            if let Some(index) = label
+                .strip_prefix("CPU ")
+                .and_then(|n| n.parse::<usize>().ok())
+                && index < cores
+                && text.pos.x > 400.0
+            {
+                *rows.entry(text.pos.y.round() as i32).or_default() += 1;
+            }
+        }
+        let counts: Vec<_> = rows.values().copied().collect();
+        assert_eq!(
+            counts.iter().sum::<usize>(),
+            cores,
+            "{cores} cores at {size:?}"
+        );
+        assert!(
+            counts.windows(2).all(|pair| pair[0] == pair[1]),
+            "{cores} cores at {size:?} left an orphan row: {counts:?}"
+        );
+    }
+}
+
+#[test]
+fn physical_disks_graphs_label_their_axes_with_units_not_max() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    theme::install(&ctx, app.theme);
+    disks::install(&mut app, false);
+    let size = Vec2::new(1280.0, 900.0);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    for _ in 0..3 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let texts = text_shapes(&output);
+    assert!(
+        !texts
+            .iter()
+            .any(|(s, _)| s.galley.job.text.starts_with("MAX ")),
+        "a unitless MAX label is back on Physical disks"
+    );
+    for unit in ["100%", " ms", " req"] {
+        assert!(
+            texts.iter().any(|(s, _)| s.galley.job.text.ends_with(unit)),
+            "no axis label ends with {unit:?}"
+        );
+    }
+    // No routine "Live" caption under the metric tiles, and no stray raw PDH
+    // instance line; the hero reads "Disk 0 · C: D:".
+    assert!(!texts.iter().any(|(s, _)| s.galley.job.text == "Live"));
+    assert!(
+        !texts
+            .iter()
+            .any(|(s, _)| s.galley.job.text.starts_with("0 C: D:"))
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|(s, _)| s.galley.job.text == "Disk 0 \u{b7} C: D:")
+    );
+}
+
+#[test]
 fn network_performance_graph_label_carries_a_rate_unit() {
     let ctx = egui::Context::default();
     let mut app = app(ThemeSettings::default(), true);
@@ -880,6 +999,8 @@ fn compact_sidebar_preserves_footer_and_performance_details_are_scrollable() {
     let mut app = app(ThemeSettings::default(), true);
     theme::install(&ctx, app.theme);
     app.page = Page::Performance;
+    // The tall All cores view is what must scroll to reach the clock details.
+    app.graphs.cpu_all_cores = true;
     let size = Vec2::new(1040.0, 640.0);
     let mut output = frame(&ctx, &mut app, size, vec![]);
     for _ in 0..2 {
@@ -901,7 +1022,7 @@ fn compact_sidebar_preserves_footer_and_performance_details_are_scrollable() {
     assert!(gpu.0.visual_bounding_rect().bottom() < footer.top());
     let system_visible = |output: &egui::FullOutput| {
         text_shapes(output).into_iter().any(|(text, clip)| {
-            text.galley.job.text == "Operating system"
+            text.galley.job.text == "Per-processor clocks"
                 && clip.contains_rect(text.visual_bounding_rect())
         })
     };
@@ -1064,7 +1185,9 @@ fn sensor_states_render_without_wrapping_or_fabricated_readings() {
                     assert!(visible("GPU temperature"));
                     assert!(visible("Board power"));
                     if state == 1 {
-                        assert!(visible("Unavailable"));
+                        // Unreported readings are a muted "--", never a word.
+                        assert!(visible("--"));
+                        assert!(!visible("Unavailable"));
                     }
                 }
                 for (text, _) in texts {

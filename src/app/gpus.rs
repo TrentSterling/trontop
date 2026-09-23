@@ -49,14 +49,12 @@ impl TrontopApp {
                 .on_hover_text(format!("{}  |  {}", key.label(), activity.status()));
         });
         ui.add_space(8.0);
-        widgets::performance_heading(
-            ui,
-            &adapter.name(),
-            "Windows adapter activity and memory",
-            &activity.label(),
-            t.accent,
-            t,
-        );
+        widgets::performance_heading(ui, &adapter.name(), "", &activity.label(), t.accent, t)
+            .on_hover_text(format!(
+                "Busiest engine: {}
+Windows GPU Engine and GPU Adapter Memory counters.",
+                activity.explanation()
+            ));
         if adapter.description.as_ref().is_some_and(|d| d.software) {
             widgets::hover_label(ui, "Software adapter; not a physical graphics card.");
         } else if adapter.description.is_none() {
@@ -75,10 +73,17 @@ impl TrontopApp {
         for chunk in [0, 1, 2].chunks(columns) {
             ui.columns(columns, |columns| {
                 for (column, &metric) in columns.iter_mut().zip(chunk) {
-                    widgets::metric_banded(
+                    let value = adapter.memory[metric].label(now);
+                    widgets::value_tile(
                         column,
-                        ["DEDICATED USED", "SHARED USED", "COMMITTED"][metric],
-                        &adapter.memory[metric].label(now),
+                        ["Dedicated used", "Shared used", "Committed"][metric],
+                        &value,
+                        [
+                            "Dedicated video memory in use (Windows GPU Adapter Memory). ~ marks a retained reading.",
+                            "System memory in use by this adapter. Shared capacity is a limit, not reserved RAM. ~ marks a retained reading.",
+                            "Committed memory is not an extra amount to add to dedicated or shared usage. ~ marks a retained reading.",
+                        ][metric],
+                        None,
                         metric % 2 == 1,
                         t,
                     );
@@ -116,11 +121,6 @@ impl TrontopApp {
                 t,
             );
         }
-        ui.add_space(8.0);
-        widgets::hover_label(
-            ui,
-            "Usage: Windows GPU Adapter Memory. Shared capacity is a limit, not reserved RAM. Committed memory is not an extra amount to add to dedicated/shared usage. ~ marks a retained reading.",
-        );
         if let Some(error) = &adapter.memory_error {
             widgets::hover_label(ui, error);
         }

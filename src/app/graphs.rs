@@ -3,6 +3,7 @@ use super::*;
 use std::time::{Duration, Instant};
 mod history;
 mod wall;
+pub(super) use history::disk_short_name as disk_label;
 use history::{Group, History, WINDOW};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -40,7 +41,8 @@ pub(super) struct Dashboard {
     history: History,
     style: Style,
     filter: Option<Group>,
-    pub(super) cpu_total: bool,
+    /// Performance > CPU shows the per-core grid instead of the Total CPU graph.
+    pub(super) cpu_all_cores: bool,
     pub(super) gpu_selected: Option<crate::gpu_adapters::Key>,
     // Reference path for geometry and same-binary CPU comparisons only.
     #[cfg(test)]
@@ -109,7 +111,18 @@ impl Dashboard {
                 .into_iter()
                 .partition(|c| wall::window_max(c, now).unwrap_or(0.0) > 0.0)
         };
-        let charts: Vec<_> = active.iter().map(|c| wall::Card::single(c)).collect();
+        // "3D / engine 0" reads as a "3D" card with an "engine 0" chip.
+        let charts: Vec<_> = active
+            .iter()
+            .map(|c| {
+                let mut card = wall::Card::single(c);
+                if let Some((kind, instance)) = c.title.split_once(" / ") {
+                    card.title = kind.to_owned();
+                    card.device = Some(instance.to_owned());
+                }
+                card
+            })
+            .collect();
         let cols = if ui.available_width() >= 480.0 { 2 } else { 1 };
         let width = ui.available_width();
         let mut height = 0.0;
@@ -152,6 +165,37 @@ impl Dashboard {
             );
         }
     }
+    /// Performance > network: one adapter's Receive and Send as two lines
+    /// with a legend on a shared rate axis, the same history and drawing as
+    /// the Graphs network card.
+    pub(super) fn network_graph(&self, ui: &mut egui::Ui, name: &str, height: f32, t: Tokens) {
+        let now = self.now();
+        let series: Vec<_> = [(0, "Receive"), (1, "Send")]
+            .into_iter()
+            .filter_map(|(direction, label)| {
+                self.history
+                    .chart(&history::Id::Network(name.to_owned(), direction))
+                    .map(|chart| wall::Series { chart, label })
+            })
+            .collect();
+        if series.is_empty() {
+            widgets::gap_row(
+                ui,
+                "Traffic history",
+                "Starting",
+                "No sample of this adapter has been recorded yet.",
+                t,
+            );
+            return;
+        }
+        let mut card = wall::Card::single(series[0].chart);
+        card.title = name.to_owned();
+        card.combine = wall::Combine::Sum;
+        card.series = series;
+        let colors = [t.secondary, t.accent];
+        plot(ui, &card, now, self.style, &colors, t, height);
+    }
+
     pub(super) fn now(&self) -> Instant {
         #[cfg(test)]
         if let Some(now) = self.fixed_now {
@@ -171,9 +215,10 @@ impl Dashboard {
             return;
         }
         let count = logical_count.min(256);
-        let cols = (((ui.available_width() + 6.0) / 112.0).floor() as usize)
-            .clamp(1, 8)
-            .min(count);
+        let cols = grid_columns(
+            count,
+            (((ui.available_width() + 6.0) / 112.0).floor() as usize).clamp(1, 8),
+        );
         let width = ui.available_width();
         let now = Instant::now();
         #[cfg(test)]
@@ -192,8 +237,10 @@ impl Dashboard {
             }
             let response = ui.push_id(("cpu-grid", first), |ui| {
                 ui.set_width(width);
-                ui.columns(cols, |columns| {
-                    for (offset, column) in columns.iter_mut().enumerate().take(count - first) {
+                // A trailing partial row stretches to the full width instead
+                // of leaving an orphan gap.
+                ui.columns(cols.min(count - first), |columns| {
+                    for (offset, column) in columns.iter_mut().enumerate() {
                         let index = first + offset;
                         let chart = self.history.chart(&history::Id::Cpu(index));
                         column.push_id(index, |ui| {
@@ -514,6 +561,18 @@ fn style_toggle(ui: &mut egui::Ui, style: &mut Style, t: Tokens) {
         });
 }
 
+/// Columns for `count` equal tiles when at most `fit` fit side by side: the
+/// largest divisor of `count` that still uses at least half the room, so 24
+/// cores lay out 6 x 4 rather than 7 + 7 + 7 + 3. Counts with no such divisor
+/// (primes) use every column and stretch the last row instead.
+fn grid_columns(count: usize, fit: usize) -> usize {
+    let fit = fit.clamp(1, count.max(1));
+    (fit.div_ceil(2)..=fit)
+        .rev()
+        .find(|cols| count.is_multiple_of(*cols))
+        .unwrap_or(fit)
+}
+
 /// A muted, clickable gap chip; returns true when clicked.
 fn gap_chip(ui: &mut egui::Ui, short: &str, reason: &str, t: Tokens) -> bool {
     ui.add(
@@ -811,7 +870,11 @@ fn plot(
     let axis = painter.text(
         rect.left_top() + Vec2::new(7.0, 4.0),
         egui::Align2::LEFT_TOP,
-        unit.format(high),
+        // A whole-number percent axis reads "100%", not "100.0%".
+        match unit {
+            history::Unit::Percent if high.fract() == 0.0 => format!("{high:.0}%"),
+            _ => unit.format(high),
+        },
         FontId::monospace(9.0),
         t.text_muted,
     );

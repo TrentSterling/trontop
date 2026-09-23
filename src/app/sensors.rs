@@ -199,21 +199,6 @@ impl TrontopApp {
         let t = self.colors();
         let snapshot = &self.snapshot.gpu_sensors;
         let on_sensors_page = self.page == Page::Sensors;
-        if !on_sensors_page {
-            let hottest = snapshot
-                .adapters
-                .iter()
-                .filter_map(|a| a.temperature_c)
-                .max();
-            widgets::performance_heading(
-                ui,
-                "GPU sensors",
-                "NVML / read-only driver telemetry",
-                &hottest.map_or_else(|| "-- °C".into(), |v| format!("{v} °C")),
-                t.secondary,
-                t,
-            );
-        }
         let placeholder = AdapterSensors {
             name: "Hardware sensors unavailable".into(),
             ..Default::default()
@@ -223,98 +208,98 @@ impl TrontopApp {
         } else {
             &snapshot.adapters
         };
+        let provenance = |index: usize| {
+            let mut text = if snapshot.using_cached {
+                format!(
+                    "Cached reading / last success {}",
+                    crate::diagnostics::age(snapshot.last_success, std::time::Instant::now())
+                )
+            } else if snapshot.adapters.is_empty() {
+                "No readings; the fields stay in place.".into()
+            } else {
+                format!(
+                    "NVIDIA adapter {index} / live sample / {:.2} ms collection",
+                    snapshot.query_millis
+                )
+            };
+            text.push('\n');
+            text.push_str(
+                snapshot
+                    .error
+                    .as_deref()
+                    .unwrap_or("NVML, read-only driver telemetry."),
+            );
+            text
+        };
+        if !on_sensors_page {
+            let hottest = snapshot
+                .adapters
+                .iter()
+                .filter_map(|a| a.temperature_c)
+                .max();
+            // One adapter (the common case): its name is the hero subline, so
+            // no second name heading repeats it below.
+            widgets::performance_heading_with_state(
+                ui,
+                "GPU sensors",
+                &adapters[0].name,
+                &hottest.map_or_else(|| "--".into(), |v| format!("{v} °C")),
+                snapshot.using_cached.then_some(("Cached", t.text_muted)),
+                t.secondary,
+                t,
+            )
+            .on_hover_text(provenance(0));
+        }
         for (index, adapter) in adapters.iter().enumerate() {
             ui.push_id(("sensor_adapter", adapter.uuid.as_deref(), index), |ui| {
-                let sample_line = if snapshot.using_cached {
-                    format!(
-                        "Cached reading / last success {}",
-                        crate::diagnostics::age(snapshot.last_success, std::time::Instant::now())
-                    )
-                } else if snapshot.adapters.is_empty() {
-                    "No readings / fields stay visible".into()
-                } else {
-                    format!(
-                        "NVIDIA adapter {index} / live sample / {:.2} ms collection",
-                        snapshot.query_millis
-                    )
-                };
-                if on_sensors_page {
-                    // A routine live-sample line is provenance, not a caveat: it
-                    // moves to hover. A cached or empty reading is an active
-                    // anomaly, so it stays on the header's hover too, kept out
-                    // of the visible flow either way to cut page clutter.
-                    let mut hover = sample_line.clone();
-                    hover.push('\n');
+                let mut hover = provenance(index);
+                if adapter.uuid.is_none() {
                     hover.push_str(
-                        snapshot
-                            .error
-                            .as_deref()
-                            .unwrap_or("Read-only sensor provider"),
+                        "\nHistory unavailable: the driver did not expose a stable adapter ID.",
                     );
-                    if adapter.uuid.is_none() {
-                        hover.push_str(
-                            "\nHistory unavailable: the driver did not expose a stable adapter ID.",
-                        );
-                    }
+                }
+                // Provenance is hover text on the adapter's header; a second
+                // adapter on Performance gets its own header, the first one is
+                // already named by the hero.
+                if on_sensors_page || index > 0 {
                     let header = ui.scope(|ui| {
                         widgets::section_header(ui, &adapter.name, None, t);
                     });
                     header.response.on_hover_text(hover);
-                } else {
-                    // Performance > GPU sensors keeps its original two-line
-                    // header; this rail view is out of P7's scope.
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(&adapter.name)
-                                .size(17.0)
-                                .strong()
-                                .color(t.text),
-                        )
-                        .truncate(),
-                    )
-                    .on_hover_text(&adapter.name);
-                    widgets::hover_label(
-                        ui,
-                        RichText::new(sample_line).size(10.0).color(t.text_muted),
-                    )
-                    .on_hover_text(
-                        snapshot
-                            .error
-                            .as_deref()
-                            .unwrap_or("Read-only sensor provider"),
-                    );
                 }
                 if let Some(error) = &adapter.error {
                     widgets::hover_label(ui, RichText::new(error).color(t.text));
                 }
-                ui.add_space(8.0);
                 let history = adapter
                     .uuid
                     .as_ref()
                     .and_then(|uuid| self.sensor_history.get(uuid));
-                ui.columns(2, |columns| {
-                    sensor_card(
-                        &mut columns[0],
-                        "GPU temperature",
-                        temperature(adapter.temperature_c),
-                        "GPU die sensor",
-                        history,
-                        false,
-                        self.theme,
-                        t,
-                    );
-                    sensor_card(
-                        &mut columns[1],
-                        "Board power",
-                        watts(adapter.power_w),
-                        "Driver-reported board draw",
-                        history,
-                        true,
-                        self.theme,
-                        t,
-                    );
+                ui.scope(|ui| {
+                    ui.spacing_mut().item_spacing.x = theme::space::GAP;
+                    ui.columns(2, |columns| {
+                        sensor_card(
+                            &mut columns[0],
+                            "GPU temperature",
+                            adapter.temperature_c.map(|v| format!("{v} °C")),
+                            "GPU die sensor, read-only NVML.",
+                            history,
+                            false,
+                            self.theme,
+                            t,
+                        );
+                        sensor_card(
+                            &mut columns[1],
+                            "Board power",
+                            adapter.power_w.map(|v| format!("{v:.1} W")),
+                            "Driver-reported board draw, read-only NVML.",
+                            history,
+                            true,
+                            self.theme,
+                            t,
+                        );
+                    });
                 });
-                ui.add_space(8.0);
+                ui.add_space(theme::space::M);
                 let details = sensor_details(adapter);
                 let memory_note = if adapter.memory.is_none() {
                     "VRAM is unavailable for this adapter."
@@ -323,65 +308,40 @@ impl TrontopApp {
                 } else {
                     "VRAM used excludes driver reservations."
                 };
-                if on_sensors_page {
-                    // One row of four: the Sensors page is wide enough for it.
-                    ui.columns(4, |columns| {
-                        for (column, (label, value)) in columns.iter_mut().zip(details.iter()) {
-                            render_metric(column, label, value, memory_note, t);
+                let per_row = if ui.available_width() >= 640.0 { 4 } else { 2 };
+                for row in details.chunks(per_row) {
+                    ui.columns(per_row, |columns| {
+                        for (index, (column, (label, value))) in
+                            columns.iter_mut().zip(row).enumerate()
+                        {
+                            render_metric(column, index, label, value, memory_note, t);
                         }
                     });
-                } else {
-                    // The narrower Performance rail keeps its original 2x2
-                    // grid, out of P7's scope.
-                    for row in details.chunks(2) {
-                        ui.columns(2, |columns| {
-                            for (column, (label, value)) in columns.iter_mut().zip(row) {
-                                render_metric(column, label, value, memory_note, t);
-                            }
-                        });
-                        ui.add_space(5.0);
-                    }
+                    ui.add_space(theme::space::S);
                 }
-                if adapter.uuid.is_none() && !on_sensors_page {
-                    widgets::hover_label(
-                        ui,
-                        RichText::new(
-                            "History unavailable: the driver did not expose a stable adapter ID.",
-                        )
-                        .size(10.0)
-                        .color(t.text_muted),
-                    );
-                }
-                ui.add_space(18.0);
+                ui.add_space(theme::space::L);
             });
         }
     }
 }
 
-fn temperature(value: Option<u32>) -> String {
-    value.map_or_else(|| "Unavailable".into(), |v| format!("{v} °C"))
-}
-
-fn watts(value: Option<f32>) -> String {
-    value.map_or_else(|| "Unavailable".into(), |v| format!("{v:.1} W"))
-}
-
 fn sensor_details(adapter: &AdapterSensors) -> [(&'static str, String); 4] {
-    let clock =
-        |value: Option<u32>| value.map_or_else(|| "Unavailable".into(), |v| format!("{v} MHz"));
+    // A value the driver does not report is a muted "--" with the reason on
+    // hover, never a word that reads like a measurement.
+    let clock = |value: Option<u32>| value.map_or_else(|| "--".into(), |v| format!("{v} MHz"));
     [
-        ("GRAPHICS CLOCK", clock(adapter.graphics_clock_mhz)),
-        ("MEMORY CLOCK", clock(adapter.memory_clock_mhz)),
+        ("Graphics clock", clock(adapter.graphics_clock_mhz)),
+        ("Memory clock", clock(adapter.memory_clock_mhz)),
         (
-            "FAN TARGET",
+            "Fan target",
             adapter
                 .fan_percent
-                .map_or_else(|| "Unavailable".into(), |v| format!("{v}%")),
+                .map_or_else(|| "--".into(), |v| format!("{v}%")),
         ),
         (
-            "VRAM USED / TOTAL",
+            "VRAM used / total",
             adapter.memory.map_or_else(
-                || "Unavailable".into(),
+                || "--".into(),
                 |(used, total)| {
                     format!(
                         "{:.1} / {:.1} GiB",
@@ -394,83 +354,121 @@ fn sensor_details(adapter: &AdapterSensors) -> [(&'static str, String); 4] {
     ]
 }
 
-/// Dispatches one of the four GPU metric cells: Fan target and VRAM carry
-/// their old visible caveat line as hover instead; the rest use the plain
-/// metric anatomy unchanged.
-fn render_metric(ui: &mut egui::Ui, label: &str, value: &str, memory_note: &str, t: Tokens) {
-    match label {
-        "FAN TARGET" => metric_with_hover(
-            ui,
-            label,
-            value,
-            "Fan % is the intended speed, not measured RPM.",
-            t,
-        ),
-        "VRAM USED / TOTAL" => metric_with_hover(ui, label, value, memory_note, t),
-        _ => widgets::metric(ui, label, value, t),
+/// One of the four GPU value tiles. Caveats (fan target is not RPM, what VRAM
+/// used includes) and the reason for a gap live on hover.
+fn render_metric(
+    ui: &mut egui::Ui,
+    index: usize,
+    label: &str,
+    value: &str,
+    memory_note: &str,
+    t: Tokens,
+) {
+    let mut hover = match label {
+        "Fan target" => "Fan % is the intended speed, not measured RPM.".to_owned(),
+        "VRAM used / total" => memory_note.to_owned(),
+        _ => "Read-only NVML driver telemetry.".to_owned(),
+    };
+    if value == "--" {
+        hover.push_str(
+            "
+Not reported by the driver for this adapter.",
+        );
     }
+    widgets::value_tile(ui, label, value, &hover, None, index % 2 == 1, t);
 }
 
-/// Same anatomy as [`widgets::metric`], with a caller-chosen hover instead of
-/// the generic "label: value" text: where a caveat that used to sit on its
-/// own visible line now lives.
-fn metric_with_hover(ui: &mut egui::Ui, label: &str, value: &str, hover: &str, t: Tokens) {
-    widgets::hover_frame(ui, widgets::surface(ui, t, false), |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.add(
-            egui::Label::new(RichText::new(label).size(10.0).strong().color(t.text_muted))
-                .truncate(),
-        );
-        ui.add(
-            egui::Label::new(RichText::new(value).size(17.0).monospace().color(t.text)).truncate(),
-        );
-    })
-    .response
-    .on_hover_text(hover.to_string());
-}
-
+/// Card anatomy: a 13 px title with a right-aligned "peak" chip, the 21 px
+/// value (a muted "--" when the driver reports nothing), then the plot. The
+/// source and caveats live on hover; there is no subtitle or footer line.
 #[allow(clippy::too_many_arguments)]
 fn sensor_card(
     ui: &mut egui::Ui,
     title: &str,
-    value: String,
-    detail: &str,
+    value: Option<String>,
+    source: &str,
     history: Option<&SensorHistory>,
     power: bool,
     settings: ThemeSettings,
     t: Tokens,
 ) {
-    widgets::hover_frame(ui, widgets::surface(ui, t, power), |ui| {
-        ui.set_min_width(ui.available_width());
-        widgets::hover_label(
-            ui,
-            RichText::new(title).size(12.0).strong().color(t.text_muted),
-        );
-        ui.add(
-            egui::Label::new(RichText::new(value).size(25.0).monospace().color(t.text)).truncate(),
-        );
-        widgets::hover_label(ui, RichText::new(detail).size(10.0).color(t.text_muted));
-        ui.add_space(6.0);
-        let color = if power { t.accent } else { t.secondary };
-        sensor_graph(ui, history, power, color, settings, t);
-        let peak = history.and_then(|h| h.peak(power));
-        let peak = peak.map_or_else(
-            || "No readings".into(),
-            |v| {
+    widgets::hover_frame(
+        ui,
+        widgets::surface(ui, t, power).inner_margin(theme::CARD_PAD),
+        |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = theme::space::XS;
+            let width = ui.available_width();
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 17.0), Sense::hover());
+            let peak = history.and_then(|h| h.peak(power)).map(|v| {
                 if power {
-                    format!("Peak {v:.1} W")
+                    format!("peak {v:.1} W")
                 } else {
-                    format!("Peak {v:.0} °C")
+                    format!("peak {v:.0} °C")
                 }
-            },
-        );
-        widgets::hover_label(
-            ui,
-            RichText::new(format!("{peak} · last 2 min"))
-                .size(10.0)
-                .color(t.text_muted),
-        );
-    });
+            });
+            let mut title_right = rect.right();
+            if let Some(peak) = &peak {
+                let galley = ui.painter().layout_no_wrap(
+                    peak.clone(),
+                    FontId::proportional(9.5),
+                    t.text_muted,
+                );
+                let pill = egui::Rect::from_min_max(
+                    egui::pos2(
+                        rect.right() - galley.size().x - 12.0,
+                        rect.center().y - galley.size().y / 2.0 - 2.0,
+                    ),
+                    egui::pos2(rect.right(), rect.center().y + galley.size().y / 2.0 + 2.0),
+                );
+                ui.painter().rect_filled(
+                    pill,
+                    pill.height() / 2.0,
+                    t.surface(theme::mix(t.panel_raised, t.text_muted, 0.2)),
+                );
+                ui.painter().galley(
+                    egui::pos2(pill.left() + 6.0, pill.center().y - galley.size().y / 2.0),
+                    galley,
+                    t.text_muted,
+                );
+                title_right = pill.left() - theme::space::S;
+            }
+            widgets::paint_text(
+                ui,
+                egui::Rect::from_min_max(rect.min, egui::pos2(title_right, rect.bottom())),
+                title,
+                FontId::proportional(13.0),
+                t.text,
+                Align::Min,
+            );
+            response.on_hover_text(format!(
+                "{title}\n{source}{}",
+                peak.as_deref().map_or_else(String::new, |p| format!(
+                    "\nHighest in the last 2 minutes: {}",
+                    &p[5..]
+                ))
+            ));
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 26.0), Sense::hover());
+            let text = value.as_deref().unwrap_or("--");
+            widgets::paint_text(
+                ui,
+                rect,
+                text,
+                FontId::monospace(21.0),
+                if value.is_some() {
+                    t.text
+                } else {
+                    t.text_muted
+                },
+                Align::Min,
+            );
+            if value.is_none() {
+                response.on_hover_text("Not reported by the driver for this adapter.");
+            }
+            let color = if power { t.accent } else { t.secondary };
+            sensor_graph(ui, history, power, color, settings, t);
+        },
+    );
 }
 
 fn sensor_graph(
@@ -493,61 +491,82 @@ fn sensor_graph(
             t.graph_bg
         },
     );
-    let plot = rect.shrink2(Vec2::new(6.0, 12.0));
-    for row in 1..4 {
-        let y = egui::lerp(plot.top()..=plot.bottom(), row as f32 / 4.0);
+    let plot = rect.shrink2(Vec2::new(7.0, 19.0));
+    for row in 0..=3 {
+        let y = egui::lerp(plot.top()..=plot.bottom(), row as f32 / 3.0);
         painter.line_segment(
             [egui::pos2(plot.left(), y), egui::pos2(plot.right(), y)],
-            Stroke::new(0.5, t.border),
+            Stroke::new(0.5, theme::mix(t.graph_bg, t.border, 0.65)),
         );
     }
-    if let Some(history) = history {
-        let maximum = if power {
-            history.peak(true).unwrap_or(1.0).max(1.0) * 1.15
-        } else {
-            history.peak(false).unwrap_or(100.0).max(100.0)
-        };
-        if let Some(last) = history.points.back() {
-            let mut previous: Option<(egui::Pos2, std::time::Instant)> = None;
-            for point in &history.points {
-                let Some(value) = (if power {
-                    point.power_w
-                } else {
-                    point.temperature_c
-                }) else {
-                    previous = None;
-                    continue;
-                };
-                let age = last.at.duration_since(point.at).as_secs_f32();
-                let position = egui::pos2(
-                    plot.right() - (age / 120.0).clamp(0.0, 1.0) * plot.width(),
-                    plot.bottom() - (value / maximum).clamp(0.0, 1.0) * plot.height(),
-                );
-                if let Some((prev, at)) = previous
-                    && point.at.duration_since(at).as_secs_f32() <= 3.0
-                {
-                    let mut fill = egui::Mesh::default();
-                    let top = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 42);
-                    fill.colored_vertex(prev, top);
-                    fill.colored_vertex(position, top);
-                    fill.colored_vertex(
-                        egui::pos2(position.x, plot.bottom()),
-                        Color32::TRANSPARENT,
-                    );
-                    fill.colored_vertex(egui::pos2(prev.x, plot.bottom()), Color32::TRANSPARENT);
-                    fill.add_triangle(0, 1, 2);
-                    fill.add_triangle(0, 2, 3);
-                    painter.add(egui::Shape::mesh(fill));
-                    painter.line_segment([prev, position], Stroke::new(1.6, color));
-                } else {
-                    painter.circle_filled(position, 1.5, color);
-                }
-                previous = Some((position, point.at));
-            }
-        }
-        response.on_hover_text(format!(
-            "120-second history; gaps mean no reading. Scale 0 to {maximum:.0} {}.",
-            if power { "W" } else { "°C" }
-        ));
+    let peak = history.and_then(|h| h.peak(power));
+    // Readable axis tops: temperatures never below 100 °C, power rounded up
+    // to a whole step ("150 W", never "131.6").
+    let maximum = if power {
+        format::nice_top(peak.unwrap_or(1.0) * 1.05)
+    } else {
+        format::nice_top(peak.unwrap_or(0.0) * 1.1).max(100.0)
+    };
+    let unit = if power { "W" } else { "°C" };
+    for (anchor, offset, text) in [
+        (
+            egui::Align2::LEFT_TOP,
+            rect.left_top() + Vec2::new(7.0, 4.0),
+            format!("{maximum:.0} {unit}"),
+        ),
+        (
+            egui::Align2::LEFT_BOTTOM,
+            rect.left_bottom() + Vec2::new(7.0, -4.0),
+            "-120 s".into(),
+        ),
+        (
+            egui::Align2::RIGHT_BOTTOM,
+            rect.right_bottom() - Vec2::new(7.0, 4.0),
+            "now".into(),
+        ),
+    ] {
+        painter.text(offset, anchor, text, FontId::monospace(9.0), t.text_muted);
     }
+    let Some(history) = history else {
+        return;
+    };
+    let ink = t.ink(color);
+    if let Some(last) = history.points.back() {
+        let mut previous: Option<(egui::Pos2, std::time::Instant)> = None;
+        for point in &history.points {
+            let Some(value) = (if power {
+                point.power_w
+            } else {
+                point.temperature_c
+            }) else {
+                previous = None;
+                continue;
+            };
+            let age = last.at.duration_since(point.at).as_secs_f32();
+            let position = egui::pos2(
+                plot.right() - (age / 120.0).clamp(0.0, 1.0) * plot.width(),
+                plot.bottom() - (value / maximum).clamp(0.0, 1.0) * plot.height(),
+            );
+            if let Some((prev, at)) = previous
+                && point.at.duration_since(at).as_secs_f32() <= 3.0
+            {
+                let mut fill = egui::Mesh::default();
+                let top = ink.gamma_multiply(0.22);
+                fill.colored_vertex(prev, top);
+                fill.colored_vertex(position, top);
+                fill.colored_vertex(egui::pos2(position.x, plot.bottom()), Color32::TRANSPARENT);
+                fill.colored_vertex(egui::pos2(prev.x, plot.bottom()), Color32::TRANSPARENT);
+                fill.add_triangle(0, 1, 2);
+                fill.add_triangle(0, 2, 3);
+                painter.add(egui::Shape::mesh(fill));
+                painter.line_segment([prev, position], Stroke::new(1.5, ink));
+            } else {
+                painter.circle_filled(position, 1.5, ink);
+            }
+            previous = Some((position, point.at));
+        }
+    }
+    response.on_hover_text(format!(
+        "120-second history; gaps mean no reading. Scale 0 to {maximum:.0} {unit}."
+    ));
 }

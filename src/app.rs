@@ -16,7 +16,7 @@ use egui::{Align, Color32, FontId, Layout, RichText, Sense, Stroke, Vec2};
 use egui_extras::{Column, TableBuilder};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-const HISTORY_LENGTH: usize = 120;
+const HISTORY_LENGTH: usize = widgets::HISTORY_WINDOW;
 /// Sidebar footer: three 20 px meters, host line and a 28 px Theme Studio button.
 const NAV_FOOTER_HEIGHT: f32 = 126.0;
 
@@ -1679,12 +1679,14 @@ impl TrontopApp {
 
     fn performance_rail(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
+        let empty = VecDeque::new();
         if widgets::device_button(
             ui,
             self.performance_device == PerformanceDevice::Cpu,
             "CPU",
             &format::percent(self.snapshot.cpu_percent),
             &self.cpu_history,
+            Some(100.0),
             t.accent,
             t,
         ) {
@@ -1696,6 +1698,7 @@ impl TrontopApp {
             "Memory",
             &format::percent(memory_percent(&self.snapshot)),
             &self.memory_history,
+            Some(100.0),
             t.secondary,
             t,
         ) {
@@ -1708,6 +1711,7 @@ impl TrontopApp {
             "GPU",
             &gpu_value,
             &self.gpu_history,
+            Some(100.0),
             theme::mix(t.accent, t.secondary, 0.5),
             t,
         ) {
@@ -1752,6 +1756,7 @@ impl TrontopApp {
             "GPU thermals",
             &thermal_value,
             &thermal_history,
+            None,
             t.secondary,
             t,
         ) {
@@ -1775,6 +1780,7 @@ impl TrontopApp {
                 &format!("Disk {}", disk.number),
                 &value,
                 &history,
+                Some(100.0),
                 t.good,
                 t,
             ) {
@@ -1783,17 +1789,14 @@ impl TrontopApp {
             }
         }
         for (index, disk) in self.snapshot.disks.iter().enumerate() {
-            let history = self
-                .disk_history
-                .get(&disk.mount)
-                .cloned()
-                .unwrap_or_default();
+            let history = self.disk_history.get(&disk.mount).unwrap_or(&empty);
             if widgets::device_button(
                 ui,
                 self.performance_device == PerformanceDevice::Disk(index),
                 &format!("Volume {}", disk.mount),
                 &format::rate(disk.read_bytes_per_sec + disk.write_bytes_per_sec),
-                &history,
+                history,
+                None,
                 t.good,
                 t,
             ) {
@@ -1808,17 +1811,14 @@ impl TrontopApp {
             .filter(|(_, row)| row.total_received_bytes + row.total_transmitted_bytes > 0)
             .take(3)
         {
-            let history = self
-                .network_history
-                .get(&network.name)
-                .cloned()
-                .unwrap_or_default();
+            let history = self.network_history.get(&network.name).unwrap_or(&empty);
             if widgets::device_button(
                 ui,
                 self.performance_device == PerformanceDevice::Network(index),
                 &network.name,
                 &format::rate(network.received_bytes_per_sec + network.transmitted_bytes_per_sec),
-                &history,
+                history,
+                None,
                 t.secondary,
                 t,
             ) {
@@ -1837,21 +1837,12 @@ impl TrontopApp {
             crate::diagnostics::Provider::CpuClock,
             std::time::Instant::now(),
         );
+        let live = clock_state == crate::diagnostics::State::Live;
         let clocks = self.snapshot.cpu.clocks.as_ref();
         let ghz = |value: Option<f64>| {
             value.map_or_else(
                 || "-- GHz".into(),
-                |v| {
-                    format!(
-                        "{}{:.2} GHz",
-                        if clock_state == crate::diagnostics::State::Live {
-                            ""
-                        } else {
-                            "~"
-                        },
-                        v / 1000.0
-                    )
-                },
+                |v| format!("{}{:.2} GHz", if live { "" } else { "~" }, v / 1000.0),
             )
         };
         widgets::performance_heading(
@@ -1865,138 +1856,126 @@ impl TrontopApp {
             &format::percent(self.snapshot.cpu_percent),
             t.accent,
             t,
-        );
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.graphs.cpu_total, false, "All cores");
-            ui.selectable_value(&mut self.graphs.cpu_total, true, "Total CPU");
-            widgets::hover_label(
-                ui,
-                RichText::new(format!(
-                    "{} logical processors / 120 seconds / 0-100% each",
-                    self.snapshot.cpu.logical_cores
-                ))
-                .size(11.0)
-                .color(t.text_muted),
-            );
+        )
+        .on_hover_text(format!(
+            "{} physical cores, {} logical processors\n{}",
+            self.snapshot.cpu.physical_cores,
+            self.snapshot.cpu.logical_cores,
+            self.snapshot.os_name
+        ));
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.graphs.cpu_all_cores, false, "Total CPU");
+            ui.selectable_value(&mut self.graphs.cpu_all_cores, true, "All cores");
         });
-        if self.graphs.cpu_total {
+        ui.add_space(theme::space::S);
+        if self.graphs.cpu_all_cores {
+            self.graphs.ensure_sample(&self.snapshot);
+            self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
+        } else {
+            // Room below: the clock tiles and the per-processor header.
+            let height = widgets::fit_height(ui, 124.0, 160.0, 270.0);
             widgets::history_graph_with_window(
                 ui,
                 &self.cpu_history,
                 t.accent,
-                270.0,
+                height,
                 Some(100.0),
                 t,
-                (
-                    "120 SECONDS",
-                    self.cpu_history.capacity().max(self.cpu_history.len()),
-                ),
+                ("120 s", HISTORY_LENGTH),
                 Some(&|v: f32| format!("{v:.0}%")),
             );
-        } else {
-            self.graphs.ensure_sample(&self.snapshot);
-            self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
         }
-        ui.add_space(12.0);
-        ui.columns(4, |columns| {
-            widgets::metric(
+        ui.add_space(theme::space::L);
+        let contributors = clocks.map_or_else(
+            || "No clock interval measured yet.".to_owned(),
+            |v| {
+                format!(
+                    "{} of {} logical processors reporting, {:.2} s interval.",
+                    v.contributing(),
+                    v.processors.len(),
+                    v.interval_seconds
+                )
+            },
+        );
+        let provenance = format!(
+            "{}\n{}\n{contributors}{}",
+            crate::cpu_clock::SOURCE,
+            crate::cpu_clock::SEMANTICS,
+            if live {
+                ""
+            } else {
+                "\n~ marks a retained reading, not a fresh measurement."
+            }
+        );
+        let state = (!live).then(|| clock_state.label());
+        ui.columns(2, |columns| {
+            widgets::value_tile(
                 &mut columns[0],
-                "UTILIZATION",
-                &format::percent(self.snapshot.cpu_percent),
+                "Fastest processor",
+                &ghz(clocks.map(|v| v.fastest_mhz)),
+                &provenance,
+                state,
+                false,
                 t,
             );
-            widgets::metric(
+            widgets::value_tile(
                 &mut columns[1],
-                "AVG CLOCK",
-                &ghz(clocks.map(|v| v.average_mhz)),
-                t,
-            );
-            widgets::metric(
-                &mut columns[2],
-                "PROCESSES",
-                &self.snapshot.process_count.to_string(),
-                t,
-            );
-            widgets::metric(
-                &mut columns[3],
-                "UPTIME",
-                &format::duration(self.snapshot.uptime_seconds),
+                "Slowest reporting",
+                &ghz(clocks.map(|v| v.slowest_mhz)),
+                &provenance,
+                state,
+                true,
                 t,
             );
         });
-        ui.add_space(10.0);
-        ui.horizontal_wrapped(|ui| {
-            widgets::status_pill(
-                ui,
-                &format!("CPU clocks: {}", clock_state.label()),
-                diagnostics::state_color(clock_state, t),
-            );
+        ui.add_space(theme::space::M);
+        egui::CollapsingHeader::new("Per-processor clocks").show(ui, |ui| {
             widgets::hover_label(
                 ui,
-                RichText::new("Windows performance-state average / ~ = cached")
+                RichText::new(crate::cpu_clock::SOURCE)
                     .size(11.0)
                     .color(t.text_muted),
             )
             .on_hover_text(crate::cpu_clock::SEMANTICS);
-        });
-        ui.columns(2, |columns| {
-            widgets::metric(
-                &mut columns[0],
-                "FASTEST PROCESSOR",
-                &ghz(clocks.map(|v| v.fastest_mhz)),
-                t,
-            );
-            widgets::metric(
-                &mut columns[1],
-                "SLOWEST REPORTING",
-                &ghz(clocks.map(|v| v.slowest_mhz)),
-                t,
-            );
-        });
-        widgets::detail_row(
-            ui,
-            "Clock contributors",
-            &clocks.map_or_else(
-                || "--".into(),
-                |v| {
-                    format!(
-                        "{} / {} logical processors · {:.2}s interval",
-                        v.contributing(),
-                        v.processors.len(),
-                        v.interval_seconds
-                    )
+            widgets::detail_row(
+                ui,
+                "Legacy CurrentMhz / CPU 0",
+                &if self.snapshot.cpu.frequency_mhz > 0 {
+                    format!("{:.2} GHz", self.snapshot.cpu.frequency_mhz as f64 / 1000.0)
+                } else {
+                    "-- GHz".into()
                 },
-            ),
-            t,
-        );
-        widgets::detail_row(
-            ui,
-            "Physical cores",
-            &self.snapshot.cpu.physical_cores.to_string(),
-            t,
-        );
-        widgets::detail_row(
-            ui,
-            "Logical processors",
-            &self.snapshot.cpu.logical_cores.to_string(),
-            t,
-        );
-        widgets::detail_row(ui, "Operating system", &self.snapshot.os_name, t);
-        egui::CollapsingHeader::new("Clock source and per-processor readings").show(ui, |ui| {
-            widgets::hover_label(ui, RichText::new(crate::cpu_clock::SOURCE).size(11.0).color(t.text_muted));
-            widgets::hover_label(ui, RichText::new(crate::cpu_clock::SEMANTICS).size(11.0).color(t.text_muted));
-            widgets::detail_row(ui, "Legacy CurrentMhz / CPU 0", &if self.snapshot.cpu.frequency_mhz > 0 {
-                format!("{:.2} GHz", self.snapshot.cpu.frequency_mhz as f64 / 1000.0)
-            } else { "-- GHz".into() }, t);
-            widgets::hover_label(ui, RichText::new("Legacy power clock is kept separate, never substituted for a missing interval. No new driver is installed.").size(11.0).color(t.text_muted));
+                t,
+            )
+            ;
+            widgets::hover_label(
+                ui,
+                RichText::new(
+                    "The legacy power clock is kept separate and never substituted for a missing interval.",
+                )
+                .size(11.0)
+                .color(t.text_muted),
+            );
             if let Some(clocks) = clocks {
                 let row_height = 18.0 + widgets::surface(ui, t, false).total_margin().sum().y;
-                egui::ScrollArea::vertical().id_salt("cpu-clock-processors").max_height(240.0)
+                egui::ScrollArea::vertical()
+                    .id_salt("cpu-clock-processors")
+                    .max_height(240.0)
                     .show_rows(ui, row_height, clocks.processors.len(), |ui, rows| {
-                for p in &clocks.processors[rows] {
-                    widgets::detail_row(ui, &format!("Group {} / CPU {} · nominal {:.2} GHz", p.group, p.number, p.nominal_mhz as f64 / 1000.0), &ghz(p.mhz), t);
-                }
-                });
+                        for p in &clocks.processors[rows] {
+                            widgets::detail_row(
+                                ui,
+                                &format!(
+                                    "Group {} / CPU {} \u{b7} nominal {:.2} GHz",
+                                    p.group,
+                                    p.number,
+                                    p.nominal_mhz as f64 / 1000.0
+                                ),
+                                &ghz(p.mhz),
+                                t,
+                            );
+                        }
+                    });
             }
         });
     }
@@ -2004,188 +1983,276 @@ impl TrontopApp {
     fn memory_performance(&self, ui: &mut egui::Ui) {
         let t = self.colors();
         let percent = memory_percent(&self.snapshot);
-        widgets::performance_heading(
+        let (state, chip, provenance) = self.memory_counter_state();
+        widgets::performance_heading_with_state(
             ui,
             "Memory",
             &if self.snapshot.memory_total_bytes > 0 {
-                format::bytes(self.snapshot.memory_total_bytes)
+                format!(
+                    "{} installed",
+                    format::bytes(self.snapshot.memory_total_bytes)
+                )
             } else {
-                "Capacity unavailable".into()
+                "Capacity not reported".into()
             },
             &if self.snapshot.memory_total_bytes > 0 {
                 format::percent(percent)
             } else {
-                "-- %".into()
+                "--".into()
             },
+            chip,
             t.secondary,
             t,
-        );
-        self.memory_counter_status(ui);
-        ui.add_space(8.0);
+        )
+        .on_hover_text(provenance);
+        // Room below: two rows of four tiles on a wide pane.
+        let height = widgets::fit_height(ui, 136.0, 160.0, 270.0);
         widgets::history_graph_with_window(
             ui,
             &self.memory_history,
             t.secondary,
-            270.0,
+            height,
             Some(100.0),
             t,
-            (
-                "120 SECONDS",
-                self.memory_history
-                    .capacity()
-                    .max(self.memory_history.len()),
-            ),
+            ("120 s", HISTORY_LENGTH),
             Some(&|v: f32| format!("{v:.0}%")),
         );
-        ui.add_space(12.0);
+        ui.add_space(theme::space::L);
         let memory = self.snapshot.memory_details;
         let bytes = |value: Option<u64>| value.map_or_else(|| "--".into(), format::bytes);
+        let physical = (self.snapshot.memory_total_bytes > 0).then_some(());
         let fields = [
             (
-                "IN USE",
-                bytes(
-                    (self.snapshot.memory_total_bytes > 0)
-                        .then_some(self.snapshot.memory_used_bytes),
-                ),
+                "In use",
+                bytes(physical.map(|_| self.snapshot.memory_used_bytes)),
+                "Physical memory in use.",
+                false,
             ),
             (
-                "AVAILABLE",
-                bytes(
-                    (self.snapshot.memory_total_bytes > 0)
-                        .then_some(self.snapshot.memory_available_bytes),
-                ),
+                "Available",
+                bytes(physical.map(|_| self.snapshot.memory_available_bytes)),
+                "Physical memory available to new allocations.",
+                false,
             ),
-            ("COMMITTED", bytes(memory.map(|m| m.commit_bytes))),
-            ("COMMIT LIMIT", bytes(memory.map(|m| m.commit_limit_bytes))),
-            ("COMMIT PEAK", bytes(memory.map(|m| m.commit_peak_bytes))),
-            ("SYSTEM CACHE", bytes(memory.map(|m| m.system_cache_bytes))),
-            ("PAGED POOL", bytes(memory.map(|m| m.kernel_paged_bytes))),
             (
-                "NONPAGED POOL",
+                "Committed",
+                bytes(memory.map(|m| m.commit_bytes)),
+                "Commit is allocated virtual memory, not RAM plus page-file use.",
+                true,
+            ),
+            (
+                "Commit limit",
+                bytes(memory.map(|m| m.commit_limit_bytes)),
+                "Physical memory plus page files.",
+                true,
+            ),
+            (
+                "Commit peak",
+                bytes(memory.map(|m| m.commit_peak_bytes)),
+                "Highest commit since boot.",
+                true,
+            ),
+            (
+                "System cache",
+                bytes(memory.map(|m| m.system_cache_bytes)),
+                "Includes standby pages and the system working set.",
+                true,
+            ),
+            (
+                "Paged pool",
+                bytes(memory.map(|m| m.kernel_paged_bytes)),
+                "Kernel memory that can be paged out.",
+                true,
+            ),
+            (
+                "Nonpaged pool",
                 bytes(memory.map(|m| m.kernel_nonpaged_bytes)),
+                "Kernel memory that always stays in RAM.",
+                true,
             ),
         ];
         let count = if ui.available_width() >= 760.0 { 4 } else { 2 };
         for (row_index, row) in fields.chunks(count).enumerate() {
             ui.columns(count, |cols| {
-                for (column_index, (column, (label, value))) in cols.iter_mut().zip(row).enumerate()
+                for (column_index, (column, (label, value, hover, counter))) in
+                    cols.iter_mut().zip(row).enumerate()
                 {
-                    widgets::metric_banded(
+                    let hover = match state {
+                        Some(state) if *counter => format!(
+                            "{hover}
+Counters: {state}."
+                        ),
+                        _ => (*hover).to_owned(),
+                    };
+                    widgets::value_tile(
                         column,
                         label,
                         value,
+                        &hover,
+                        // The hero carries the one counter state chip; a
+                        // retained counter value is marked on its hover.
+                        None,
                         (row_index + column_index) % 2 == 1,
                         t,
                     );
                 }
             });
-            ui.add_space(8.0);
+            ui.add_space(theme::space::M);
         }
-        ui.scope(|ui| {
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-            widgets::hover_label(ui, RichText::new("Commit is allocated virtual memory, not RAM plus page-file use. System cache includes standby pages and the system working set; commit peak is since boot.").size(11.0).color(t.text_muted));
-        });
     }
 
-    fn memory_counter_status(&self, ui: &mut egui::Ui) {
+    /// Memory counter state: a chip label only when the counters are not Live,
+    /// the hero chip, and the provenance text for the hero's hover.
+    fn memory_counter_state(
+        &self,
+    ) -> (
+        Option<&'static str>,
+        Option<(&'static str, Color32)>,
+        String,
+    ) {
         let provider = crate::diagnostics::Provider::MemoryCounters;
         let health = self.snapshot.diagnostics.get(provider);
         let now = std::time::Instant::now();
         let state = health.state(provider, now);
-        let cached =
-            self.snapshot.memory_details.is_some() && state != crate::diagnostics::State::Live;
-        let t = self.colors();
-        ui.horizontal_wrapped(|ui| {
-            widgets::status_pill(ui, if cached { "Memory counters: Cached" } else if state == crate::diagnostics::State::Live { "Memory counters: Live" } else { "Memory counters: Unavailable" }, diagnostics::state_color(state, t));
-            widgets::hover_label(ui, RichText::new(format!("Last usable: {}", crate::diagnostics::age(health.last_success, now))).size(11.0).color(t.text_muted))
-                .on_hover_text("Windows K32GetPerformanceInfo, sampled in the background. Cached values retain their original timestamp; missing readings never become zero.");
-        });
+        let provenance = format!(
+            "Windows K32GetPerformanceInfo, sampled in the background. Last usable: {}.              Cached values keep their original timestamp; missing readings never become zero.",
+            crate::diagnostics::age(health.last_success, now)
+        );
+        if state == crate::diagnostics::State::Live {
+            return (None, None, provenance);
+        }
+        let (short, chip) = if self.snapshot.memory_details.is_some() {
+            ("Cached", "Counters: Cached")
+        } else {
+            ("Unavailable", "Counters: Unavailable")
+        };
+        (
+            Some(short),
+            Some((chip, diagnostics::state_color(state, self.colors()))),
+            provenance,
+        )
     }
 
     fn disk_performance(&self, ui: &mut egui::Ui, index: usize) {
         let t = self.colors();
         let Some(disk) = self.snapshot.disks.get(index) else {
-            widgets::hover_label(ui, "Disk no longer present");
+            widgets::gap_row(
+                ui,
+                "Volume",
+                "No longer present",
+                "This volume is no longer reported. Choose another device on the left.",
+                t,
+            );
             return;
         };
-        let history = self
-            .disk_history
-            .get(&disk.mount)
-            .cloned()
-            .unwrap_or_default();
+        let empty = VecDeque::new();
+        let history = self.disk_history.get(&disk.mount).unwrap_or(&empty);
         let total_rate = disk.read_bytes_per_sec + disk.write_bytes_per_sec;
+        let kind = volume_kind(&disk.kind);
+        let subline = [kind.as_str(), disk.file_system.as_str()]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(" \u{b7} ");
         widgets::performance_heading(
             ui,
             &format!("Volume {}", disk.mount),
-            &format!("{} | {}", disk.name, disk.kind),
+            &subline,
             &format::rate(total_rate),
             t.good,
             t,
-        );
+        )
+        .on_hover_text(format!(
+            "{}{}\nRemovable: {}\nRead + write throughput for this mounted volume.",
+            if disk.name.is_empty() {
+                "Unnamed volume"
+            } else {
+                disk.name.as_str()
+            },
+            if disk.mount.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", disk.mount)
+            },
+            if disk.removable { "yes" } else { "no" }
+        ));
+        let height = widgets::fit_height(ui, 72.0, 160.0, 270.0);
         widgets::history_graph_with_window(
             ui,
-            &history,
+            history,
             t.good,
-            270.0,
+            height,
             None,
             t,
-            ("120 SECONDS", history.capacity().max(history.len())),
+            ("120 s", HISTORY_LENGTH),
             Some(&|v: f32| format::rate_mib(v)),
         );
-        ui.add_space(12.0);
-        ui.columns(4, |columns| {
-            widgets::metric(
-                &mut columns[0],
-                "READ",
-                &format::rate(disk.read_bytes_per_sec),
-                t,
-            );
-            widgets::metric(
-                &mut columns[1],
-                "WRITE",
-                &format::rate(disk.write_bytes_per_sec),
-                t,
-            );
-            widgets::metric(
-                &mut columns[2],
-                "CAPACITY",
-                &format::bytes(disk.total_bytes),
-                t,
-            );
+        ui.add_space(theme::space::L);
+        let used = (disk.total_bytes > 0).then(|| {
             let used = disk.total_bytes.saturating_sub(disk.available_bytes);
-            widgets::metric(
-                &mut columns[3],
-                "USED",
-                &format::percent(if disk.total_bytes == 0 {
-                    0.0
+            format::percent(used as f32 / disk.total_bytes as f32 * 100.0)
+        });
+        ui.columns(4, |columns| {
+            widgets::value_tile(
+                &mut columns[0],
+                "Read",
+                &format::rate(disk.read_bytes_per_sec),
+                "Bytes read per second from this volume.",
+                None,
+                false,
+                t,
+            );
+            widgets::value_tile(
+                &mut columns[1],
+                "Write",
+                &format::rate(disk.write_bytes_per_sec),
+                "Bytes written per second to this volume.",
+                None,
+                true,
+                t,
+            );
+            widgets::value_tile(
+                &mut columns[2],
+                "Capacity",
+                &if disk.total_bytes > 0 {
+                    format::bytes(disk.total_bytes)
                 } else {
-                    used as f32 / disk.total_bytes as f32 * 100.0
-                }),
+                    "--".into()
+                },
+                &format!("{} free", format::bytes(disk.available_bytes)),
+                None,
+                false,
+                t,
+            );
+            widgets::value_tile(
+                &mut columns[3],
+                "Used",
+                used.as_deref().unwrap_or("--"),
+                if used.is_some() {
+                    "Share of capacity in use."
+                } else {
+                    "Capacity not reported, so no share is shown."
+                },
+                None,
+                true,
                 t,
             );
         });
-        ui.add_space(10.0);
-        widgets::detail_row(ui, "File system", &disk.file_system, t);
-        widgets::detail_row(ui, "Mount", &disk.mount, t);
-        widgets::detail_row(
-            ui,
-            "Removable",
-            if disk.removable { "Yes" } else { "No" },
-            t,
-        );
     }
 
-    fn network_performance(&self, ui: &mut egui::Ui, index: usize) {
+    fn network_performance(&mut self, ui: &mut egui::Ui, index: usize) {
         let t = self.colors();
+        self.graphs.ensure_sample(&self.snapshot);
         let Some(network) = self.snapshot.networks.get(index) else {
-            widgets::hover_label(ui, "Network adapter no longer present");
+            widgets::gap_row(
+                ui,
+                "Network adapter",
+                "No longer present",
+                "This adapter is no longer reported. Choose another device on the left.",
+                t,
+            );
             return;
         };
-        let history = self
-            .network_history
-            .get(&network.name)
-            .cloned()
-            .unwrap_or_default();
         let rate = network.received_bytes_per_sec + network.transmitted_bytes_per_sec;
         widgets::performance_heading(
             ui,
@@ -2194,43 +2261,40 @@ impl TrontopApp {
             &format::rate(rate),
             t.secondary,
             t,
-        );
-        widgets::history_graph_with_window(
-            ui,
-            &history,
-            t.secondary,
-            270.0,
-            None,
-            t,
-            ("120 SECONDS", history.capacity().max(history.len())),
-            Some(&|v: f32| format::rate_mib(v)),
-        );
-        ui.add_space(12.0);
+        )
+        .on_hover_text("Receive plus send throughput for this adapter.");
+        let height = widgets::fit_height(ui, 72.0, 160.0, 270.0);
+        self.graphs.network_graph(ui, &network.name, height, t);
+        ui.add_space(theme::space::L);
         ui.columns(4, |columns| {
-            widgets::metric(
-                &mut columns[0],
-                "RECEIVE",
-                &format::rate(network.received_bytes_per_sec),
-                t,
-            );
-            widgets::metric(
-                &mut columns[1],
-                "SEND",
-                &format::rate(network.transmitted_bytes_per_sec),
-                t,
-            );
-            widgets::metric(
-                &mut columns[2],
-                "RECEIVED",
-                &format::bytes(network.total_received_bytes),
-                t,
-            );
-            widgets::metric(
-                &mut columns[3],
-                "SENT",
-                &format::bytes(network.total_transmitted_bytes),
-                t,
-            );
+            for (index, (column, (label, value, hover))) in columns
+                .iter_mut()
+                .zip([
+                    (
+                        "Receive",
+                        format::rate(network.received_bytes_per_sec),
+                        "Bytes received per second.",
+                    ),
+                    (
+                        "Send",
+                        format::rate(network.transmitted_bytes_per_sec),
+                        "Bytes sent per second.",
+                    ),
+                    (
+                        "Received",
+                        format::bytes(network.total_received_bytes),
+                        "Total received, as reported by Windows.",
+                    ),
+                    (
+                        "Sent",
+                        format::bytes(network.total_transmitted_bytes),
+                        "Total sent, as reported by Windows.",
+                    ),
+                ])
+                .enumerate()
+            {
+                widgets::value_tile(column, label, &value, hover, None, index % 2 == 1, t);
+            }
         });
     }
 
@@ -2243,12 +2307,13 @@ impl TrontopApp {
         let color = theme::mix(t.accent, t.secondary, 0.5);
         widgets::performance_heading(
             ui,
-            "GPU ENGINE ARRAY",
-            "Busiest engine; >= means partial coverage",
+            "GPU",
+            "",
             &self.snapshot.gpu.reading().label(),
             color,
             t,
-        );
+        )
+        .on_hover_text("Busiest Windows GPU engine. A trailing + marks partial counter coverage.");
         widgets::history_graph(ui, &self.gpu_history, color, 250.0, Some(100.0), t);
         ui.add_space(10.0);
         for engine in self.gpu_engine_names.iter().take(8) {
@@ -3114,5 +3179,15 @@ fn memory_percent(snapshot: &SystemSnapshot) -> f32 {
         0.0
     } else {
         snapshot.memory_used_bytes as f32 / snapshot.memory_total_bytes as f32 * 100.0
+    }
+}
+
+/// A volume's media kind for the Performance hero: "SSD" or "HDD" as sysinfo
+/// reports them, and nothing for an unknown kind (never a guess).
+fn volume_kind(kind: &str) -> String {
+    match kind {
+        "SSD" | "HDD" => kind.to_owned(),
+        other if other.starts_with("Unknown") || other.is_empty() => String::new(),
+        other => other.to_owned(),
     }
 }

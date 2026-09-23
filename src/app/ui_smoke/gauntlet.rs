@@ -228,6 +228,9 @@ fn pages_at(g: &mut Gauntlet, size: Vec2) {
         g.shoot(size, &format!("performance-{name}"), PAGE);
     }
     g.app.performance_device = PerformanceDevice::Cpu;
+    g.app.graphs.cpu_all_cores = true;
+    g.shoot(size, "performance-cpu-cores", PAGE);
+    g.app.graphs.cpu_all_cores = false;
 
     for (page, name) in [
         (Page::History, "history"),

@@ -866,6 +866,10 @@ fn heat_cell_response(
     response
 }
 
+/// The Performance hero: device name, an optional one-line subline (the model
+/// or adapter name; an empty `detail` draws no line), the headline value and an
+/// accent rule. Returns the hero's response so callers can put provenance on
+/// its hover instead of on visible text lines.
 pub fn performance_heading(
     ui: &mut egui::Ui,
     label: &str,
@@ -873,8 +877,23 @@ pub fn performance_heading(
     value: &str,
     color: Color32,
     t: Tokens,
-) {
-    hover_frame(ui, surface(ui, t, false), |ui| {
+) -> egui::Response {
+    performance_heading_with_state(ui, label, detail, value, None, color, t)
+}
+
+/// [`performance_heading`] with one state chip beside the value, drawn only
+/// when a source is not Live ("Counters: Cached"). The chip lives inside the
+/// hero, so a state change never moves the fields below it.
+pub fn performance_heading_with_state(
+    ui: &mut egui::Ui,
+    label: &str,
+    detail: &str,
+    value: &str,
+    state: Option<(&str, Color32)>,
+    color: Color32,
+    t: Tokens,
+) -> egui::Response {
+    let response = hover_frame(ui, surface(ui, t, false), |ui| {
         ui.horizontal(|ui| {
             let width = ui.available_width();
             // Measure the value's real width first, so a short reading (most
@@ -883,19 +902,35 @@ pub fn performance_heading(
             let value_galley =
                 ui.painter()
                     .layout_no_wrap(value.into(), FontId::monospace(24.0), t.text);
-            let value_width = (value_galley.size().x + 4.0).min(width * 0.6);
+            let chip = state.map(|(text, color)| {
+                (
+                    ui.painter().layout_no_wrap(
+                        text.into(),
+                        FontId::proportional(10.0),
+                        t.ink(color),
+                    ),
+                    color,
+                )
+            });
+            let chip_width = chip.as_ref().map_or(0.0, |(g, _)| g.size().x + 12.0 + 8.0);
+            let value_width = (value_galley.size().x + 4.0 + chip_width).min(width * 0.6);
             ui.allocate_ui_with_layout(
-                Vec2::new((width - value_width - 8.0).max(0.0), 47.0),
+                Vec2::new(
+                    (width - value_width - 8.0).max(0.0),
+                    if detail.is_empty() { 30.0 } else { 47.0 },
+                ),
                 Layout::top_down(Align::Min),
                 |ui| {
                     ui.add(
                         egui::Label::new(RichText::new(label).size(18.0).strong().color(t.text))
                             .truncate(),
                     );
-                    ui.add(
-                        egui::Label::new(RichText::new(detail).size(10.0).color(t.text_muted))
-                            .truncate(),
-                    );
+                    if !detail.is_empty() {
+                        ui.add(
+                            egui::Label::new(RichText::new(detail).size(11.0).color(t.text_muted))
+                                .truncate(),
+                        );
+                    }
                 },
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -904,14 +939,44 @@ pub fn performance_heading(
                         .truncate(),
                 )
                 .on_hover_text(value);
+                if let Some((galley, chip_color)) = chip {
+                    ui.add_space(8.0);
+                    let size = galley.size() + Vec2::new(12.0, 4.0);
+                    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+                    ui.painter().rect_filled(
+                        rect,
+                        rect.height() / 2.0,
+                        t.surface(theme::mix(t.panel_raised, chip_color, 0.18)),
+                    );
+                    ui.painter()
+                        .galley(rect.min + Vec2::new(6.0, 2.0), galley, t.ink(chip_color));
+                }
             });
         });
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 2.0), Sense::hover());
         ui.painter().rect_filled(rect, 1.0, color);
-    });
-    ui.add_space(9.0);
+    })
+    .response;
+    ui.add_space(theme::space::S);
+    response
 }
+
+/// Height for a detail view's big graph: what is left of the visible
+/// viewport after the content above it and `below` px of fields under it,
+/// clamped to `min..=max`. Measured from the content origin, so scrolling
+/// never resizes the graph; at 1000x580 the fields under the graph stay above
+/// the fold instead of the graph always taking a fixed 270 px.
+pub fn fit_height(ui: &egui::Ui, below: f32, min: f32, max: f32) -> f32 {
+    let viewport = ui.clip_rect().height();
+    let above = ui.cursor().top() - ui.min_rect().top();
+    (viewport - above - below).clamp(min, max)
+}
+
+/// Samples one Performance history holds, one per system sample (nominally
+/// 1 s). Every history graph spans exactly this window, so 20 samples fill
+/// the newest sixth of the plot instead of stretching across "-120 s".
+pub const HISTORY_WINDOW: usize = 120;
 
 pub fn history_graph(
     ui: &mut egui::Ui,
@@ -928,14 +993,16 @@ pub fn history_graph(
         height,
         fixed_max,
         t,
-        ("120 SECONDS", history.capacity().max(history.len())),
+        ("120 SECONDS", HISTORY_WINDOW),
         None,
     );
 }
 
-/// Explicit window units for series sampled independently from the UI refresh.
-/// `unit_fmt`, when given, formats the top-left maximum label (e.g. a rate with
-/// its unit); `None` keeps the plain `MAX x` fallback.
+/// `window.1` is the number of sample slots the plot spans, right-aligned at
+/// "now": pass [`HISTORY_WINDOW`], never a `VecDeque`'s `capacity()` (a clone's
+/// capacity equals its length, which stretches a few samples across the whole
+/// window). `unit_fmt`, when given, formats the top-left axis label with its
+/// unit ("100%", "25.0 ms"); `None` keeps a plain number.
 #[allow(clippy::too_many_arguments)]
 pub fn history_graph_with_window(
     ui: &mut egui::Ui,
@@ -959,33 +1026,38 @@ pub fn history_graph_with_window(
             t.graph_bg
         },
     );
-    for index in 1..5 {
-        let y = egui::lerp(rect.top()..=rect.bottom(), index as f32 / 5.0);
+    // Data lives between a top strip (the unit axis label) and a bottom strip
+    // ("-120 s" / "now"), so a spike never runs through the labels. Same
+    // geometry as the Graphs page cards.
+    let plot = rect.shrink2(Vec2::new(7.0, 17.0));
+    for index in 0..=4 {
+        let y = egui::lerp(plot.top()..=plot.bottom(), index as f32 / 4.0);
         painter.line_segment(
-            [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-            Stroke::new(1.0, t.border),
+            [egui::pos2(plot.left(), y), egui::pos2(plot.right(), y)],
+            Stroke::new(0.5, theme::mix(t.graph_bg, t.border, 0.65)),
         );
     }
     for index in 1..8 {
-        let x = egui::lerp(rect.left()..=rect.right(), index as f32 / 8.0);
+        let x = egui::lerp(plot.left()..=plot.right(), index as f32 / 8.0);
         painter.line_segment(
-            [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-            Stroke::new(0.5, t.border),
+            [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+            Stroke::new(0.5, theme::mix(t.graph_bg, t.border, 0.5)),
         );
     }
     if history.len() > 1 {
         let observed = history.iter().copied().fold(0.0_f32, f32::max);
+        // Auto scale rounds up to a readable step ("25 ms", never "MAX 23.1").
         let maximum = fixed_max
-            .unwrap_or_else(|| observed.max(1.0) * 1.15)
+            .unwrap_or_else(|| format::nice_top(observed * 1.05))
             .max(0.001);
         let denominator = (window.1.max(history.len()).max(2) - 1) as f32;
         let points = history
             .iter()
             .enumerate()
             .map(|(index, value)| {
-                let x = rect.right()
-                    - ((history.len() - 1 - index) as f32 / denominator) * rect.width();
-                let y = rect.bottom() - (value.clamp(0.0, maximum) / maximum) * rect.height();
+                let x = plot.right()
+                    - ((history.len() - 1 - index) as f32 / denominator) * plot.width();
+                let y = plot.bottom() - (value.clamp(0.0, maximum) / maximum) * plot.height();
                 value.is_finite().then_some(egui::pos2(x, y))
             })
             .collect::<Vec<_>>();
@@ -999,8 +1071,8 @@ pub fn history_graph_with_window(
             let base = fill.vertices.len() as u32;
             fill.colored_vertex(*first, fill_color);
             fill.colored_vertex(*second, fill_color);
-            fill.colored_vertex(egui::pos2(second.x, rect.bottom()), Color32::TRANSPARENT);
-            fill.colored_vertex(egui::pos2(first.x, rect.bottom()), Color32::TRANSPARENT);
+            fill.colored_vertex(egui::pos2(second.x, plot.bottom()), Color32::TRANSPARENT);
+            fill.colored_vertex(egui::pos2(first.x, plot.bottom()), Color32::TRANSPARENT);
             fill.add_triangle(base, base + 1, base + 2);
             fill.add_triangle(base, base + 2, base + 3);
         }
@@ -1008,28 +1080,28 @@ pub fn history_graph_with_window(
         for run in points.split(Option::is_none) {
             let run: Vec<_> = run.iter().flatten().copied().collect();
             if run.len() > 1 {
-                painter.add(egui::Shape::line(run, Stroke::new(2.0, t.ink(color))));
+                painter.add(egui::Shape::line(run, Stroke::new(1.75, t.ink(color))));
             }
         }
         painter.text(
-            rect.left_top() + Vec2::new(8.0, 7.0),
+            rect.left_top() + Vec2::new(7.0, 4.0),
             egui::Align2::LEFT_TOP,
             match unit_fmt {
                 Some(format) => format(maximum),
-                None => format!("MAX {maximum:.1}"),
+                None => format!("{maximum:.0}"),
             },
             FontId::monospace(9.0),
             t.text_muted,
         );
         painter.text(
-            rect.left_bottom() + Vec2::new(8.0, -7.0),
+            rect.left_bottom() + Vec2::new(7.0, -4.0),
             egui::Align2::LEFT_BOTTOM,
             "-120 s",
             FontId::monospace(9.0),
             t.text_muted,
         );
         painter.text(
-            rect.right_bottom() - Vec2::new(8.0, 7.0),
+            rect.right_bottom() - Vec2::new(7.0, 4.0),
             egui::Align2::RIGHT_BOTTOM,
             "now",
             FontId::monospace(9.0),
@@ -1097,12 +1169,17 @@ pub fn sparkline(
     }
 }
 
+/// A Performance rail tile. `max` fixes the sparkline scale (100 for
+/// percentages, so an idle disk never reads as a full-height spike); `None`
+/// auto-scales to the visible samples (rates, temperatures).
+#[allow(clippy::too_many_arguments)]
 pub fn device_button(
     ui: &mut egui::Ui,
     selected: bool,
     label: &str,
     value: &str,
     history: &VecDeque<f32>,
+    max: Option<f32>,
     color: Color32,
     t: Tokens,
 ) -> bool {
@@ -1144,7 +1221,13 @@ pub fn device_button(
             egui::pos2(rect.right() - 68.0, rect.top() + 8.0),
             egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0),
         );
-        let max = history.iter().copied().fold(1.0_f32, f32::max);
+        let max = max.unwrap_or_else(|| {
+            history
+                .iter()
+                .copied()
+                .filter(|v| v.is_finite())
+                .fold(1.0_f32, f32::max)
+        });
         let windowed: Vec<f32> = history
             .iter()
             .rev()
@@ -1315,23 +1398,69 @@ pub fn kpi_tile(
     response.on_hover_text(kpi.hover)
 }
 
-pub fn metric(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
-    metric_banded(ui, label, value, false, t);
-}
-
-pub fn metric_banded(ui: &mut egui::Ui, label: &str, value: &str, banded: bool, t: Tokens) {
+/// A compact value tile: a sentence-case label with a state chip on the right
+/// only when the reading is not Live, then the monospace value. Provenance and
+/// caveats go in `hover`, never on a visible caption line. A `--` value is
+/// drawn muted so a gap never reads as a measurement.
+pub fn value_tile(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &str,
+    hover: &str,
+    state: Option<&str>,
+    banded: bool,
+    t: Tokens,
+) -> egui::Response {
     hover_frame(ui, surface(ui, t, banded), |ui| {
         ui.set_min_width(ui.available_width());
-        ui.add(
-            egui::Label::new(RichText::new(label).size(10.0).strong().color(t.text_muted))
-                .truncate(),
+        ui.spacing_mut().item_spacing.y = 2.0;
+        let width = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 15.0), Sense::hover());
+        let mut label_right = rect.right();
+        if let Some(state) = state {
+            let galley =
+                ui.painter()
+                    .layout_no_wrap(state.into(), FontId::proportional(10.0), t.text_muted);
+            let pill = egui::Rect::from_min_max(
+                egui::pos2(rect.right() - galley.size().x - 12.0, rect.top()),
+                rect.max,
+            );
+            ui.painter().rect_filled(
+                pill,
+                pill.height() / 2.0,
+                t.surface(theme::mix(t.panel_raised, t.text_muted, 0.2)),
+            );
+            ui.painter().galley(
+                egui::pos2(pill.left() + 6.0, pill.center().y - galley.size().y / 2.0),
+                galley,
+                t.text_muted,
+            );
+            label_right = pill.left() - theme::space::S;
+        }
+        paint_text(
+            ui,
+            egui::Rect::from_min_max(rect.min, egui::pos2(label_right, rect.bottom())),
+            label,
+            FontId::proportional(11.0),
+            t.text_muted,
+            Align::Min,
         );
+        let muted = value == "--" || value.starts_with("-- ");
         ui.add(
-            egui::Label::new(RichText::new(value).size(17.0).monospace().color(t.text)).truncate(),
+            egui::Label::new(RichText::new(value).size(17.0).monospace().color(if muted {
+                t.text_muted
+            } else {
+                t.text
+            }))
+            .truncate(),
         );
     })
     .response
-    .on_hover_text(format!("{label}: {value}"));
+    .on_hover_text(if hover.is_empty() {
+        format!("{label}: {value}")
+    } else {
+        format!("{label}: {value}\n{hover}")
+    })
 }
 
 pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32, t: Tokens) {
@@ -1934,6 +2063,53 @@ mod tests {
         assert!(paths[0].points[1].x < paths[1].points[0].x);
     }
 
+    /// 20 samples in a 120-sample window cover the newest sixth of the plot.
+    /// A `.cloned()` history has capacity == len, which once stretched these
+    /// 20 samples across the whole "-120 s" axis.
+    #[test]
+    fn a_short_history_fills_only_its_share_of_the_time_axis() {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings::default();
+        crate::theme::install(&ctx, settings);
+        let t = crate::theme::tokens(settings);
+        let values: VecDeque<f32> = (0..20).map(|v| v as f32).collect();
+        let cloned = values.clone();
+        assert_eq!(cloned.capacity().max(cloned.len()), 20, "fixture premise");
+        for pass in 0..2 {
+            let mut rect = egui::Rect::NOTHING;
+            let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                rect = ui.available_rect_before_wrap();
+                if pass == 0 {
+                    history_graph(ui, &cloned, Color32::RED, 100.0, Some(100.0), t);
+                } else {
+                    history_graph_with_window(
+                        ui,
+                        &cloned,
+                        Color32::RED,
+                        100.0,
+                        None,
+                        t,
+                        ("120 s", HISTORY_WINDOW),
+                        Some(&|v: f32| format!("{v:.0}%")),
+                    );
+                }
+            });
+            let first_x = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Path(path) if !path.closed => Some(path),
+                    _ => None,
+                })
+                .flat_map(|path| path.points.iter().map(|p| p.x))
+                .fold(f32::MAX, f32::min);
+            assert!(
+                first_x >= rect.left() + rect.width() * 0.8,
+                "pass {pass}: first point at x={first_x} in {rect:?}"
+            );
+        }
+    }
+
     fn backgrounds(shape: &egui::Shape, out: &mut Vec<(egui::Rect, Color32)>) {
         match shape {
             egui::Shape::Rect(rect) if rect.fill != Color32::TRANSPARENT => {
@@ -2003,11 +2179,22 @@ mod tests {
                                                 "CPU",
                                                 "37.2%",
                                                 &VecDeque::new(),
+                                                None,
                                                 t.accent,
                                                 t,
                                             );
                                         }
-                                        2 => metric(ui, "UPTIME", "5d 03h 28m", t),
+                                        2 => {
+                                            value_tile(
+                                                ui,
+                                                "Uptime",
+                                                "5d 03h 28m",
+                                                "",
+                                                None,
+                                                false,
+                                                t,
+                                            );
+                                        }
                                         3 => detail_row(ui, "Logical processors", "32", t),
                                         4 => stat_card(
                                             ui,
@@ -2056,6 +2243,7 @@ mod tests {
                                                 "CPU",
                                                 "37.2%",
                                                 &VecDeque::new(),
+                                                None,
                                                 t.accent,
                                                 t,
                                             );

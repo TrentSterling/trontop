@@ -52,7 +52,6 @@ fn cpu_clock_fields_are_aligned_and_never_fall_back_to_legacy_speed() {
                 State::Starting,
             ] {
                 let mut app = super::app(settings, true);
-                app.graphs.cpu_total = true;
                 app.snapshot.cpu.frequency_mhz = 9999;
                 set_state(&mut app, state);
                 let mut output = egui::FullOutput::default();
@@ -74,7 +73,7 @@ fn cpu_clock_fields_are_aligned_and_never_fall_back_to_legacy_speed() {
                         .iter()
                         .any(|(t, _)| t.galley.job.text.contains("10.00 GHz"))
                 );
-                let positions: Vec<_> = ["AVG CLOCK", "FASTEST PROCESSOR", "SLOWEST REPORTING"]
+                let positions: Vec<_> = ["Fastest processor", "Slowest reporting"]
                     .into_iter()
                     .map(|label| {
                         let (text, clip) = texts
@@ -98,7 +97,7 @@ fn cpu_clock_fields_are_aligned_and_never_fall_back_to_legacy_speed() {
                     .iter()
                     .filter(|(t, _)| t.galley.job.text.ends_with(" GHz"))
                     .collect();
-                assert_eq!(ghz.len(), 3);
+                assert_eq!(ghz.len(), 2);
                 for (text, clip) in ghz {
                     let value = &text.galley.job.text;
                     assert_eq!(text.galley.rows.len(), 1, "clock stacked: {value}");
@@ -161,7 +160,6 @@ fn render_cpu_clock_visual_pass() {
         set_state(&mut app, state);
         app.page = page;
         app.performance_device = PerformanceDevice::Cpu;
-        app.graphs.cpu_total = true;
         let mut output = egui::FullOutput::default();
         for _ in 0..4 {
             output.append(frame(&ctx, &mut app, size, vec![]));
@@ -182,7 +180,6 @@ fn cpu_clock_source_expander_keeps_large_processor_inventory_virtualized() {
     let settings = ThemeSettings::default();
     theme::install(&ctx, settings);
     let mut app = super::app(settings, true);
-    app.graphs.cpu_total = true;
     app.snapshot.cpu.clocks = Some(values(4096, 0.0));
     let mut draw = |events| {
         ctx.run_ui(
@@ -203,7 +200,7 @@ fn cpu_clock_source_expander_keeps_large_processor_inventory_virtualized() {
     }
     let position = text_shapes(&output)
         .iter()
-        .find(|(t, _)| t.galley.job.text == "Clock source and per-processor readings")
+        .find(|(t, _)| t.galley.job.text == "Per-processor clocks")
         .unwrap()
         .0
         .visual_bounding_rect()

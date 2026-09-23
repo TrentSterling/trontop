@@ -847,7 +847,7 @@ pub(super) fn gpu_short_name(name: &str) -> String {
 
 /// "Disk 0 C: D:" from the PDH instance "0 C: D:". Instances without volume
 /// letters keep only the number; nothing is guessed.
-pub(super) fn disk_short_name(number: u32, instance: &str) -> String {
+pub(crate) fn disk_short_name(number: u32, instance: &str) -> String {
     let letters: Vec<_> = instance
         .split_whitespace()
         .filter(|word| word.len() == 2 && word.ends_with(':'))

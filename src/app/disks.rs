@@ -29,6 +29,47 @@ impl Histories {
 }
 
 impl TrontopApp {
+    /// The model of the physical disk behind a PDH instance ("0 C: D:"),
+    /// joined through the drive letters of the System page's storage
+    /// partitions. Both sides come from Windows at the same moment; a disk
+    /// without a letter, or a letter no storage group lists, has no model
+    /// here rather than a guessed one.
+    fn physical_disk_model(&self, instance: &str) -> Option<String> {
+        let letters: Vec<char> = instance
+            .split_whitespace()
+            .filter(|word| word.len() == 2 && word.ends_with(':'))
+            .filter_map(|word| word.chars().next())
+            .collect();
+        if letters.is_empty() {
+            return None;
+        }
+        let section = self
+            .specs_view
+            .get(crate::specs::SectionId::Storage)?
+            .section
+            .as_ref()?;
+        section
+            .groups
+            .iter()
+            .find(|disk| {
+                disk.items.iter().any(|item| match item {
+                    crate::specs::Item::Group(partitions)
+                        if partitions.title.starts_with("Partitions") =>
+                    {
+                        partitions.items.iter().any(|row| match row {
+                            crate::specs::Item::Row(row) => letters
+                                .iter()
+                                .any(|letter| row.label.ends_with(&format!("({letter}:)"))),
+                            crate::specs::Item::Group(_) => false,
+                        })
+                    }
+                    _ => false,
+                })
+            })
+            .map(|disk| disk.title.clone())
+            .filter(|title| title != "Disk")
+    }
+
     pub(super) fn physical_disks_performance(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         // Bright editable accents need darker plot strokes on light surfaces.
@@ -48,145 +89,129 @@ impl TrontopApp {
             .devices
             .iter()
             .find(|d| Some(&d.instance) == self.selected_physical_disk.as_ref());
-        // A provider state ("Live") is not a metric; the hero value is the
-        // busiest disk's active time, the same field the rail tiles show.
-        let busiest = snapshot
-            .devices
-            .iter()
-            .filter_map(|d| d.readings[Metric::Active as usize].value)
-            .reduce(f64::max);
-        widgets::performance_heading(
+        let title = selected.map_or_else(
+            || "Physical disks".to_owned(),
+            |d| super::graphs::disk_label(d.number, &d.instance),
+        );
+        let model = selected.and_then(|d| self.physical_disk_model(&d.instance));
+        let value = selected.map_or_else(
+            || "--".to_owned(),
+            |d| Metric::Active.format(d.readings[Metric::Active as usize].value),
+        );
+        // A counter error is an active anomaly: one chip inside the hero (so
+        // nothing below moves), with the reason on hover.
+        widgets::performance_heading_with_state(
             ui,
-            "Physical disks",
-            "Windows PDH / independent 1 second sampler",
-            &Metric::Active.format(busiest),
+            &title,
+            model.as_deref().unwrap_or(""),
+            &value,
+            snapshot.error.map(|_| ("Partial", t.secondary)),
             t.good,
             t,
-        );
-        ui.horizontal_wrapped(|ui| {
-            for disk in &snapshot.devices {
-                let response = ui
-                    .selectable_label(
-                        Some(&disk.instance) == self.selected_physical_disk.as_ref(),
-                        format!("Disk {}", disk.number),
-                    )
-                    .on_hover_text(format!(
-                        "Windows instance: {}\nNot a persistent hardware identifier.",
-                        disk.instance
-                    ));
-                if response.clicked() {
-                    self.selected_physical_disk = Some(disk.instance.clone());
-                }
-            }
-        });
-        ui.add_space(6.0);
-        // Fixed fields remain visible during warmup, partial failure and removal.
-        let detail = selected.map_or_else(
-            || {
-                if self.selected_physical_disk.is_some() {
-                    "Selected disk is no longer reported. Choose another disk above."
-                } else {
-                    "No physical disk instances reported yet. Metrics remain in place below."
-                }
-            },
-            |d| d.instance.as_str(),
-        );
-        ui.add(egui::Label::new(RichText::new(detail).color(t.text_muted).size(11.0)).truncate())
-            .on_hover_text(detail);
-        ui.add_space(8.0);
+        )
+        .on_hover_text(format!(
+            "Active time of the selected disk.\n{}{}\nWindows PDH PhysicalDisk counters, \
+             independent 1 second sampler. Provider sample {}. History holds 120 display \
+             samples; gaps mean no fresh reading. Disk numbers can change after hotplug.",
+            selected.map_or("No disk selected.", |d| d.instance.as_str()),
+            snapshot
+                .error
+                .map_or_else(String::new, |error| format!("\n{error}")),
+            crate::diagnostics::age(snapshot.at, now),
+        ));
+        // The rail lists every disk and selects it; a second tab row here
+        // would repeat the rail and the hero title.
+        // Active anomalies stay visible as one compact row; routine
+        // provenance lives on the hero's hover.
+        if selected.is_none() {
+            let reason = if self.selected_physical_disk.is_some() {
+                "The selected disk is no longer reported. Choose another disk."
+            } else {
+                "No physical disk instances reported yet."
+            };
+            widgets::gap_row(ui, "Physical disk", "Not reported", reason, t);
+        }
         let history = selected.and_then(|d| self.physical_disk_history.values.get(&d.instance));
-        for metrics in [&Metric::ALL[..3], &Metric::ALL[3..]] {
+        for (row, metrics) in [&Metric::ALL[..3], &Metric::ALL[3..]]
+            .into_iter()
+            .enumerate()
+        {
             ui.columns(metrics.len(), |columns| {
                 for (column, &metric) in columns.iter_mut().zip(metrics) {
                     let reading = selected
                         .map(|d| d.readings[metric as usize])
                         .unwrap_or_default();
-                    widgets::hover_frame(
+                    let state = reading.state(snapshot, now);
+                    widgets::value_tile(
                         column,
-                        widgets::surface(column, t, metric as usize % 2 == 1),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.y = 3.0;
-                            ui.set_min_width(ui.available_width());
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(metric.label()).size(11.0).color(t.text_muted),
-                                )
-                                .truncate(),
-                            )
-                            .on_hover_text(metric.format(reading.value));
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(metric.format(reading.value))
-                                        .size(18.0)
-                                        .monospace()
-                                        .color(t.text),
-                                )
-                                .truncate(),
-                            );
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(reading.state(snapshot, now))
-                                        .size(10.0)
-                                        .color(t.text_muted),
-                                )
-                                .truncate(),
-                            )
-                            .on_hover_text(format!(
-                                "Last measured: {}",
-                                crate::diagnostics::age(reading.at, now)
-                            ));
-                        },
-                    )
-                    .response
-                    .on_hover_text(metric.explanation());
+                        metric.label(),
+                        &metric.format(reading.value),
+                        &format!(
+                            "{}\nLast measured: {}",
+                            metric.explanation(),
+                            crate::diagnostics::age(reading.at, now)
+                        ),
+                        (state != "Live").then_some(state),
+                        (row + metric as usize) % 2 == 1,
+                        t,
+                    );
                 }
             });
-            ui.add_space(8.0);
+            ui.add_space(theme::space::M);
         }
         let empty = VecDeque::new();
-        widgets::hover_label(
-            ui,
-            RichText::new("Active time (%)")
-                .size(11.0)
-                .color(t.text_muted),
-        );
+        widgets::section_header(ui, "Active time history", None, t);
+        // Room below: the response and queue histories with their headers.
+        let height = widgets::fit_height(ui, 118.0, 60.0, 180.0);
         widgets::history_graph_with_window(
             ui,
-            history.map_or(&empty, |h| &h[0]),
+            history.map_or(&empty, |h| &h[Metric::Active as usize]),
             graph_color(t.good),
-            110.0,
+            height,
             Some(100.0),
             t,
-            ("120 SAMPLES", HISTORY_LENGTH),
-            None,
+            ("120 s", HISTORY_LENGTH),
+            Some(&|v: f32| format!("{v:.0}%")),
         );
-        ui.add_space(8.0);
+        ui.add_space(theme::space::M);
+        // Measured before the columns: each column's own origin would hide
+        // how far down the page the pair sits. 26 px is the header row.
+        let small = widgets::fit_height(ui, 30.0, 56.0, 110.0);
         ui.columns(2, |columns| {
-            for (column, (index, label, color)) in columns.iter_mut().zip([
-                (1, "Response time (ms)", t.accent),
-                (2, "Queue depth (requests)", t.secondary),
+            let response_fmt = |v: f32| {
+                if v >= 10.0 {
+                    format!("{v:.0} ms")
+                } else {
+                    format!("{v:.1} ms")
+                }
+            };
+            let queue_fmt = |v: f32| format!("{v:.0} req");
+            for (column, (metric, label, color, unit)) in columns.iter_mut().zip([
+                (
+                    Metric::Response,
+                    "Response time history",
+                    t.accent,
+                    &response_fmt as &dyn Fn(f32) -> String,
+                ),
+                (
+                    Metric::Queue,
+                    "Queue depth history",
+                    t.secondary,
+                    &queue_fmt as &dyn Fn(f32) -> String,
+                ),
             ]) {
-                widgets::hover_label(column, RichText::new(label).size(11.0).color(t.text_muted));
+                widgets::section_header(column, label, None, t);
                 widgets::history_graph_with_window(
                     column,
-                    history.map_or(&empty, |h| &h[index]),
+                    history.map_or(&empty, |h| &h[metric as usize]),
                     graph_color(color),
-                    70.0,
+                    small,
                     None,
                     t,
-                    ("120 SAMPLES", HISTORY_LENGTH),
-                    None,
+                    ("120 s", HISTORY_LENGTH),
+                    Some(unit),
                 );
             }
         });
-        ui.add_space(8.0);
-        widgets::detail_row(
-            ui,
-            "Provider sample",
-            &crate::diagnostics::age(snapshot.at, now),
-            t,
-        );
-        let note = snapshot.error.unwrap_or("History holds 120 display samples, nominally 1 second apart. Gaps mean no fresh reading. Disk numbers can change after hotplug. Volume capacity and temperatures have separate views.");
-        widgets::hover_label(ui, RichText::new(note).size(11.0).color(t.text_muted));
     }
 }

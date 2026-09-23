@@ -15,7 +15,13 @@ fn cpu_grid_and_total_toggle_work_in_the_production_page() {
     app.performance_device = PerformanceDevice::Cpu;
     let ctx = egui::Context::default();
     theme::install(&ctx, app.theme);
-    let mut output = egui::FullOutput::default();
+    for _ in 0..4 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    // Total CPU is the default view; All cores is one click away.
+    assert!(!app.graphs.cpu_all_cores);
+    let mut output = click_local_text_output(&ctx, &mut app, size, "All cores");
+    assert!(app.graphs.cpu_all_cores);
     for _ in 0..4 {
         output = frame(&ctx, &mut app, size, vec![]);
     }
@@ -28,10 +34,8 @@ fn cpu_grid_and_total_toggle_work_in_the_production_page() {
     }
     assert!(!text.iter().any(|(t, _)| t == "CPU 24"));
     output = click_local_text_output(&ctx, &mut app, size, "Total CPU");
-    assert!(app.graphs.cpu_total);
+    assert!(!app.graphs.cpu_all_cores);
     assert!(!visible_text(&output).iter().any(|(t, _)| t == "CPU 0"));
-    click_local_text(&ctx, &mut app, size, "All cores");
-    assert!(!app.graphs.cpu_total);
 }
 
 #[test]

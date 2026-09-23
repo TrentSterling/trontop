@@ -49,23 +49,23 @@ fn memory_counters_layout_retains_eight_aligned_fields_in_missing_and_cached_sta
                     );
                 }
                 let texts = text_shapes(&output);
-                let (explanation, clip) = texts
-                    .iter()
-                    .find(|(t, _)| t.galley.job.text.starts_with("Commit is allocated"))
-                    .unwrap();
+                // The commit explanation lives on the Committed tile's hover.
                 assert!(
-                    clip.contains_rect(explanation.visual_bounding_rect()),
-                    "explanation must wrap inside the panel"
+                    !texts.iter().any(|(t, _)| t
+                        .galley
+                        .job
+                        .text
+                        .starts_with("Commit is allocated"))
                 );
                 let labels = [
-                    "IN USE",
-                    "AVAILABLE",
-                    "COMMITTED",
-                    "COMMIT LIMIT",
-                    "COMMIT PEAK",
-                    "SYSTEM CACHE",
-                    "PAGED POOL",
-                    "NONPAGED POOL",
+                    "In use",
+                    "Available",
+                    "Committed",
+                    "Commit limit",
+                    "Commit peak",
+                    "System cache",
+                    "Paged pool",
+                    "Nonpaged pool",
                 ];
                 let positions: Vec<_> = labels
                     .into_iter()
@@ -87,17 +87,24 @@ fn memory_counters_layout_retains_eight_aligned_fields_in_missing_and_cached_sta
                 } else {
                     assert_eq!(positions, baseline, "state moved field labels");
                 }
-                let expected = [
-                    "Memory counters: Live",
-                    "Memory counters: Cached",
-                    "Memory counters: Unavailable",
-                ][mode as usize];
-                assert!(
-                    texts
-                        .iter()
-                        .any(|(text, clip)| text.galley.job.text == expected
-                            && clip.contains_rect(text.visual_bounding_rect()))
-                );
+                // Live shows no state chip at all; otherwise one chip.
+                let chips: Vec<_> = texts
+                    .iter()
+                    .filter(|(text, _)| text.galley.job.text.starts_with("Counters: "))
+                    .collect();
+                if mode == 0 {
+                    assert!(chips.is_empty(), "a Live state needs no chip");
+                    assert!(
+                        !texts
+                            .iter()
+                            .any(|(t, _)| t.galley.job.text.contains("Live"))
+                    );
+                } else {
+                    let expected = ["", "Counters: Cached", "Counters: Unavailable"][mode as usize];
+                    assert_eq!(chips.len(), 1);
+                    assert_eq!(chips[0].0.galley.job.text, expected);
+                    assert!(chips[0].1.contains_rect(chips[0].0.visual_bounding_rect()));
+                }
                 let commit = format::bytes(57_000_000_000);
                 assert_eq!(
                     texts.iter().any(|(t, _)| t.galley.job.text == commit),
