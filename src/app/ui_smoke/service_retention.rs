@@ -51,12 +51,15 @@ fn retained_service_results_reach_rows_after_another_service_command_and_failed_
         .into_iter()
         .map(|(text, _)| text.galley.job.text.clone())
         .collect::<Vec<_>>();
+    // STATE and PID are separate columns now; a service with no PID leaves
+    // that column blank instead of a trailing "| -".
     assert!(
         text.iter()
-            .filter(|value| value.as_str() == "Stopped | -")
+            .filter(|value| value.as_str() == "Stopped")
             .count()
             >= 2
     );
+    assert!(!text.iter().any(|value| value.as_str() == "Stopped | -"));
     assert!(
         text.iter()
             .filter(|value| value.as_str() == "Command read")

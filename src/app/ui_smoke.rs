@@ -1543,11 +1543,18 @@ fn inventory_states_keep_sources_and_table_headers_in_place() {
                 expected = Some(bounds);
                 if page == Page::Startup {
                     for source in crate::startup::Source::ALL {
+                        // The chip row's own (possibly shortened) label is
+                        // always present; the table's full source name only
+                        // shows up when that source has at least one row.
+                        let label = super::inventory::chip_label(source);
                         let (text, clip) = texts
                             .iter()
-                            .find(|(text, _)| text.galley.job.text == source.name())
-                            .expect("source field disappeared");
-                        assert!(clip.contains_rect(text.visual_bounding_rect()));
+                            .find(|(text, _)| text.galley.job.text == label)
+                            .expect("source chip disappeared");
+                        assert!(
+                            clip.contains_rect(text.visual_bounding_rect()),
+                            "state={state} dark={dark} source={source:?}"
+                        );
                         assert_eq!(text.galley.rows.len(), 1);
                     }
                 }
@@ -1571,6 +1578,30 @@ fn inventory_states_keep_sources_and_table_headers_in_place() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn startup_and_services_tables_start_above_y_200_at_1000x580() {
+    for page in [Page::Startup, Page::Services] {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        app.page = page;
+        let size = Vec2::new(1000.0, 580.0);
+        let output = frame(&ctx, &mut app, size, vec![]);
+        let title = if page == Page::Startup {
+            "NAME"
+        } else {
+            "DISPLAY NAME"
+        };
+        let (text, _) = text_shapes(&output)
+            .into_iter()
+            .find(|(text, _)| text.galley.job.text == title)
+            .expect("inventory table header");
+        let top = text.visual_bounding_rect().top();
+        assert!(top < 200.0, "{page:?} table header starts at y={top}");
     }
 }
 

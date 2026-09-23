@@ -177,10 +177,21 @@ impl TrontopApp {
                     self.save_specs(ui.ctx(), format);
                 }
             }
-            ui.checkbox(&mut self.specs_export_private, "Private values in saved files")
-                .on_hover_text("Off by default and after every save. Serials, MAC and IP addresses, product IDs and user names stay out of files unless this is on.");
-            ui.checkbox(&mut self.reveal_private, "Reveal private values")
-                .on_hover_text("Serial numbers, MAC and IP addresses, product IDs, user names, SSIDs and GUIDs are hidden on screen by default.");
+            let privacy_on = self.reveal_private || self.specs_export_private;
+            let privacy_button = ui.button(if privacy_on { "Privacy \u{2022}" } else { "Privacy" });
+            // A plain menu closes itself on any click inside it (like a File
+            // menu closing after "Save"); these are settings checkboxes the
+            // person may want to flip more than once, so clicks inside stay
+            // open and only the trigger button (or clicking away) closes it.
+            egui::Popup::from_toggle_button_response(&privacy_button)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    ui.checkbox(&mut self.specs_export_private, "Private values in saved files")
+                        .on_hover_text("Off by default and after every save. Serials, MAC and IP addresses, product IDs and user names stay out of files unless this is on.");
+                    ui.checkbox(&mut self.reveal_private, "Reveal private values")
+                        .on_hover_text("Serial numbers, MAC and IP addresses, product IDs, user names, SSIDs and GUIDs are hidden on screen by default.");
+                });
+            privacy_button.on_hover_text("Control whether private values (serials, MAC/IP addresses, product IDs, user names) show on screen or land in saved files.");
         });
     }
 
@@ -308,7 +319,13 @@ impl TrontopApp {
                 ui.vertical(|ui| match &entry.section {
                     Some(section) if !section.summary.is_empty() => {
                         for (index, line) in section.summary.iter().enumerate() {
-                            self.summary_row(ui, line, index % 2 == 1, now, t);
+                            // The CPU headline prefers the sampler's own load
+                            // percentage over a temperature that many machines
+                            // cannot supply without a kernel driver.
+                            let override_live = (id == SectionId::Cpu && index == 0)
+                                .then(|| self.cpu_summary_live(now, t))
+                                .flatten();
+                            self.summary_row(ui, line, index % 2 == 1, now, t, override_live);
                         }
                     }
                     Some(_) => {
@@ -449,7 +466,7 @@ impl TrontopApp {
         };
         if section.groups.is_empty() {
             for line in &section.summary {
-                self.summary_row(ui, line, false, now, t);
+                self.summary_row(ui, line, false, now, t, None);
             }
             return;
         }
@@ -578,6 +595,7 @@ impl TrontopApp {
         banded: bool,
         now: Instant,
         t: Tokens,
+        override_live: Option<(String, Color32, String)>,
     ) {
         let (text, color, hover) = if line.private && !self.reveal_private {
             ("Hidden".to_string(), t.text_muted, HIDDEN_HINT.to_string())
@@ -590,10 +608,13 @@ impl TrontopApp {
         let width = ui.available_width();
         let (rect, response) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), Sense::hover());
         paint_band(ui, rect, &response, banded, t);
-        let live = line
-            .live
-            .as_ref()
-            .map(|key| self.headline_live(key, now, t));
+        // A row with no real live value shows nothing here, never a muted "--".
+        let live = override_live.or_else(|| {
+            line.live.as_ref().and_then(|key| {
+                let value = self.headline_live(key, now, t);
+                (value.0 != "--").then_some(value)
+            })
+        });
         // Room for the whole live value (memory usage is long), within limits.
         let live_width = live.as_ref().map_or(0.0, |(text, _, _)| {
             let measured = ui
@@ -668,6 +689,35 @@ impl TrontopApp {
         } else {
             (text, color, hover)
         }
+    }
+
+    /// The Summary page's CPU headline: the sampler's own load percentage,
+    /// always a real measurement once a sample has landed, with the interval
+    /// clock appended when it is live. Package temperature needs a sensor
+    /// bridge many machines do not have; load never does.
+    fn cpu_summary_live(&self, now: Instant, t: Tokens) -> Option<(String, Color32, String)> {
+        let load = specs::resolve(
+            &LiveKey::CpuUsage,
+            &self.snapshot,
+            &self.specs_view.bridge,
+            now,
+        );
+        let Value::Known(load_text) = load.value else {
+            return None;
+        };
+        let mut text = load_text.clone();
+        let mut hover = format!("Live: {load_text}");
+        let clock = specs::resolve(
+            &LiveKey::CpuClockAverage,
+            &self.snapshot,
+            &self.specs_view.bridge,
+            now,
+        );
+        if let Value::Known(clock_text) = clock.value {
+            text = format!("{text}  \u{b7}  {clock_text}");
+            hover = format!("{hover}\nAverage clock: {clock_text}");
+        }
+        Some((text, t.text, hover))
     }
 }
 

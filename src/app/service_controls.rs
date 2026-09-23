@@ -43,111 +43,188 @@ impl TrontopApp {
             .find(|row| Some(&row.name) == self.selected_service.as_ref())
     }
 
+    /// One 34 px toolbar: [Start][Stop][Restart], the selected service (or a
+    /// muted placeholder), a right-aligned status line, and [Refresh]. This
+    /// replaces four stacked status blocks; the retired detail lines (service
+    /// identity, inventory age) move to hover text on the name and Refresh.
     pub(super) fn service_controls(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
+        let now = Instant::now();
         let row = self.selected_service_row().cloned();
-        let title = row
+        let health = self
+            .snapshot
+            .diagnostics
+            .get(crate::diagnostics::Provider::Services);
+        let refresh_hover = format!(
+            "{} services / Complete {} ago. Read every service again.",
+            self.snapshot.services.len(),
+            crate::diagnostics::age(health.last_success, now)
+        );
+        let history_blocked = row
             .as_ref()
-            .map_or("Select a service", |row| row.display_name.as_str());
-        let mut detail = row.as_ref().map_or_else(
-            || "Commands use current Windows permissions; no automatic elevation.".into(),
-            |row| {
-                let (status, command_read) = self.service_status(row);
-                format!(
-                    "{} / {} / PID {}{}",
-                    row.name,
-                    status.state.label(),
-                    status.pid,
-                    if command_read {
-                        " / latest command read"
-                    } else if !self.service_is_fresh(row) {
-                        " / cached inventory; refresh before controlling"
-                    } else {
-                        ""
+            .is_some_and(|row| !self.service_observations.can_track(&row.name));
+        let width = ui.available_width();
+        ui.allocate_ui_with_layout(
+            Vec2::new(width, 34.0),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = theme::space::S;
+                for action in Action::ALL {
+                    let refusal = row
+                        .as_ref()
+                        .and_then(|row| action.refusal(self.service_status(row).0));
+                    let enabled = row.as_ref().is_some_and(|row| {
+                        self.service_is_fresh(row)
+                            && self.service_observations.can_track(&row.name)
+                    }) && refusal.is_none()
+                        && !self.service_controller.busy()
+                        && self.service_controller.available();
+                    let icon = match action {
+                        Action::Start => Icon::Startup,
+                        Action::Stop => Icon::Stop,
+                        Action::Restart => Icon::Restart,
+                    };
+                    let response = ui
+                        .add_enabled_ui(enabled, |ui| {
+                            widgets::icon_button(
+                                ui,
+                                icon,
+                                action.label(),
+                                Vec2::ZERO,
+                                if action == Action::Stop {
+                                    theme::mix(t.panel, t.danger, 0.16)
+                                } else {
+                                    t.panel_raised
+                                },
+                                t,
+                            )
+                        })
+                        .inner;
+                    if response
+                        .on_hover_text(refusal.unwrap_or(
+                            "Review a confirmation before any service command is sent.",
+                        ))
+                        .clicked()
+                        && let Some(row) = &row
+                    {
+                        self.pending_service = Some(Request {
+                            name: row.name.clone(),
+                            display_name: row.display_name.clone(),
+                            expected: self.service_status(row).0,
+                            action,
+                            staged_at: Instant::now(),
+                        });
                     }
+                }
+                ui.add_space(theme::space::M);
+                let name = row.as_ref().map_or_else(
+                    || "Select a service".to_string(),
+                    |row| row.display_name.clone(),
+                );
+                let name_hover = row.as_ref().map_or_else(
+                    || "Select a row below for confirmed controls.".to_string(),
+                    |row| {
+                        let (status, command_read) = self.service_status(row);
+                        format!(
+                            "{} / {} / {}{}",
+                            row.name,
+                            status.state.label(),
+                            if status.pid == 0 {
+                                "no PID".into()
+                            } else {
+                                format!("PID {}", status.pid)
+                            },
+                            if command_read {
+                                " / latest command read"
+                            } else if !self.service_is_fresh(row) {
+                                " / cached inventory; refresh before controlling"
+                            } else {
+                                ""
+                            }
+                        )
+                    },
+                );
+                ui.add(
+                    egui::Label::new(RichText::new(name).size(12.0).color(if row.is_some() {
+                        t.text
+                    } else {
+                        t.text_muted
+                    }))
+                    .truncate(),
                 )
+                .on_hover_text(name_hover);
+
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let refresh = ui
+                        .add_enabled_ui(
+                            self.sampler.is_some() && !self.service_controller.busy(),
+                            |ui| {
+                                widgets::icon_button(
+                                    ui,
+                                    Icon::Restart,
+                                    "Refresh",
+                                    Vec2::ZERO,
+                                    t.panel_raised,
+                                    t,
+                                )
+                            },
+                        )
+                        .inner
+                        .on_hover_text(&refresh_hover);
+                    if refresh.clicked()
+                        && let Some(sampler) = &self.sampler
+                    {
+                        sampler.request_service_refresh();
+                    }
+                    ui.add_space(theme::space::S);
+                    let (phase_text, color, detail) = if history_blocked {
+                        (
+                            "Command history is full or incomplete. Refresh list before another command to this service.".to_string(),
+                            t.text_muted,
+                            String::new(),
+                        )
+                    } else if let Some(event) = &self.service_event {
+                        let phase =
+                            format!("{}: {} - {}", event.action.label(), event.name, event.phase);
+                        let detail = event.error.clone().unwrap_or_else(|| {
+                            if event.done {
+                                "Target state observed; inventory refresh requested.".into()
+                            } else {
+                                "Windows is handling the command. Closing Trontop cannot undo an accepted request.".into()
+                            }
+                        });
+                        let color = if event.error.is_some() {
+                            ui.visuals().warn_fg_color
+                        } else {
+                            t.text_muted
+                        };
+                        (phase, color, detail)
+                    } else {
+                        let phase = if self.service_controller.available() {
+                            "Ready"
+                        } else {
+                            "Unavailable"
+                        };
+                        let detail = if self.service_controller.available() {
+                            "Start may start required dependencies. Stop never recursively stops dependents; Restart can leave a service stopped if Start fails."
+                        } else {
+                            "The service command worker is unavailable; inventory remains readable."
+                        };
+                        (phase.to_string(), t.text_muted, detail.to_string())
+                    };
+                    let hover = if detail.is_empty() {
+                        phase_text.clone()
+                    } else {
+                        format!("{phase_text}\n{detail}")
+                    };
+                    ui.add(
+                        egui::Label::new(RichText::new(phase_text).size(11.0).color(color))
+                            .truncate(),
+                    )
+                    .on_hover_text(hover);
+                });
             },
         );
-        if row
-            .as_ref()
-            .is_some_and(|row| !self.service_observations.can_track(&row.name))
-        {
-            detail = "Command history is full or incomplete. Refresh list before another command to this service.".into();
-        }
-        widgets::inventory_status(ui, title, "Service control", &detail, t.text, t, true);
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            for action in Action::ALL {
-                let refusal = row
-                    .as_ref()
-                    .and_then(|row| action.refusal(self.service_status(row).0));
-                let enabled = row.as_ref().is_some_and(|row| {
-                    self.service_is_fresh(row) && self.service_observations.can_track(&row.name)
-                }) && refusal.is_none()
-                    && !self.service_controller.busy()
-                    && self.service_controller.available();
-                let icon = match action {
-                    Action::Start => Icon::Startup,
-                    Action::Stop => Icon::Stop,
-                    Action::Restart => Icon::Restart,
-                };
-                let response = ui
-                    .add_enabled_ui(enabled, |ui| {
-                        widgets::icon_button(
-                            ui,
-                            icon,
-                            action.label(),
-                            Vec2::new(95.0, 28.0),
-                            if action == Action::Stop {
-                                theme::mix(t.panel, t.danger, 0.16)
-                            } else {
-                                t.panel_raised
-                            },
-                            t,
-                        )
-                    })
-                    .inner;
-                if response
-                    .on_hover_text(
-                        refusal
-                            .unwrap_or("Review a confirmation before any service command is sent."),
-                    )
-                    .clicked()
-                    && let Some(row) = &row
-                {
-                    self.pending_service = Some(Request {
-                        name: row.name.clone(),
-                        display_name: row.display_name.clone(),
-                        expected: self.service_status(row).0,
-                        action,
-                        staged_at: Instant::now(),
-                    });
-                }
-            }
-            if ui
-                .add_enabled(
-                    self.sampler.is_some() && !self.service_controller.busy(),
-                    egui::Button::new("Refresh list"),
-                )
-                .clicked()
-                && let Some(sampler) = &self.sampler
-            {
-                sampler.request_service_refresh();
-            }
-        });
-        ui.add_space(6.0);
-        let (title, phase, detail, color) = if let Some(event) = &self.service_event {
-            (format!("{}: {}", event.action.label(), event.name), event.phase,
-                event.error.clone().unwrap_or_else(|| if event.done {
-                    "Target state observed; inventory refresh requested.".into()
-                } else { "Windows is handling the command. Closing Trontop cannot undo an accepted request.".into() }),
-                if event.error.is_some() { t.danger } else { t.text })
-        } else {
-            ("Command status".into(), if self.service_controller.available() { "Ready" } else { "Unavailable" },
-                if self.service_controller.available() { "Start may start required dependencies. Stop never recursively stops dependents; Restart can leave a service stopped if Start fails." }
-                else { "The service command worker is unavailable; inventory remains readable." }.into(), t.text_muted)
-        };
-        widgets::inventory_status(ui, &title, phase, &detail, color, t, false);
     }
 
     pub(super) fn poll_service_command(&mut self) {

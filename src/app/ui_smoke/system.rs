@@ -49,7 +49,6 @@ fn system_page_renders_every_section_with_live_values_and_masked_private_rows() 
             let ctx = egui::Context::default();
             theme::install(&ctx, settings);
             let mut app = populated(settings);
-            let t = app.colors();
             for id in SectionId::ALL {
                 app.system_section = id;
                 let output = render(&ctx, &mut app, size);
@@ -75,8 +74,16 @@ fn system_page_renders_every_section_with_live_values_and_masked_private_rows() 
                 }
                 match id {
                     SectionId::Summary => {
-                        let hot = visible(&output, "88 °C").expect("bridge CPU temperature");
-                        assert_eq!(hot.galley.job.sections[0].format.color, t.ink(t.danger));
+                        // The CPU headline prefers the sampler's own load
+                        // percentage (a real measurement) over a package
+                        // temperature that many machines cannot supply.
+                        let load_text = format::percent(app.snapshot.cpu_percent);
+                        assert!(
+                            texts
+                                .iter()
+                                .any(|(text, _)| text.galley.job.text.contains(&load_text)),
+                            "CPU headline load percentage {load_text}"
+                        );
                         assert!(
                             visible(
                                 &output,
@@ -126,6 +133,9 @@ fn system_reveal_copy_and_sub_navigation_use_only_local_input() {
     let size = Vec2::new(1280.0, 900.0);
     click_local_text(&ctx, &mut app, size, "Motherboard");
     assert_eq!(app.system_section, SectionId::Motherboard);
+    // The two privacy checkboxes live behind a "Privacy" toolbar dropdown now;
+    // one click opens it and both checkbox toggles happen while it stays open.
+    click_local_text(&ctx, &mut app, size, "Privacy");
     click_local_text(&ctx, &mut app, size, "Reveal private values");
     assert!(app.reveal_private);
     let output = render(&ctx, &mut app, size);
@@ -186,6 +196,8 @@ fn system_specs_save_uses_the_export_worker_with_private_values_off() {
         }
     });
     let size = Vec2::new(1280.0, 900.0);
+    // The privacy checkboxes live behind a "Privacy" toolbar dropdown now.
+    click_local_text(&ctx, &mut app, size, "Privacy");
     click_local_text(&ctx, &mut app, size, "Private values in saved files");
     assert!(app.specs_export_private);
     click_local_text(&ctx, &mut app, size, "Save text");

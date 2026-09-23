@@ -24,19 +24,19 @@ impl TrontopApp {
                         widgets::hover_label(ui, "Built by Trent Sterling / tront.xyz");
                     });
                 });
-                ui.add_space(10.0);
-                widgets::detail_row(ui, "Version", env!("CARGO_PKG_VERSION"), t);
-                widgets::detail_row(ui, "Build", env!("TRONTOP_BUILD_ID"), t);
-                widgets::detail_row(ui, "Target", env!("TRONTOP_BUILD_TARGET"), t);
-                widgets::detail_row(ui, "Profile", if cfg!(debug_assertions) { "Debug" } else { "Optimized release" }, t);
-                widgets::detail_row(ui, "System tray", self.tray.as_ref().map_or(crate::tray::TrayState::Unavailable, TrayController::state).label(), t);
-                ui.add_space(10.0);
+                ui.add_space(theme::space::M);
+                about_row(ui, "Version", env!("CARGO_PKG_VERSION"), t);
+                about_row(ui, "Build", env!("TRONTOP_BUILD_ID"), t);
+                about_row(ui, "Target", env!("TRONTOP_BUILD_TARGET"), t);
+                about_row(ui, "Profile", if cfg!(debug_assertions) { "Debug" } else { "Optimized release" }, t);
+                about_row(ui, "System tray", self.tray.as_ref().map_or(crate::tray::TrayState::Unavailable, TrayController::state).label(), t);
+                ui.add_space(theme::space::M);
                 if ui.button("Copy support report").clicked() {
                     ctx.copy_text(support_report(&self.snapshot.diagnostics, Instant::now()));
                     self.message = Some(("Support report copied. Nothing uploaded.".into(), false));
                 }
                 widgets::hover_label(ui, RichText::new("Build and provider status only. No process names, commands, paths, account/host names, GPU IDs or addresses.").size(11.0).color(t.text_muted));
-                ui.add_space(12.0);
+                ui.add_space(theme::space::L);
                 widgets::section_label(ui, "Local failure log", t);
                 widgets::hover_frame(ui, widgets::surface(ui, t, true), |ui| {
                     ui.set_min_width(ui.available_width());
@@ -54,7 +54,7 @@ impl TrontopApp {
                 egui::CollapsingHeader::new("CPU ABI reference (System Informer / MIT)").show(ui, |ui| {
                     ui.label(include_str!("../../docs/SYSTEM_INFORMER_NOTICE.txt"));
                 });
-                ui.add_space(12.0);
+                ui.add_space(theme::space::L);
                 widgets::section_label(ui, "Provider health", t);
                 let now = Instant::now();
                 for (index, provider) in Provider::ALL.into_iter().enumerate() {
@@ -77,7 +77,7 @@ impl TrontopApp {
                         widgets::hover_label(ui, RichText::new(format!("{timing}{coverage}")).size(11.0).color(t.text_muted));
                         if let Some(issue) = health.issue { widgets::hover_label(ui, RichText::new(issue.description()).size(11.0)); }
                     });
-                    ui.add_space(5.0);
+                    ui.add_space(theme::space::S);
                 }
             });
         self.show_diagnostics &= open;
@@ -105,8 +105,46 @@ impl TrontopApp {
                 widgets::hover_label(ui, RichText::new("No fresh reading. Cached values are not live; missing fields are not zero.").size(11.0));
             }
         });
-        ui.add_space(8.0);
+        ui.add_space(theme::space::M);
     }
+}
+
+/// A 30 px About-window row: label, value, hover text with the full value.
+/// Denser than the shared [`widgets::detail_row`] (used by the process
+/// inspector and other panels this package does not touch).
+fn about_row(ui: &mut egui::Ui, label: &str, value: &str, t: Tokens) {
+    let frame = egui::Frame::new()
+        .fill(t.panel_raised)
+        .stroke(Stroke::new(1.0, t.border))
+        .corner_radius(ui.visuals().widgets.inactive.corner_radius)
+        .inner_margin(egui::Margin::symmetric(10, 3));
+    widgets::hover_frame(ui, frame, |ui| {
+        ui.set_min_width(ui.available_width());
+        let width = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 18.0), Sense::hover());
+        let label_width = (width * 0.4).min(140.0);
+        widgets::paint_text(
+            ui,
+            egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.left() + label_width, rect.bottom()),
+            ),
+            label,
+            FontId::proportional(10.0),
+            t.text_muted,
+            Align::Min,
+        );
+        widgets::paint_text(
+            ui,
+            egui::Rect::from_min_max(egui::pos2(rect.left() + label_width, rect.top()), rect.max),
+            value,
+            FontId::monospace(10.0),
+            t.text,
+            Align::Max,
+        );
+    })
+    .response
+    .on_hover_text(format!("{label}: {value}"));
 }
 
 pub(super) fn state_color(state: State, t: Tokens) -> Color32 {

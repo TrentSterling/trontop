@@ -1553,13 +1553,16 @@ pub fn inventory_status(
     .on_hover_text(format!("{title}: {status}\n{detail}"));
 }
 
+/// `values` returns one `(display, hover)` pair per column. Most columns hover
+/// their own display text; a column that wants to keep its cell short (e.g. a
+/// freshness word with the observation age on hover) gives a longer hover string.
 pub fn inventory_table<const N: usize>(
     ui: &mut egui::Ui,
     id: &str,
     headers: [&str; N],
     row_count: usize,
     selected: Option<usize>,
-    mut values: impl FnMut(usize) -> [String; N],
+    mut values: impl FnMut(usize) -> [(String, String); N],
     t: Tokens,
 ) -> Option<usize> {
     let mut clicked = None;
@@ -1572,10 +1575,17 @@ pub fn inventory_table<const N: usize>(
             .resizable(true)
             .cell_layout(Layout::left_to_right(Align::Center));
         for index in 0..N {
-            let (fraction, minimum) = if N == 4 {
-                [(0.24, 140.0), (0.34, 170.0), (0.27, 175.0), (0.15, 90.0)][index]
-            } else {
-                (0.38, if index + 1 == N { 120.0 } else { 180.0 })
+            let (fraction, minimum) = match N {
+                4 => [(0.24, 140.0), (0.34, 170.0), (0.27, 175.0), (0.15, 90.0)][index],
+                // DISPLAY NAME / SERVICE / STATE / PID (narrow) / FRESHNESS.
+                5 => [
+                    (0.22, 130.0),
+                    (0.28, 150.0),
+                    (0.14, 80.0),
+                    (0.10, 56.0),
+                    (0.14, 90.0),
+                ][index],
+                _ => (0.38, if index + 1 == N { 120.0 } else { 180.0 }),
             };
             table = table.column(if index + 1 == N {
                 egui_extras::Column::remainder()
@@ -1604,11 +1614,14 @@ pub fn inventory_table<const N: usize>(
                 body.rows(32.0, row_count, |mut row| {
                     let index = row.index();
                     row.set_selected(selected == Some(index));
-                    for value in &values(index) {
+                    for (value, hover) in &values(index) {
                         table_column(&mut row, t, |ui| {
-                            if table_label(ui, RichText::new(value).size(12.0).color(t.text))
-                                .on_hover_text(value)
-                                .clicked()
+                            if table_label(
+                                ui,
+                                RichText::new(value.as_str()).size(12.0).color(t.text),
+                            )
+                            .on_hover_text(hover.as_str())
+                            .clicked()
                             {
                                 clicked = Some(index);
                             }
@@ -1812,10 +1825,10 @@ mod tests {
                     |index| {
                         formatted.push(index);
                         [
-                            format!("Fixture {index}"),
-                            "file".into(),
-                            "source".into(),
-                            "Cached".into(),
+                            (format!("Fixture {index}"), format!("Fixture {index}")),
+                            ("file".into(), "file".into()),
+                            ("source".into(), "source".into()),
+                            ("Cached".into(), "Cached".into()),
                         ]
                     },
                     theme::tokens(settings),

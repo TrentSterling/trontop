@@ -62,7 +62,9 @@ impl SectionId {
     pub fn title(self) -> &'static str {
         match self {
             Self::Summary => "Summary",
-            Self::OperatingSystem => "Operating System",
+            // "Windows", not "Operating System": the section rail is 150-196 px
+            // wide at 1000x580 and the longer label clips without an ellipsis.
+            Self::OperatingSystem => "Windows",
             Self::Cpu => "CPU",
             Self::Memory => "RAM",
             Self::Motherboard => "Motherboard",
