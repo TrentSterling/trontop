@@ -131,6 +131,27 @@ impl Chart {
             },
         )
     }
+    /// Values inside the window, oldest first, for a sparkline. A step longer
+    /// than three cadences becomes a `None` break, so a missing stretch stays a
+    /// visible gap instead of being bridged. Partial (lower-bound) points keep
+    /// their measured value.
+    pub(super) fn recent(&self, now: Instant) -> Vec<Option<f32>> {
+        let mut values = Vec::with_capacity(self.points.len());
+        let mut previous: Option<Instant> = None;
+        for point in self
+            .points
+            .iter()
+            .filter(|p| p.at <= now && now.duration_since(p.at) <= WINDOW)
+        {
+            if previous.is_some_and(|at| point.at.saturating_duration_since(at) > self.cadence * 3)
+            {
+                values.push(None);
+            }
+            values.push(point.value);
+            previous = Some(point.at);
+        }
+        values
+    }
     pub(super) fn range(&self, now: Instant) -> (f32, f32) {
         let mut low = 0.0_f32;
         let mut high = 1.0_f32;
@@ -186,6 +207,11 @@ struct Field<'a> {
 impl History {
     pub(super) fn chart(&self, id: &Id) -> Option<&Chart> {
         self.index.get(id).map(|&index| &self.charts[index])
+    }
+
+    /// A chart's recent values by identity, oldest first (see [`Chart::recent`]).
+    pub(super) fn recent(&self, id: &Id, now: Instant) -> Option<Vec<Option<f32>>> {
+        self.chart(id).map(|chart| chart.recent(now))
     }
 
     fn field(&mut self, field: Field<'_>, now: Instant) {

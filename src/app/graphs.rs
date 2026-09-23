@@ -11,6 +11,29 @@ enum Style {
     Bars,
 }
 
+/// A Graphs series the Overview tiles read. Overview never keeps a second copy
+/// of this history and never polls hardware itself.
+#[derive(Clone, Copy)]
+pub(super) enum Signal<'a> {
+    /// Busiest GPU engine across adapters, including partial (lower-bound) points.
+    GpuActivity,
+    CpuClockAverage,
+    /// NVML adapter temperature, by adapter UUID.
+    GpuTemperature(&'a str),
+    /// NVML board power, by adapter UUID.
+    GpuPower(&'a str),
+    /// One drive temperature sensor, by device interface id and sensor index.
+    DriveTemperature(&'a str, u16),
+}
+
+/// Read-only view of one series: recent values (gaps are `None`), the latest
+/// measured value and its state label.
+pub(super) struct SeriesView {
+    pub values: Vec<Option<f32>>,
+    pub current: Option<f32>,
+    pub state: &'static str,
+}
+
 #[derive(Default)]
 pub(super) struct Dashboard {
     history: History,
@@ -169,60 +192,32 @@ impl Dashboard {
         }
     }
 
-    // Share timestamped series with Graphs; Overview never polls hardware or
-    // creates a second copy of history. A clipped row reserves space only.
-    pub(super) fn overview_wall(&self, ui: &mut egui::Ui, headline: bool, t: Tokens) {
-        let is_headline = |chart: &&Chart| {
-            matches!(
-                chart.id,
-                history::Id::System(_) | history::Id::Activity(_) | history::Id::CpuClock(_)
-            ) && chart.group == Group::System
-                || matches!(
-                    chart.id,
-                    history::Id::Gpu(_, 0 | 1) | history::Id::Network(_, _)
-                )
-        };
-        let charts: Vec<_> = self
-            .history
-            .charts
-            .iter()
-            .filter(|chart| chart.group != Group::Cores)
-            .filter(|chart| is_headline(chart) == headline)
-            .collect();
-        let cols = ((ui.available_width() / 250.0).floor() as usize).clamp(1, 5);
-        let width = ui.available_width();
-        let mut height = 0.0;
-        let now = Instant::now();
-        #[cfg(test)]
-        let now = self.fixed_now.unwrap_or(now);
-        for (row, chunk) in charts.chunks(cols).enumerate() {
-            let size = Vec2::new(width, height);
-            let visible = row == 0
-                || ui.is_rect_visible(egui::Rect::from_min_size(ui.next_widget_position(), size));
-            #[cfg(test)]
-            let visible = visible || self.draw_all_rows;
-            if visible {
-                let response = ui.push_id(("overview-signals", headline, row), |ui| {
-                    ui.set_width(width);
-                    ui.columns(cols, |columns| {
-                        for (index, (column, chart)) in columns.iter_mut().zip(chunk).enumerate() {
-                            column.push_id(&chart.id, |ui| {
-                                card(ui, chart, now, self.style, (row + index) % 2 == 1, t)
-                            });
-                        }
-                    });
-                });
-                if row == 0 {
-                    height = response.response.rect.height();
-                }
-            } else {
-                ui.allocate_space(size);
-            }
-            ui.add_space(6.0);
-        }
-    }
     pub(super) fn sample(&mut self, snapshot: &SystemSnapshot, now: Instant) {
         self.history.sample(snapshot, now);
+    }
+
+    pub(super) fn series(&self, signal: Signal<'_>) -> Option<SeriesView> {
+        let id = match signal {
+            Signal::GpuActivity => history::Id::Activity("GPU activity".into()),
+            Signal::CpuClockAverage => history::Id::CpuClock(0),
+            Signal::GpuTemperature(uuid) => history::Id::Gpu(uuid.into(), 0),
+            Signal::GpuPower(uuid) => history::Id::Gpu(uuid.into(), 1),
+            Signal::DriveTemperature(drive, sensor) => {
+                history::Id::Temperature(drive.into(), sensor)
+            }
+        };
+        let now = self.now();
+        let chart = self.history.chart(&id)?;
+        Some(SeriesView {
+            values: self.history.recent(&id, now).unwrap_or_default(),
+            current: chart.current,
+            state: chart.state(now),
+        })
+    }
+
+    /// Open the Graphs page's All cores tab (the Overview "All cores" link).
+    pub(super) fn show_all_cores(&mut self) {
+        self.filter = Some(Group::Cores);
     }
 }
 

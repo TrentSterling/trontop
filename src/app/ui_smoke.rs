@@ -18,6 +18,7 @@ mod gpu_adapters;
 mod graphs;
 mod memory;
 mod offscreen;
+mod overview;
 mod preferences;
 mod process_perf;
 mod process_sort;

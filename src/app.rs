@@ -205,6 +205,11 @@ pub struct TrontopApp {
     cpu_history: VecDeque<f32>,
     memory_history: VecDeque<f32>,
     gpu_history: VecDeque<f32>,
+    /// Overview Disk tile: sum of live physical-disk read + write bytes/s.
+    /// NaN marks a sample with no live disk reading, so the gap stays visible.
+    overview_disk_total: VecDeque<f32>,
+    /// Overview Network tile: receive + send bytes/s over deduplicated adapters.
+    overview_net_total: VecDeque<f32>,
     gpu_engine_names: Vec<String>,
     sensor_history: HashMap<String, SensorHistory>,
     disk_history: HashMap<String, VecDeque<f32>>,
@@ -308,6 +313,8 @@ impl TrontopApp {
             cpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
             memory_history: VecDeque::with_capacity(HISTORY_LENGTH),
             gpu_history: VecDeque::with_capacity(HISTORY_LENGTH),
+            overview_disk_total: VecDeque::with_capacity(HISTORY_LENGTH),
+            overview_net_total: VecDeque::with_capacity(HISTORY_LENGTH),
             gpu_engine_names: vec![
                 "3D".into(),
                 "Copy".into(),
@@ -413,6 +420,18 @@ impl TrontopApp {
             // This plain history cannot mark lower bounds, so partial samples
             // stay gaps here; the Graphs page records them as marked points.
             snapshot.gpu.reading().exact().unwrap_or(f32::NAN),
+            HISTORY_LENGTH,
+        );
+        widgets::push_history(
+            &mut self.overview_disk_total,
+            overview::disk_throughput(&snapshot.physical_disks, std::time::Instant::now())
+                .map_or(f32::NAN, |(total, _)| total as f32),
+            HISTORY_LENGTH,
+        );
+        widgets::push_history(
+            &mut self.overview_net_total,
+            overview::network_throughput(&snapshot)
+                .map_or(f32::NAN, |(receive, send)| (receive + send) as f32),
             HISTORY_LENGTH,
         );
         for (name, _) in &snapshot.gpu.engine_utilization {

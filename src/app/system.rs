@@ -60,6 +60,9 @@ impl TrontopApp {
         if visible && self.specs.is_none() && self.specs_enabled {
             self.specs = Some(crate::specs::Monitor::spawn());
         }
+        // Overview shows CPU temperature and power tiles from the same bridge,
+        // but never starts the specs workers itself.
+        let visible = visible || (self.page == Page::Overview && self.specs.is_some());
         if let Some(monitor) = &mut self.specs {
             monitor.set_live_active(visible);
             if visible {

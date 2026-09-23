@@ -1081,7 +1081,7 @@ pub struct Kpi<'a> {
 pub const KPI_TILE_HEIGHT: f32 = 84.0;
 
 /// A raised, fixed-height at-a-glance tile: a label row, a big value, a small
-/// caption, and a background sparkline covering the right 45% of the tile.
+/// caption, and a full-width sparkline band along the bottom.
 /// A later polish-gauntlet package wires this into the Overview page.
 #[allow(dead_code)]
 pub fn kpi_tile(
@@ -1115,9 +1115,10 @@ pub fn kpi_tile(
         rect.max - Vec2::new(f32::from(pad.right), f32::from(pad.bottom)),
     );
 
-    // Sparkline sits behind rows 2 and 3, covering the right 45% of the tile.
+    // Sparkline: a full-width band under the caption, so it never runs
+    // through the value or the caption at narrow tile widths.
     let spark_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + rect.width() * 0.55, rect.top() + 30.0),
+        egui::pos2(content.left(), rect.top() + 60.0),
         egui::pos2(content.right(), content.bottom()),
     );
     if spark_rect.width() > 2.0 && spark_rect.height() > 2.0 {
@@ -1184,7 +1185,10 @@ pub fn kpi_tile(
     );
 
     // Row 3: the caption.
-    let row3 = egui::Rect::from_min_max(egui::pos2(content.left(), rect.top() + 44.0), content.max);
+    let row3 = egui::Rect::from_min_max(
+        egui::pos2(content.left(), rect.top() + 44.0),
+        egui::pos2(content.right(), rect.top() + 58.0),
+    );
     ui.scope_builder(
         egui::UiBuilder::new()
             .max_rect(row3)
