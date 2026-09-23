@@ -13,6 +13,7 @@ mod cpu_clock;
 mod disks;
 mod export;
 mod failure;
+mod gauntlet;
 mod gpu_adapters;
 mod graphs;
 mod memory;

@@ -14,6 +14,7 @@ cargo test render_offscreen_visual_pass -- --ignored --nocapture
 cargo test render_graph_wall_visual_pass -- --ignored --nocapture
 cargo test render_system_specs_visual_pass -- --ignored --nocapture
 cargo test render_system_specs_fixture_visual_pass -- --ignored --nocapture
+$env:TRONTOP_GAUNTLET_OUT = "OUTDIR"; cargo test render_gauntlet_all_pages -- --ignored --nocapture
 cargo test native_specs_cpu_read_only_probe -- --ignored --nocapture
 cargo test --release process_view_timing_probe -- --ignored --nocapture --test-threads=1
 cargo test --release process_tree_timing_probe -- --ignored --nocapture --test-threads=1
@@ -47,6 +48,19 @@ light Motherboard, Sensor Sources, and 1040x640 Summary and Storage) to
 `TRONTOP_SPECS_SHOTS` or `target/ui-smoke/specs`. It opens no window and sends
 no input. `render_system_specs_fixture_visual_pass` renders the synthetic
 fixture instead. See `SYSTEM_SPECS.md`.
+
+`render_gauntlet_all_pages` is the polish gauntlet. It runs the REAL sampler and
+the read-only specs workers for a warmup (`TRONTOP_GAUNTLET_WARMUP_SECS`, default
+20) so graphs carry real history, then renders every page, Graphs tab, process
+mode, Performance sub-view, System section and the Theme Studio, About and Export
+dialogs at 1000x580, 1280x800 and 1600x1000 (dark default), plus light, copper and
+copper-light Overview spot checks at 1280x800. Files are named
+`<window>-<page>[-<tab>].png` in `TRONTOP_GAUNTLET_OUT` (required). `-full` images
+are whole scrolled pages laid out in one tall frame (the offscreen device requests
+the adapter's texture limit), also sliced into readable `-full-part<N>` files.
+PNG encoding runs off the UI thread so sample polling never stalls; the test
+prints its worst polling gap (graph lines break above 3 s). It opens no window or
+tray, sends no OS input and invokes no process, service or export action.
 
 ## Coverage
 

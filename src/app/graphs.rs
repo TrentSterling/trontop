@@ -572,5 +572,28 @@ fn plot(
     }
 }
 
+/// Gauntlet render harness: choose a Graphs tab and style without clicking.
+#[cfg(test)]
+impl Dashboard {
+    /// Tabs in toolbar order: `None` is Everything, then each group.
+    pub(super) fn gauntlet_tabs() -> Vec<(Option<usize>, &'static str)> {
+        std::iter::once((None, "Everything"))
+            .chain(
+                Group::ALL
+                    .iter()
+                    .enumerate()
+                    .map(|(i, g)| (Some(i), g.label())),
+            )
+            .collect()
+    }
+    pub(super) fn set_gauntlet_view(&mut self, tab: Option<usize>, bars: bool) {
+        self.filter = tab.map(|i| Group::ALL[i]);
+        self.style = if bars { Style::Bars } else { Style::Lines };
+    }
+    pub(super) fn gauntlet_signal_count(&self) -> usize {
+        self.history.charts.len()
+    }
+}
+
 #[cfg(test)]
 mod tests;

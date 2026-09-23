@@ -16,9 +16,16 @@ impl Renderer {
         }))
         .expect("offscreen adapter unavailable");
         println!("Offscreen adapter: {:?}", adapter.get_info());
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("offscreen device unavailable");
+        // Whole-page captures are taller than the default 8192 limit.
+        let descriptor = wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_texture_dimension_2d: adapter.limits().max_texture_dimension_2d,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let (device, queue) = pollster::block_on(adapter.request_device(&descriptor))
+            .expect("offscreen device unavailable");
         let renderer = egui_wgpu::Renderer::new(
             &device,
             wgpu::TextureFormat::Rgba8Unorm,
@@ -31,6 +38,10 @@ impl Renderer {
         }
     }
 
+    pub(super) fn max_dimension(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
     pub(super) fn save(
         &mut self,
         ctx: &egui::Context,
@@ -38,6 +49,17 @@ impl Renderer {
         size: egui::Vec2,
         path: &std::path::Path,
     ) {
+        let image = self.capture(ctx, output, size);
+        image.save(path).unwrap();
+    }
+
+    /// Renders and reads back without encoding, so callers can encode off-thread.
+    pub(super) fn capture(
+        &mut self,
+        ctx: &egui::Context,
+        output: egui::FullOutput,
+        size: egui::Vec2,
+    ) -> image::RgbaImage {
         let width = size.x as u32;
         let height = size.y as u32;
         let extent = wgpu::Extent3d {
@@ -133,17 +155,17 @@ impl Renderer {
             .recv_timeout(std::time::Duration::from_secs(2))
             .unwrap()
             .unwrap();
-        {
+        let pixels: Vec<_> = {
             let mapped = buffer.slice(..).get_mapped_range();
-            let pixels: Vec<_> = mapped
+            mapped
                 .chunks(stride as usize)
                 .flat_map(|row| row[..width as usize * 4].iter().copied())
-                .collect();
-            image::save_buffer(path, &pixels, width, height, image::ColorType::Rgba8).unwrap();
-        }
+                .collect()
+        };
         buffer.unmap();
         for id in output.textures_delta.free {
             self.renderer.free_texture(&id);
         }
+        image::RgbaImage::from_raw(width, height, pixels).expect("readback size")
     }
 }
