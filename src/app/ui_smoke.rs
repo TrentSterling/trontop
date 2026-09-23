@@ -1570,7 +1570,7 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
             for _ in 0..3 {
                 output = frame(&ctx, &mut app, size, vec![]);
             }
-            for expected in ["0%", "12.3%", "4.56%+", "-- %"] {
+            for expected in ["0%", "12.3%", "4.6%+", "-- %"] {
                 assert!(
                     text_shapes(&output).iter().any(|(text, clip)| {
                         text.galley.job.text == expected
@@ -1598,6 +1598,48 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn details_user_column_shows_not_readable_for_unknown_account_without_touching_the_model() {
+    // Details shares the Users page's display mapping: an unreadable owner
+    // reads "Not readable", never the raw "Unknown account" sentinel value,
+    // and the underlying model field is left untouched.
+    for dark in [true, false] {
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        app.snapshot.processes[0].user = "Unknown account".into();
+        app.page = Page::Details;
+        app.tree_mode = false;
+        // Sort by PID ascending so the edited process (lowest PID) is on the
+        // first visible row, not scrolled out of view by the default CPU sort.
+        app.sort_column = SortColumn::Pid;
+        app.sort_direction = SortDirection::Ascending;
+        app.rebuild_visible_processes();
+        let size = Vec2::new(1280.0, 760.0);
+        let mut output = egui::FullOutput::default();
+        for _ in 0..3 {
+            output = frame(&ctx, &mut app, size, vec![]);
+        }
+        assert!(
+            text_shapes(&output)
+                .iter()
+                .any(|(text, _)| text.galley.job.text == "Not readable"),
+            "Details USER column should read 'Not readable' for an unknown account"
+        );
+        assert!(
+            !text_shapes(&output)
+                .iter()
+                .any(|(text, _)| text.galley.job.text == "Unknown account"),
+            "the raw 'Unknown account' sentinel must never be shown verbatim"
+        );
+        assert_eq!(app.snapshot.processes[0].user, "Unknown account");
     }
 }
 

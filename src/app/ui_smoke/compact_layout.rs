@@ -36,7 +36,7 @@ fn compact_layout_keeps_process_headers_and_actions_visible_without_inspector() 
                 }
                 let output = frame(&ctx, &mut app, size, vec![]);
                 let mut header_y = None;
-                for label in ["NAME", "PID", "CPU  v", "GPU", "MEMORY", "READ", "WRITE"] {
+                for label in ["NAME", "PID", "CPU", "GPU", "MEMORY", "READ", "WRITE"] {
                     // GPU/MEMORY also occur in the rail. Find the table occurrence
                     // by its shared NAME header baseline before checking clipping.
                     let table_y =
@@ -57,13 +57,31 @@ fn compact_layout_keeps_process_headers_and_actions_visible_without_inspector() 
                 // Compact command bars are icon-only; every action must still be
                 // drawn fully inside the bar. Theme Studio lives in the sidebar.
                 let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
-                for label in ["Run task", "End task", "Inspector", "About", "Export"] {
+                for label in ["Run task", "About", "Export"] {
                     let rect = command_rect(&ctx, label)
                         .unwrap_or_else(|| panic!("missing command {label}"));
                     assert!(
                         screen.contains_rect(rect) && rect.left() > 196.0 && rect.top() >= 42.0,
                         "command {label} misplaced at {size:?}/{scale}: {rect:?}"
                     );
+                }
+                // Nav sidebar is a fixed 196 px column; the command bar goes
+                // compact below 1100 px of what remains. With no process
+                // selected, End task and Inspector have nothing to act on and
+                // disappear entirely there instead of sitting disabled.
+                let compact = size.x - 196.0 < 1100.0;
+                if compact {
+                    assert!(command_rect(&ctx, "End task").is_none());
+                    assert!(command_rect(&ctx, "Inspector").is_none());
+                } else {
+                    for label in ["End task", "Inspector"] {
+                        let rect = command_rect(&ctx, label)
+                            .unwrap_or_else(|| panic!("missing command {label}"));
+                        assert!(
+                            screen.contains_rect(rect) && rect.left() > 196.0 && rect.top() >= 42.0,
+                            "command {label} misplaced at {size:?}/{scale}: {rect:?}"
+                        );
+                    }
                 }
                 assert!(command_rect(&ctx, "Theme").is_none());
                 assert!(
@@ -110,7 +128,14 @@ fn compact_layout_metric_values_and_footer_fit_with_or_without_inspector() {
                 );
                 let footer = visible_text(&output, &footer);
                 assert!(footer.bottom() < size.y - 4.0);
-                assert!(command_rect(&ctx, "Inspector").is_some());
+                // Below the compact breakpoint, Inspector only shows once a
+                // process is selected; at full width it stays put (disabled).
+                let compact = size.x - 196.0 < 1100.0;
+                if compact && !selected {
+                    assert!(command_rect(&ctx, "Inspector").is_none());
+                } else {
+                    assert!(command_rect(&ctx, "Inspector").is_some());
+                }
             }
         }
     }
@@ -539,7 +564,7 @@ fn compact_history_long_names_keep_numeric_columns_aligned() {
         let mut previous_y: Option<f32> = None;
         for &index in &app.history_processes {
             let row = &app.snapshot.processes[index];
-            let pid = visible_text(&output, &format!("PID {}", row.pid));
+            let pid = visible_text(&output, &row.pid.to_string());
             let cpu = visible_text(&output, &format::millis(row.accumulated_cpu_millis));
             assert!(
                 (pid.center().y - cpu.center().y).abs() < 1.0,
@@ -550,8 +575,8 @@ fn compact_history_long_names_keep_numeric_columns_aligned() {
             }
             if let Some(y) = previous_y {
                 assert!(
-                    (cpu.center().y - y - 38.0_f32).abs() < 8.0,
-                    "uneven history row heights"
+                    (cpu.center().y - y - 28.0_f32).abs() < 2.0,
+                    "history rows must stay a uniform 28 px"
                 );
             }
             right_edge = Some(cpu.right());
@@ -579,9 +604,9 @@ fn compact_history_largest_counters_and_pid_are_not_truncated() {
     for _ in 0..5 {
         output = frame(&ctx, &mut app, size, vec![]);
     }
-    let pid = visible_text(&output, &format!("PID {}", u32::MAX));
+    let pid = visible_text(&output, &u32::MAX.to_string());
     let cpu = visible_text(&output, &format::millis(u64::MAX));
-    let io = visible_text(&output, &format!("{} I/O", format::bytes(u64::MAX)));
+    let io = visible_text(&output, &format::bytes(u64::MAX));
     assert!(pid.right() < cpu.left() && cpu.right() < io.left());
 }
 

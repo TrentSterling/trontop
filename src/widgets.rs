@@ -534,84 +534,85 @@ pub fn history_header(ui: &mut egui::Ui, t: Tokens) {
 
 /// Fixed numeric tracks keep names from consuming the PID and lifetime totals.
 /// Only the name track flexes; every field uses one vertically centered line.
+/// Rows are flat with zebra striping (no per-row bordered box), a uniform
+/// 28 px tall, and share [`history_columns`] geometry with [`history_header`]
+/// so the numeric columns line up under their headers exactly.
 pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Tokens) {
     let ordinal = format!("{:02}", rank + 1);
-    let pid = format!("PID {}", process.pid);
+    let pid = process.pid.to_string();
     let cpu = format::millis(process.accumulated_cpu_millis);
-    let io = format!(
-        "{} I/O",
-        format::bytes(
-            process
-                .total_read_bytes
-                .saturating_add(process.total_write_bytes)
-        )
+    let io = format::bytes(
+        process
+            .total_read_bytes
+            .saturating_add(process.total_write_bytes),
     );
-    hover_frame(
-        ui,
-        surface(ui, t, rank % 2 == 1).inner_margin(egui::Margin::symmetric(10, 5)),
-        |ui| {
-            let (rect, _) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
-            let cols = history_columns(rect);
-            for (text, left, right, font, color, align) in [
-                (
-                    ordinal.as_str(),
-                    rect.left(),
-                    cols.name_left - 8.0,
-                    FontId::monospace(11.0),
-                    t.ink(t.accent),
-                    Align::Min,
-                ),
-                (
-                    process.name.as_str(),
-                    cols.name_left,
-                    cols.pid_left - 10.0,
-                    FontId::proportional(13.0),
-                    t.text,
-                    Align::Min,
-                ),
-                (
-                    pid.as_str(),
-                    cols.pid_left,
-                    cols.cpu_left - 10.0,
-                    FontId::monospace(10.0),
-                    t.text_muted,
-                    Align::Max,
-                ),
-                (
-                    cpu.as_str(),
-                    cols.cpu_left,
-                    cols.io_left - 10.0,
-                    FontId::monospace(11.0),
-                    t.ink(t.secondary),
-                    Align::Max,
-                ),
-                (
-                    io.as_str(),
-                    cols.io_left,
-                    rect.right(),
-                    FontId::monospace(11.0),
-                    t.text_muted,
-                    Align::Max,
-                ),
-            ] {
-                paint_text(
-                    ui,
-                    egui::Rect::from_min_max(
-                        egui::pos2(left, rect.top()),
-                        egui::pos2(right, rect.bottom()),
-                    ),
-                    text,
-                    font,
-                    color,
-                    align,
-                );
-            }
-        },
-    )
-    .response
-    .on_hover_text(format!(
-        "{}\n{pid}\nLifetime CPU: {cpu}\nTotal: {io}",
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
+    if rank % 2 == 1 {
+        ui.painter()
+            .rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+    }
+    if response.contains_pointer() && ui.is_enabled() {
+        ui.painter()
+            .rect_filled(rect, 0.0, ui.visuals().widgets.hovered.weak_bg_fill);
+    }
+    let cols = history_columns(rect);
+    for (text, left, right, font, color, align) in [
+        (
+            ordinal.as_str(),
+            rect.left(),
+            cols.name_left - 8.0,
+            FontId::monospace(11.0),
+            t.ink(t.accent),
+            Align::Min,
+        ),
+        (
+            process.name.as_str(),
+            cols.name_left,
+            cols.pid_left - 10.0,
+            FontId::proportional(13.0),
+            t.text,
+            Align::Min,
+        ),
+        (
+            pid.as_str(),
+            cols.pid_left,
+            cols.cpu_left - 10.0,
+            FontId::monospace(10.0),
+            t.text_muted,
+            Align::Max,
+        ),
+        (
+            cpu.as_str(),
+            cols.cpu_left,
+            cols.io_left - 10.0,
+            FontId::monospace(11.0),
+            t.ink(t.secondary),
+            Align::Max,
+        ),
+        (
+            io.as_str(),
+            cols.io_left,
+            rect.right(),
+            FontId::monospace(11.0),
+            t.text_muted,
+            Align::Max,
+        ),
+    ] {
+        paint_text(
+            ui,
+            egui::Rect::from_min_max(
+                egui::pos2(left, rect.top()),
+                egui::pos2(right, rect.bottom()),
+            ),
+            text,
+            font,
+            color,
+            align,
+        );
+    }
+    response.on_hover_text(format!(
+        "{}\nPID {pid}\nLifetime CPU: {cpu}\nTotal I/O: {io}",
         process.name
     ));
 }
@@ -675,6 +676,9 @@ pub fn truncate_keep_extension(ui: &egui::Ui, name: &str, max_width: f32) -> Str
     }
 }
 
+/// A sortable column header: the plain label, plus a small painted triangle
+/// (never an ASCII "v"/"^" glued onto the text) marking the active column
+/// and its direction.
 pub fn table_header(
     header: &mut egui_extras::TableRow<'_, '_>,
     label: &str,
@@ -685,27 +689,56 @@ pub fn table_header(
     t: Tokens,
 ) {
     table_column(header, t, |ui| {
-        let arrow = if active == column {
-            match direction {
-                SortDirection::Ascending => "  ^",
-                SortDirection::Descending => "  v",
-            }
+        let is_active = active == column;
+        let color = if is_active { t.text } else { t.text_muted };
+        let font = FontId::proportional(10.0);
+        let galley = ui.painter().layout_no_wrap(label.to_owned(), font, color);
+        let response = ui.allocate_response(ui.available_size(), Sense::click());
+        let text_pos = egui::pos2(
+            response.rect.left(),
+            response.rect.center().y - galley.size().y * 0.5,
+        );
+        ui.painter().galley(text_pos, galley.clone(), color);
+        if is_active {
+            let tri_left = text_pos.x + galley.size().x + 5.0;
+            let half_w = 3.5;
+            let half_h = 2.5;
+            let cy = response.rect.center().y;
+            let points = match direction {
+                SortDirection::Ascending => vec![
+                    egui::pos2(tri_left, cy + half_h),
+                    egui::pos2(tri_left + half_w * 2.0, cy + half_h),
+                    egui::pos2(tri_left + half_w, cy - half_h),
+                ],
+                SortDirection::Descending => vec![
+                    egui::pos2(tri_left, cy - half_h),
+                    egui::pos2(tri_left + half_w * 2.0, cy - half_h),
+                    egui::pos2(tri_left + half_w, cy + half_h),
+                ],
+            };
+            ui.painter()
+                .add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+        }
+        let accessible_label = if is_active {
+            format!(
+                "{label}, sorted {}",
+                match direction {
+                    SortDirection::Ascending => "ascending",
+                    SortDirection::Descending => "descending",
+                }
+            )
         } else {
-            ""
+            label.to_string()
         };
-        if table_label(
-            ui,
-            RichText::new(format!("{label}{arrow}"))
-                .size(10.0)
-                .strong()
-                .color(if active == column {
-                    t.text
-                } else {
-                    t.text_muted
-                }),
-        )
-        .clicked()
-        {
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                ui.is_enabled(),
+                accessible_label.clone(),
+            )
+        });
+        paint_table_focus(ui, &response);
+        if response.clicked() {
             *requested = Some(column);
         }
     });
@@ -798,6 +831,28 @@ fn paint_table_focus(ui: &egui::Ui, response: &egui::Response) {
 
 pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t: Tokens) -> bool {
     heat_cell_response(ui, value, label, color, t.text, t).clicked()
+}
+
+/// A CPU-percent heat cell: an exact-zero reading collapses to a calm muted
+/// "0%" instead of format::percent's "0.0%", the same convention gpu_cell
+/// already uses. Without it a long idle process tree reads as a wall of
+/// "0.0%" rows.
+pub fn cpu_cell(ui: &mut egui::Ui, value: f32, t: Tokens) -> bool {
+    let zero = value <= 0.0;
+    let label = if zero {
+        "0%".to_string()
+    } else {
+        format::percent(value)
+    };
+    heat_cell_response(
+        ui,
+        value,
+        label,
+        t.accent,
+        if zero { t.text_muted } else { t.text },
+        t,
+    )
+    .clicked()
 }
 
 /// Unreported GPU rows read "--" with no "%" (there is no measurement to round),

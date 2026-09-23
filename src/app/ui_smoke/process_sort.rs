@@ -69,6 +69,83 @@ fn click_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label: &str
     }
 }
 
+/// Clicks a table header by its plain label, disambiguated from any other
+/// on-screen occurrence of the same word (e.g. a sidebar meter) by matching
+/// the NAME header's y position: the sort arrow is now a small painted
+/// triangle beside the text, not a suffix glued onto it, so the text alone
+/// is no longer unique enough to find by content.
+fn click_header(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label: &str) {
+    let output = frame(ctx, app, size, vec![]);
+    let table_y = text_shapes(&output)
+        .into_iter()
+        .find(|(text, clip)| {
+            text.galley.job.text == "NAME" && clip.contains_rect(text.visual_bounding_rect())
+        })
+        .unwrap_or_else(|| panic!("missing NAME header"))
+        .0
+        .visual_bounding_rect()
+        .center()
+        .y;
+    let position = text_shapes(&output)
+        .into_iter()
+        .find(|(text, clip)| {
+            text.galley.job.text == label
+                && clip.contains_rect(text.visual_bounding_rect())
+                && (text.visual_bounding_rect().center().y - table_y).abs() < 1.0
+        })
+        .unwrap_or_else(|| panic!("missing clickable header {label}"))
+        .0
+        .visual_bounding_rect()
+        .center();
+    for pressed in [true, false] {
+        frame(
+            ctx,
+            app,
+            size,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+    }
+}
+
+/// Small filled triangles painted beside an active sort header (see
+/// [`crate::widgets::table_header`]): unique in the whole app, so counting
+/// them stands in for the old "text ends with an arrow letter" check.
+fn sort_triangle_rects(output: &egui::FullOutput) -> Vec<egui::Rect> {
+    fn visit(shape: &egui::Shape, clip: egui::Rect, out: &mut Vec<egui::Rect>) {
+        match shape {
+            egui::Shape::Path(path)
+                if path.closed
+                    && path.points.len() == 3
+                    && path.fill != egui::Color32::TRANSPARENT =>
+            {
+                let rect = egui::Rect::from_points(&path.points).intersect(clip);
+                if rect.is_positive() {
+                    out.push(rect);
+                }
+            }
+            egui::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    visit(shape, clip, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut triangles = Vec::new();
+    for shape in &output.shapes {
+        visit(&shape.shape, shape.clip_rect, &mut triangles);
+    }
+    triangles
+}
+
 fn assert_root_order(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, expected: &[usize]) {
     let output = frame(ctx, app, size, vec![]);
     assert_eq!(
@@ -127,10 +204,11 @@ fn headers_sort_displayed_groups_and_flat_switch_uses_individual_values() {
                 frame(&ctx, &mut app, size, vec![]);
             }
             assert_root_order(&ctx, &mut app, size, &[0, 2, 4]);
-            click_text(&ctx, &mut app, size, &format!("{label}  v"));
+            click_header(&ctx, &mut app, size, label);
             assert_eq!(app.sort_direction, SortDirection::Ascending);
             assert_root_order(&ctx, &mut app, size, &[4, 2, 0]);
-            click_text(&ctx, &mut app, size, &format!("{label}  ^"));
+            click_header(&ctx, &mut app, size, label);
+            assert_eq!(app.sort_direction, SortDirection::Descending);
             assert_root_order(&ctx, &mut app, size, &[0, 2, 4]);
             click_text(&ctx, &mut app, size, "Flat");
             assert!(!app.tree_mode);
@@ -211,7 +289,7 @@ fn process_table_keyboard_focus_sort_and_selection_use_real_ui_without_native_in
             for _ in 0..3 {
                 frame(&ctx, &mut app, size, vec![]);
             }
-            tab_to_text(&ctx, &mut app, size, "CPU  v");
+            tab_to_text(&ctx, &mut app, size, "CPU");
             frame(
                 &ctx,
                 &mut app,
@@ -283,18 +361,8 @@ fn render_table_keyboard_focus_visual_pass() {
     std::fs::create_dir_all(&directory).unwrap();
     let mut renderer = offscreen::Renderer::new();
     for (name, dark, size, label) in [
-        (
-            "focus-header-dark",
-            true,
-            Vec2::new(1040.0, 640.0),
-            "CPU  v",
-        ),
-        (
-            "focus-header-light",
-            false,
-            Vec2::new(1280.0, 760.0),
-            "CPU  v",
-        ),
+        ("focus-header-dark", true, Vec2::new(1040.0, 640.0), "CPU"),
+        ("focus-header-light", false, Vec2::new(1280.0, 760.0), "CPU"),
         ("focus-heat-dark", true, Vec2::new(1280.0, 760.0), "20.0%"),
         (
             "focus-name-light",
@@ -412,15 +480,10 @@ fn switching_process_pages_never_leaves_an_invisible_sort_key() {
                     SortDirection::Ascending
                 }
             );
-            let marked_headers = text_shapes(&output)
+            let marked_headers = sort_triangle_rects(&output)
                 .into_iter()
-                .filter(|(text, clip)| {
-                    // Below the title bar and command bar.
-                    text.pos.y > 86.0
-                        && clip.contains_rect(text.visual_bounding_rect())
-                        && (text.galley.job.text.ends_with("  ^")
-                            || text.galley.job.text.ends_with("  v"))
-                })
+                // Below the title bar and command bar.
+                .filter(|rect| rect.center().y > 86.0)
                 .count();
             assert_eq!(marked_headers, 1, "missing or ambiguous sort marker");
         }

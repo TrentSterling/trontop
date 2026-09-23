@@ -866,10 +866,18 @@ impl TrontopApp {
                             }
                             self.show_export = true;
                         }
-                        if matches!(self.page, Page::Processes | Page::Details) {
+                        let selected = self.selected_pid.is_some();
+                        // Below the 1100 px label breakpoint, an unselected row
+                        // leaves End task and Inspector nothing to act on, so
+                        // they disappear entirely instead of sitting there
+                        // disabled and icon-only. At full width they stay put,
+                        // just disabled, since there is room to spare.
+                        let show_process_actions = selected || !compact;
+                        if matches!(self.page, Page::Processes | Page::Details)
+                            && show_process_actions
+                        {
                             ui.add_space(theme::space::M);
-                            let can_end =
-                                self.selected_pid.is_some() && !self.process_actions.busy();
+                            let can_end = selected && !self.process_actions.busy();
                             if ui
                                 .add_enabled_ui(can_end, |ui| {
                                     command_button(
@@ -887,7 +895,6 @@ impl TrontopApp {
                             {
                                 self.request_end_selected();
                             }
-                            let selected = self.selected_pid.is_some();
                             let fill = if selected && self.inspector_visible {
                                 t.accent_dim
                             } else {
@@ -1214,10 +1221,11 @@ impl TrontopApp {
         );
     }
 
-    /// One 30 px row: a Tree/Flat segmented toggle, the total process count, and
-    /// (tree mode only) a right-aligned hint that parent rows include children.
-    /// This replaces the old CPU/MEMORY/GPU/UPTIME badge row, which duplicated
-    /// the sidebar meters and cost the table about 100 px of body height.
+    /// One 30 px row: a Tree/Flat segmented toggle and the total process
+    /// count. This replaces the old CPU/MEMORY/GPU/UPTIME badge row, which
+    /// duplicated the sidebar meters and cost the table about 100 px of body
+    /// height. Tree mode's "parent rows include children" hint lives only in
+    /// the page intro now, not duplicated here too.
     fn process_toolbar(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         let count_text = format!("{} processes", self.snapshot.process_count);
@@ -1233,16 +1241,6 @@ impl TrontopApp {
                     self.tree_mode = false;
                 }
                 widgets::hover_label(ui, RichText::new(count_text).size(10.0).color(t.text_muted));
-                if self.tree_mode {
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        widgets::hover_label(
-                            ui,
-                            RichText::new("Parent rows include children")
-                                .size(10.0)
-                                .color(t.text_muted),
-                        );
-                    });
-                }
             },
         );
     }
@@ -1531,10 +1529,21 @@ impl TrontopApp {
                     });
                     if detailed {
                         widgets::table_column(&mut row, t, |ui| {
-                            if widgets::table_cell(
+                            // Same display mapping as the Users page: an
+                            // unreadable owner reads "Not readable", never
+                            // the raw "Unknown account" model value.
+                            let (display_name, unreadable) = account_display(&process.user);
+                            let mut response = widgets::table_label(
                                 ui,
-                                RichText::new(&process.user).size(11.0).color(t.text_muted),
-                            ) {
+                                RichText::new(display_name).size(11.0).color(t.text_muted),
+                            );
+                            if unreadable {
+                                response = response.on_hover_text(
+                                    "Windows did not let Trontop read the owner of this \
+                                     process (usually a system service; needs admin).",
+                                );
+                            }
+                            if response.clicked() {
                                 clicked_pid = Some(process.pid);
                             }
                         });
@@ -1550,13 +1559,7 @@ impl TrontopApp {
                         });
                     }
                     widgets::table_column(&mut row, t, |ui| {
-                        if widgets::heat_cell(
-                            ui,
-                            display.totals.cpu_percent,
-                            format::percent(display.totals.cpu_percent),
-                            t.accent,
-                            t,
-                        ) {
+                        if widgets::cpu_cell(ui, display.totals.cpu_percent, t) {
                             clicked_pid = Some(process.pid);
                         }
                     });
@@ -2342,9 +2345,12 @@ Counters: {state}."
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                widgets::section_label(ui, "HEAVIEST LIFETIME CPU CONSUMERS", t);
+                widgets::section_header(ui, "Most CPU time since start", None, t);
                 widgets::history_header(ui, t);
-                ui.spacing_mut().item_spacing.y = 4.0;
+                // Flat, zebra-striped rows read as one continuous table; a
+                // gap between them would break the banding back into the
+                // old boxed-row look.
+                ui.spacing_mut().item_spacing.y = 0.0;
                 for (rank, &index) in self.history_processes.iter().enumerate() {
                     let process = &self.snapshot.processes[index];
                     widgets::history_row(ui, rank, process, t);
@@ -2404,13 +2410,9 @@ Counters: {state}."
                         let user = &users[row.index()];
                         // Windows sometimes will not disclose the owner of a system
                         // service's processes without admin rights; that gap reads
-                        // as "Not readable", never a guessed account name.
-                        let unreadable = user.name == "Unknown account";
-                        let display_name: &str = if unreadable {
-                            "Not readable"
-                        } else {
-                            &user.name
-                        };
+                        // as "Not readable", never a guessed account name. Details
+                        // uses the same mapping (account_display) for its USER column.
+                        let (display_name, unreadable) = account_display(&user.name);
                         let share = user.process_count as f32 / total_processes * 100.0;
                         widgets::table_column(&mut row, t, |ui| {
                             ui.spacing_mut().item_spacing.x = 10.0;
@@ -2439,18 +2441,18 @@ Counters: {state}."
                                 );
                             }
                         });
-                        for (value, label, color) in [
-                            (share, user.process_count.to_string(), t.accent),
-                            (
-                                user.cpu_percent,
-                                format::percent(user.cpu_percent),
+                        widgets::table_column(&mut row, t, |ui| {
+                            widgets::heat_cell(
+                                ui,
+                                share,
+                                user.process_count.to_string(),
                                 t.accent,
-                            ),
-                        ] {
-                            widgets::table_column(&mut row, t, |ui| {
-                                widgets::heat_cell(ui, value, label, color, t);
-                            });
-                        }
+                                t,
+                            );
+                        });
+                        widgets::table_column(&mut row, t, |ui| {
+                            widgets::cpu_cell(ui, user.cpu_percent, t);
+                        });
                         widgets::table_column(&mut row, t, |ui| {
                             widgets::gpu_cell(ui, user.gpu_percent, true, t);
                         });
@@ -3172,6 +3174,19 @@ fn process_state_label(status: &str) -> String {
         other => return other.to_string(),
     }
     .to_string()
+}
+
+/// Windows sometimes will not disclose the owner of a system service's
+/// processes without admin rights; that gap displays as "Not readable",
+/// never a guessed account name. Shared by the Users and Details/Processes
+/// USER columns. The raw model value ("Unknown account") is untouched; this
+/// is display-only. Returns `(display_name, unreadable)`.
+fn account_display(name: &str) -> (&str, bool) {
+    if name == "Unknown account" {
+        ("Not readable", true)
+    } else {
+        (name, false)
+    }
 }
 
 fn memory_percent(snapshot: &SystemSnapshot) -> f32 {

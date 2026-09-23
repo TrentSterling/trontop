@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(pids[&1], Usage::Partial(0.0));
         assert_eq!(pids[&2], Usage::Measured(8.0));
         assert!(!pids.contains_key(&3));
-        assert_eq!(Usage::Measured(0.0).label(), "0.00%");
+        assert_eq!(Usage::Measured(0.0).label(), "0.0%");
         assert_eq!(Usage::Unavailable.label(), "-- %");
         assert!(Usage::Partial(8.0).exact().is_none());
     }
@@ -221,7 +221,7 @@ mod tests {
         assert_eq!(parsed.pid, 4);
         assert_eq!(parsed.kind, UNNAMED_ENGINE);
         assert_eq!(parsed.physical, "luid_0x00000000_0x00011A4A_phys_0_eng_11");
-        assert_eq!(Usage::Partial(3.07).label(), "3.07%+");
+        assert_eq!(Usage::Partial(3.07).label(), "3.1%+");
     }
     #[test]
     fn parser_requires_real_adapter_and_engine_identity() {

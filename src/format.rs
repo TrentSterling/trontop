@@ -78,12 +78,13 @@ pub fn count(value: f32, unit: &str) -> String {
     }
 }
 
+/// A percentage always shows one decimal ("3.1%"), including at 0 and below
+/// 10, so a busy process tree never fills with two-decimal noise. Callers
+/// that want a calm muted "0%" for an exact-zero measurement (the CPU and
+/// GPU columns) special-case that themselves; this function never rounds a
+/// small positive reading down to "0%" on its own.
 pub fn percent(value: f32) -> String {
-    if value >= 10.0 {
-        format!("{value:.1}%")
-    } else {
-        format!("{value:.2}%")
-    }
+    format!("{value:.1}%")
 }
 
 pub fn duration(total_seconds: u64) -> String {
@@ -181,6 +182,14 @@ mod tests {
         assert_eq!(count(2.0, "req"), "2 req");
         assert_eq!(count(-0.2, "req"), "0 req");
         assert_eq!(count(0.5, ""), "1");
+    }
+
+    #[test]
+    fn percent_always_shows_one_decimal() {
+        assert_eq!(percent(0.0), "0.0%");
+        assert_eq!(percent(3.07), "3.1%");
+        assert_eq!(percent(12.34), "12.3%");
+        assert_eq!(percent(45.6), "45.6%");
     }
 
     #[test]
