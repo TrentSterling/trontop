@@ -1785,14 +1785,22 @@ impl TrontopApp {
         ) {
             self.performance_device = PerformanceDevice::Memory;
         }
-        let gpu_value = self.snapshot.gpu.reading().label();
+        // The same reading and staleness rule as the GPU device header; a
+        // missing reading draws no trend beside its "--".
+        self.graphs.ensure_sample(&self.snapshot);
+        let gpu_reading = self.gpu_performance_reading();
+        let gpu_trend = if gpu_reading.value().is_some() {
+            &self.gpu_history
+        } else {
+            &empty
+        };
         if widgets::rail_button(
             ui,
             self.performance_device == PerformanceDevice::Gpu,
             follow,
             "GPU",
-            &gpu_value,
-            &self.gpu_history,
+            &gpu_reading.label(),
+            gpu_trend,
             Some(100.0),
             theme::mix(t.accent, t.secondary, 0.5),
             t,
@@ -2384,7 +2392,7 @@ Counters: {state}."
             ui,
             "GPU",
             "",
-            &self.snapshot.gpu.reading().label(),
+            &self.gpu_performance_reading().label(),
             color,
             t,
         )

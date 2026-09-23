@@ -113,7 +113,7 @@ impl TrontopApp {
         });
         ui.add_space(theme::space::S);
         widgets::section_label(ui, "Provider health", t);
-        let now = Instant::now();
+        let now = self.graphs.now();
         let columns = if ui.available_width() >= 440.0 { 2 } else { 1 };
         let gap = theme::space::M;
         let cell = (ui.available_width() - gap * (columns - 1) as f32) / columns as f32;
@@ -248,7 +248,7 @@ impl TrontopApp {
     /// "Last usable data" row here.
     pub(super) fn provider_notice(&self, ui: &mut egui::Ui, provider: Provider) {
         let health = self.snapshot.diagnostics.get(provider);
-        let now = Instant::now();
+        let now = self.graphs.now();
         let state = health.state(provider, now);
         if !matches!(state, State::Stale | State::Unavailable) {
             return;

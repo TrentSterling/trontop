@@ -1657,7 +1657,7 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
             for _ in 0..3 {
                 output = frame(&ctx, &mut app, size, vec![]);
             }
-            for expected in ["0%", "12.3%", "4.6%+", "-- %"] {
+            for expected in ["0%", "12.3%", "4.6%+", "--"] {
                 assert!(
                     text_shapes(&output).iter().any(|(text, clip)| {
                         text.galley.job.text == expected
@@ -2286,7 +2286,7 @@ fn sidebar_gpu_meter_shows_measured_and_partial_readings_not_dashes() {
     let measured = app.snapshot.gpu.reading();
     assert!(measured.exact().is_some());
     assert!(meter_text(&output, &measured.label()), "measured GPU meter");
-    // A partial sample (one counter warming) used to blank the meter to "-- %".
+    // A partial sample (one counter warming) used to blank the meter to "--".
     gpu_activity_fixture(&mut app);
     for _ in 0..3 {
         output = frame(&ctx, &mut app, size, vec![]);

@@ -81,7 +81,7 @@ impl TrontopApp {
             }
         };
         let snapshot = &self.snapshot.physical_disks;
-        let now = Instant::now();
+        let now = self.graphs.now();
         if self.selected_physical_disk.is_none() {
             self.selected_physical_disk = snapshot.devices.first().map(|d| d.instance.clone());
         }

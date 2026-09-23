@@ -262,6 +262,8 @@ impl Dashboard {
         plot(ui, &card, now, self.style, &colors, t, height);
     }
 
+    /// The page clock every age and staleness check on a page is measured
+    /// against: the wall clock, or a test's fixed instant.
     pub(super) fn now(&self) -> Instant {
         #[cfg(test)]
         if let Some(now) = self.fixed_now {

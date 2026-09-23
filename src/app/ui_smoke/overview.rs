@@ -559,3 +559,51 @@ fn network_short_caption_shares_one_unit() {
     assert_eq!(rate_pair(180.0, 146.0), "down 180 \u{b7} up 146 B/s");
     assert_eq!(rate_pair(0.0, 0.0), "down 0 \u{b7} up 0 B/s");
 }
+
+/// A KPI tile with no current value draws no sparkline, on all five tiles:
+/// "--" beside a live-looking trend would contradict itself.
+#[test]
+fn kpi_tiles_without_a_value_draw_no_trend() {
+    let mut app = app(ThemeSettings::default(), true);
+    let t = app.colors();
+    for _ in 0..30 {
+        for history in [
+            &mut app.cpu_history,
+            &mut app.memory_history,
+            &mut app.gpu_history,
+            &mut app.overview_disk_total,
+            &mut app.overview_net_total,
+        ] {
+            history.push_back(12.0);
+        }
+    }
+    let now = Instant::now();
+    for tile in app.overview_kpis(now, t) {
+        if tile.value == "--" {
+            assert!(
+                tile.series.is_empty(),
+                "{} draws a trend beside --",
+                tile.label
+            );
+        }
+    }
+
+    // Every current value missing: no sample yet, no memory total, GPU
+    // counters unavailable, disk counters long stale, no network adapter.
+    app.seen_generation = 0;
+    app.snapshot.memory_total_bytes = 0;
+    app.snapshot.gpu = Default::default();
+    app.snapshot.gpu.error = Some("fixture".into());
+    app.snapshot.networks.clear();
+    let later = now + Duration::from_secs(3600);
+    let kpis = app.overview_kpis(later, t);
+    assert_eq!(kpis.len(), 5);
+    for tile in &kpis {
+        assert_eq!(tile.value, "--", "{} has no current value", tile.label);
+        assert!(
+            tile.series.is_empty(),
+            "{} keeps a live-looking trend beside --",
+            tile.label
+        );
+    }
+}

@@ -1,45 +1,80 @@
 use super::*;
 
+/// A per-adapter GPU reading older than this is missing, not current.
+pub(super) const GPU_ADAPTER_STALE_SECS: f32 = 3.0;
+
 impl TrontopApp {
+    /// Adapters producing values, restricted to ones the snapshot still lists.
+    fn gpu_active_adapters(&self) -> Vec<crate::gpu_adapters::Key> {
+        let adapters = &self.snapshot.gpu.adapters;
+        self.graphs
+            .active_adapters()
+            .into_iter()
+            .filter(|key| adapters.iter().any(|a| a.key == *key))
+            .collect()
+    }
+
+    /// The adapter Performance > GPU shows. With one adapter producing values
+    /// (an idle iGPU, a software adapter or a silent counter identity does not
+    /// count) there is nothing to pick: that adapter is shown. `None` when the
+    /// snapshot lists no adapter.
+    pub(super) fn gpu_shown_adapter(&self) -> Option<crate::gpu_adapters::Key> {
+        let adapters = &self.snapshot.gpu.adapters;
+        let first = adapters
+            .iter()
+            .find(|a| a.description.as_ref().is_some_and(|d| !d.software))
+            .or(adapters.first())?
+            .key;
+        let active = self.gpu_active_adapters();
+        Some(
+            (active.len() == 1)
+                .then(|| active[0])
+                .or(self
+                    .graphs
+                    .gpu_selected
+                    .filter(|key| adapters.iter().any(|a| a.key == *key)))
+                .unwrap_or(first),
+        )
+    }
+
+    /// The one GPU reading Performance shows, in both the rail tile and the
+    /// device header: the shown adapter's busiest engine, or the machine-wide
+    /// reading when Windows lists no adapter. An adapter sample older than
+    /// [`GPU_ADAPTER_STALE_SECS`] is missing on both, never current on one.
+    pub(super) fn gpu_performance_reading(&self) -> crate::gpu_activity::Usage {
+        let Some(key) = self.gpu_shown_adapter() else {
+            return self.snapshot.gpu.reading();
+        };
+        let now = self.graphs.now();
+        self.snapshot
+            .gpu
+            .adapters
+            .iter()
+            .find(|a| a.key == key)
+            .filter(|adapter| {
+                adapter.sampled_at.is_some_and(|at| {
+                    now.saturating_duration_since(at).as_secs_f32() <= GPU_ADAPTER_STALE_SECS
+                })
+            })
+            .map_or(crate::gpu_activity::Usage::Unavailable, |adapter| {
+                adapter.activity
+            })
+    }
+
     pub(super) fn gpu_adapters_page(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         self.graphs.ensure_sample(&self.snapshot);
         let adapters = &self.snapshot.gpu.adapters;
-        // With one adapter producing values (an idle iGPU, a software
-        // adapter or a silent counter identity does not count) there is
-        // nothing to pick: the row goes and that adapter is shown.
-        let active: Vec<_> = self
-            .graphs
-            .active_adapters()
-            .into_iter()
-            .filter(|key| adapters.iter().any(|a| a.key == *key))
-            .collect();
+        let active = self.gpu_active_adapters();
         let picker = active.len() > 1 || (active.is_empty() && adapters.len() > 1);
-        let only = (active.len() == 1).then(|| active[0]);
-        let selected = only
-            .or(self
-                .graphs
-                .gpu_selected
-                .filter(|key| adapters.iter().any(|a| a.key == *key)))
-            .unwrap_or_else(|| {
-                adapters
-                    .iter()
-                    .find(|a| a.description.as_ref().is_some_and(|d| !d.software))
-                    .unwrap_or(&adapters[0])
-                    .key
-            });
-        self.graphs.gpu_selected = Some(selected);
-        let key = selected;
+        let Some(key) = self.gpu_shown_adapter() else {
+            return;
+        };
+        self.graphs.gpu_selected = Some(key);
+        let adapters = &self.snapshot.gpu.adapters;
         let adapter = adapters.iter().find(|a| a.key == key).unwrap();
         let now = self.graphs.now();
-        let age = adapter
-            .sampled_at
-            .map(|at| now.saturating_duration_since(at).as_secs_f32());
-        let activity = if age.is_some_and(|v| v <= 3.0) {
-            adapter.activity
-        } else {
-            crate::gpu_activity::Usage::Unavailable
-        };
+        let activity = self.gpu_performance_reading();
         // Counter identity and status are provenance, not something to read at
         // a glance; they live on the picker's hover, not their own text line.
         if picker {

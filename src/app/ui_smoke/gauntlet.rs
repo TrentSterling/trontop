@@ -26,7 +26,7 @@ struct Gauntlet {
     written: Vec<String>,
     encoders: Vec<std::thread::JoinHandle<()>>,
     /// Graph lines break after 3 s without an accepted sample, so the
-    /// harness reports its own worst polling gap.
+    /// harness reports the worst gap between samples it accepted.
     last_accept: Option<Instant>,
     worst_accept_gap: Duration,
 }
@@ -37,13 +37,20 @@ impl Gauntlet {
     fn frame(&mut self, size: Vec2) -> egui::FullOutput {
         let generation = self.app.seen_generation;
         eframe::App::logic(&mut self.app, &self.ctx, &mut eframe::Frame::_new_kittest());
-        let output = frame(&self.ctx, &mut self.app, size, vec![]);
         if self.app.seen_generation != generation {
             let now = Instant::now();
             if let Some(last) = self.last_accept.replace(now) {
                 self.worst_accept_gap = self.worst_accept_gap.max(now - last);
             }
+            // The page clock is the moment the newest real sample landed, as
+            // the running app draws it on arrival. Rendering ~157 pages takes
+            // far longer than a sample stays fresh, and a wall clock would
+            // paint every page Stale from the harness's own pace. Nothing is
+            // invented: the values are the sampler's, only their age is the
+            // age they had when they arrived.
+            self.app.graphs.fixed_now = Some(now);
         }
+        let output = frame(&self.ctx, &mut self.app, size, vec![]);
         let shapes = output.shapes.clone();
         self.pending.append(output);
         egui::FullOutput {
@@ -528,7 +535,9 @@ fn render_gauntlet_all_pages() {
         );
     }
     if g.worst_accept_gap >= Duration::from_secs(3) {
-        println!("GAUNTLET WARNING: harness polling was slow; some graph gaps are artifacts");
+        println!(
+            "GAUNTLET WARNING: real samples arrived more than 3 s apart; graph gaps show that sampler cadence"
+        );
     }
     println!(
         "GAUNTLET worst gap between accepted samples: {:.2}s (graph lines break above 3 s)",

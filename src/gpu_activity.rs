@@ -34,7 +34,8 @@ impl Usage {
             Self::Measured(value) => crate::format::percent(value),
             // Compact lower-bound marker; the status and tooltip spell it out.
             Self::Partial(value) => format!("{}+", crate::format::percent(value)),
-            _ => "-- %".into(),
+            // A missing reading is a bare "--": no unit beside no number.
+            _ => "--".into(),
         }
     }
 
@@ -209,7 +210,7 @@ mod tests {
         assert_eq!(pids[&2], Usage::Measured(8.0));
         assert!(!pids.contains_key(&3));
         assert_eq!(Usage::Measured(0.0).label(), "0.0%");
-        assert_eq!(Usage::Unavailable.label(), "-- %");
+        assert_eq!(Usage::Unavailable.label(), "--");
         assert!(Usage::Partial(8.0).exact().is_none());
     }
     #[test]

@@ -394,3 +394,47 @@ fn engine_cards_follow_grid_breakpoints_and_never_stretch_past_one_and_a_half() 
         }
     }
 }
+
+/// Performance > GPU: the rail tile and the device header show one reading
+/// under one staleness rule. A fresh adapter sample reads the same on both; an
+/// old one is a bare "--" on both (never "-- %"), with no trend in the rail.
+#[test]
+fn gpu_rail_and_device_header_agree_on_value_and_staleness() {
+    let size = Vec2::new(1000.0, 580.0);
+    for stale in [false, true] {
+        let mut app = fixture(true, false, true, 4);
+        let now = app.graphs.fixed_now.unwrap();
+        // Distinct from every engine card value, and machine-wide the same
+        // busiest engine, as it is with one active adapter.
+        app.snapshot.gpu.adapters[0].activity = Usage::Measured(41.7);
+        app.snapshot.gpu.available = true;
+        app.snapshot.gpu.utilization_percent = 41.7;
+        if stale {
+            app.graphs.fixed_now = Some(now + Duration::from_secs(10));
+        }
+        let ctx = egui::Context::default();
+        theme::install(&ctx, app.theme);
+        let mut output = egui::FullOutput::default();
+        for _ in 0..3 {
+            output = frame(&ctx, &mut app, size, vec![]);
+        }
+        let texts = text_shapes(&output);
+        // Rail and header only: the navigation sidebar has its own meter.
+        let content = |value: &str| {
+            texts
+                .iter()
+                .filter(|(text, _)| text.galley.job.text == value && text.pos.x > 205.0)
+                .count()
+        };
+        assert_eq!(content("-- %"), 0, "a missing value reads as a bare --");
+        if stale {
+            assert_eq!(content("41.7%"), 0, "an old sample is current nowhere");
+            assert!(
+                content("--") >= 2,
+                "rail and header both show the missing reading"
+            );
+        } else {
+            assert_eq!(content("41.7%"), 2, "rail and header show one reading");
+        }
+    }
+}

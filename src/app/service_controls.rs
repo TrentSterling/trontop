@@ -11,7 +11,7 @@ impl TrontopApp {
             .last_success;
         if let Some(status) =
             self.service_observations
-                .status(&row.name, inventory_at, Instant::now())
+                .status(&row.name, inventory_at, self.graphs.now())
         {
             return (status, true);
         }
@@ -32,7 +32,7 @@ impl TrontopApp {
                 .snapshot
                 .diagnostics
                 .get(crate::diagnostics::Provider::Services)
-                .state(crate::diagnostics::Provider::Services, Instant::now())
+                .state(crate::diagnostics::Provider::Services, self.graphs.now())
                 == crate::diagnostics::State::Live
     }
 
@@ -49,7 +49,7 @@ impl TrontopApp {
     /// age live in hover text on the name and Refresh.
     pub(super) fn service_controls(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let now = Instant::now();
+        let now = self.graphs.now();
         let row = self.selected_service_row().cloned();
         let health = self
             .snapshot

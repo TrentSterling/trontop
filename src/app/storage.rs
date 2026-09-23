@@ -8,7 +8,7 @@ impl TrontopApp {
     /// plot.
     pub(super) fn storage_sensor_cards(&self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let now = Instant::now();
+        let now = self.graphs.now();
         let snapshot = &self.snapshot.storage_sensors;
         let header = ui.scope(|ui| {
             widgets::section_header(ui, "Drives", None, t);

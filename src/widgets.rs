@@ -1667,7 +1667,7 @@ pub fn value_tile(
 }
 
 pub fn engine_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32, t: Tokens) {
-    let caption = value.map_or_else(|| "-- %".into(), format::percent);
+    let caption = value.map_or_else(|| "--".into(), format::percent);
     let value = value.unwrap_or(0.0);
     hover_frame(ui, surface(ui, t, false), |ui| {
         ui.horizontal(|ui| {

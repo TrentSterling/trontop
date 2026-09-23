@@ -66,7 +66,7 @@ impl TrontopApp {
         if let Some(monitor) = &mut self.specs {
             monitor.set_live_active(visible);
             if visible {
-                self.specs_view = monitor.snapshot(Instant::now());
+                self.specs_view = monitor.snapshot(self.graphs.now());
             }
         }
     }
@@ -143,7 +143,7 @@ impl TrontopApp {
             {
                 ui.ctx().copy_text(specs::text(
                     &self.specs_view,
-                    self.live_source(Instant::now()),
+                    self.live_source(self.graphs.now()),
                     self.reveal_private,
                 ));
                 self.message = Some((
@@ -280,7 +280,7 @@ impl TrontopApp {
 
     fn system_summary(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let now = Instant::now();
+        let now = self.graphs.now();
         for id in SUMMARY_SECTIONS {
             let Some(entry) = self.specs_view.get(id).cloned() else {
                 continue;
@@ -349,7 +349,7 @@ impl TrontopApp {
 
     fn system_section_body(&mut self, ui: &mut egui::Ui, id: SectionId) {
         let t = self.colors();
-        let now = Instant::now();
+        let now = self.graphs.now();
         let Some(entry) = self.specs_view.get(id).cloned() else {
             return;
         };

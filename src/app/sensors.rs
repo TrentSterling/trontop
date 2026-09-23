@@ -11,7 +11,7 @@ use std::time::Instant;
 impl TrontopApp {
     pub(super) fn sensors_page(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let now = Instant::now();
+        let now = self.graphs.now();
         ui.spacing_mut().item_spacing.y = 0.0;
         // A fixed-height row: an unbounded right_to_left child otherwise
         // claims the rest of the page height and centers the chips in the
@@ -217,7 +217,7 @@ impl TrontopApp {
             let mut text = if snapshot.using_cached {
                 format!(
                     "Cached reading / last success {}",
-                    crate::diagnostics::age(snapshot.last_success, std::time::Instant::now())
+                    crate::diagnostics::age(snapshot.last_success, self.graphs.now())
                 )
             } else if snapshot.adapters.is_empty() {
                 "No readings; the fields stay in place.".into()

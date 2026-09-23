@@ -262,6 +262,18 @@ pub(super) fn rate_pair(rx: f64, tx: f64) -> String {
     )
 }
 
+/// The value shown on a KPI tile that has no live reading.
+pub(super) const MISSING: &str = "--";
+
+/// A tile with no current value draws no sparkline: a live-looking trend next
+/// to "--" would claim a reading the tile cannot show. The missing value, the
+/// hover text and the empty band say the same thing.
+fn hide_trend_without_value(tile: &mut Tile) {
+    if tile.value == MISSING {
+        tile.series.clear();
+    }
+}
+
 fn pct1(value: f32) -> String {
     format!("{value:.1}%")
 }
@@ -520,7 +532,7 @@ impl TrontopApp {
             value: if has_sample {
                 pct1(s.cpu_percent)
             } else {
-                "--".into()
+                MISSING.into()
             },
             sub: match clock {
                 Some(mhz) => format!("avg {:.2} GHz", mhz / 1000.0),
@@ -543,7 +555,7 @@ impl TrontopApp {
             value: if s.memory_total_bytes > 0 {
                 pct1(memory_percent(s))
             } else {
-                "--".into()
+                MISSING.into()
             },
             sub: if s.memory_total_bytes > 0 {
                 format!(
@@ -597,7 +609,7 @@ impl TrontopApp {
         let gpu = Tile {
             label: "GPU".into(),
             value: reading.value().map_or_else(
-                || "--".into(),
+                || MISSING.into(),
                 |v| format!("{}{}", pct1(v), if partial { "+" } else { "" }),
             ),
             sub: vram.map_or_else(String::new, |(used, total)| {
@@ -632,7 +644,7 @@ impl TrontopApp {
         let disk = Tile {
             label: "Disk".into(),
             value: disks.map_or_else(
-                || "--".into(),
+                || MISSING.into(),
                 |(total, partial)| {
                     format!("{}{}", format::rate(total), if partial { "+" } else { "" })
                 },
@@ -656,7 +668,7 @@ impl TrontopApp {
         let network = network_throughput(s);
         let net = Tile {
             label: "Network".into(),
-            value: network.map_or_else(|| "--".into(), |(rx, tx)| format::rate(rx + tx)),
+            value: network.map_or_else(|| MISSING.into(), |(rx, tx)| format::rate(rx + tx)),
             sub: network.map_or_else(String::new, |(rx, tx)| {
                 format!(
                     "download {} \u{b7} upload {}",
@@ -685,7 +697,11 @@ impl TrontopApp {
             color: theme::mix(t.accent, t.secondary, 0.75),
             state: None,
         };
-        vec![cpu, memory, gpu, disk, net]
+        let mut tiles = vec![cpu, memory, gpu, disk, net];
+        for tile in &mut tiles {
+            hide_trend_without_value(tile);
+        }
+        tiles
     }
 
     /// One tile per measured thermal or power signal; everything that produced

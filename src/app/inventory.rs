@@ -41,7 +41,7 @@ const SERVICES_CAVEAT: &str = "Select a row for confirmed controls.";
 impl TrontopApp {
     pub(super) fn startup_inventory(&self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let now = Instant::now();
+        let now = self.graphs.now();
         let snapshot = &self.snapshot.startup;
         let total = snapshot.rows().count();
         startup_chip_row(ui, snapshot, now, t);
@@ -121,7 +121,7 @@ impl TrontopApp {
 
     pub(super) fn service_inventory(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let now = Instant::now();
+        let now = self.graphs.now();
         self.service_controls(ui);
         ui.add_space(theme::space::XS);
         // Running is the calm, good state; Stopped recedes; anything in
