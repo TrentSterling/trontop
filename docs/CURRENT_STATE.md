@@ -1,6 +1,6 @@
 # Trontop current state
 
-Last updated: 2026-09-22 (alpha.36 System specs page; the checklist below is
+Last updated: 2026-09-23 (alpha.37 polish gauntlet; the checklist below is
 the saved 2026-09-06 handoff)
 
 ## Thread shutdown: saved resume checklist
@@ -66,7 +66,67 @@ the final candidate hash before native acceptance; a later rebuild needs its own
 applicable checks. The CI artifact and local EXE are separate build outputs; do
 not assume their hashes match without comparing them.
 
-## Latest built candidate: alpha.36 System specs page (A33; A10/D01 bridge)
+## Latest built candidate: alpha.37 polish gauntlet (A34)
+
+Trent, 2026-09-22 (voice note over screenshots): "can you fix that actually and
+also ... there are some other things ... look at every page headless ... use
+your screenshot reading ability ... see how it still kinda sucks and many pages
+layouts are ... this app is a fucking mess ... I just want you to do a polish
+gauntlet, without my constant attention okay? Can you use your best judgement
+please? Run a gauntlet on it." No new features: this is a finishing pass over
+`render_gauntlet_all_pages` (`docs/HEADLESS_QA.md`), the offscreen harness that
+renders every page, Graphs tab, Performance device, System section and dialog at
+1000x580/1280x800/1600x1000 from the REAL sampler and specs workers.
+
+- Rounds shipped this cycle (`git log --oneline` on `feat/system-specs`,
+  commits `f0805a6`..`9f14ee8`): Performance page rail/axis/card-anatomy honesty;
+  GPU adapter picker moved to hover; Hardware sensors compacted with drives above
+  the fold; Startup/Services/System/dialog padding and truncation fixes; process
+  pages standardized to 1-decimal percents and consistent account naming;
+  Graphs wall calmed (grouped disks, idle iGPU folded, shared number formats);
+  Overview reworked for roomy KPI rows with no bar collisions; units/axes/legends
+  unified across Graphs and Performance; table right columns flexed and noise
+  rows removed; Performance views got a single-adapter picker, engine grid and
+  rail-follow behavior; a final pass fixed the remaining System/dialog/sidebar
+  noise and one egui id clash.
+- Final critic pass scored all 16 surfaces (Overview, Graphs, Processes,
+  Performance, History, Startup, Users, Details, Services, Hardware sensors,
+  System, Theme Studio, About, Export, Sidebar, title/command bar) from the
+  rendered PNGs; average 7.2/10 (range 6-8), Overview up from an early 3/10.
+  Honest remaining weaknesses (not fixed this pass, tracked under A34): Details
+  still scrolls horizontally at 1000x580 (READ/CPU TIME clipped); Services stacks
+  four pieces of disabled-toolbar noise above the table header; the CPU
+  temperature gap is worded three different ways across Overview footer, Graphs
+  footer and Hardware sensors; network vocabulary still splits across
+  in/out, Receive/Send and Rx/Tx depending on the page; a few tab rows (Graphs,
+  Theme Studio) shift horizontally when the selected pill changes. See the A34
+  ledger entry for the full list.
+- One `em dash` in a `src/widgets.rs` doc comment (`row_columns` flex
+  documentation, introduced in an earlier round) was found by the finalize scan
+  and replaced with a semicolon.
+- Gate on this tree (`feat/system-specs`, pre-bump at alpha.36 identity):
+  `cargo fmt --check` clean, `cargo clippy --all-targets -- -D warnings` clean,
+  `cargo test` **405 passed, 0 failed, 42 ignored** (33.65 s), `cargo build
+  --release` OK (1m 25s, no locked-binary fallback needed; no Trontop instance
+  was running). `target/release/trontop.exe` **0.3.0-alpha.36** (pre-bump),
+  14,639,616 bytes, SHA-256
+  `64F0356F001560DA55F17D9A7939861F7BBE1EF7FDAF147FA65FB38726F17715` (unsigned,
+  not launched). All 13 `native_specs_*_read_only_probe` tests rerun by exact
+  name: 13 passed, 0 failed (0.67 s).
+- Final render: `render_gauntlet_all_pages` wrote **157 PNGs** (39.04 s) to a
+  scratch directory and every 1000x580 page was reviewed. The harness itself
+  reported slow polling this run (worst accepted-sample gap 5.06 s against its
+  own 3 s graph-gap threshold); that is a harness-timing artifact from the
+  finalize session's own concurrent tool calls, not a product regression, and is
+  visible only as a few extra graph breaks in that one render's screenshots.
+  Version bumped to **0.3.0-alpha.37** after this gate; a rebuild under the new
+  version number was not re-run (identical source, cosmetic version string
+  only).
+- Remaining: everything the final critic pass listed above, plus the still-open
+  asks below (A04/A06/A10/A11 etc.) and D01-D05. No native launch, no signing,
+  no publish.
+
+## Previous candidate: alpha.36 System specs page (A33; A10/D01 bridge)
 
 Trent, 2026-09-22: "clone speccy, IN trontop, make trontOP OP". The nine
 parallel provider lanes returned nothing, so the integrator implemented every

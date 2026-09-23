@@ -175,6 +175,29 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
 - [x] **A18: Remove native chrome; retain working window controls.** Frameless custom
   titlebar and code-drawn minimize/maximize/close buttons are implemented. Smooth
   native movement and DPI behavior are separate unchecked gates below.
+- [ ] **A34: Polish gauntlet over every page. REVIEW.** Trent, 2026-09-22 (voice note
+  over screenshots): "can you fix that actually and also ... look at every page
+  headless ... use your screenshot reading ability ... see how it still kinda
+  sucks and many pages layouts are ... this app is a fucking mess ... I just want
+  you to do a polish gauntlet, without my constant attention okay? Can you use
+  your best judgement please? Run a gauntlet on it." A finishing pass over
+  `render_gauntlet_all_pages` (`docs/HEADLESS_QA.md`): Overview KPI rows/thermals
+  band/top lists grouped by app, unit/axis/legend vocabulary unified across
+  Graphs and Performance, table right columns flexed and noise rows dropped,
+  Performance rail/card anatomy and GPU adapter picker moved to hover, Hardware
+  sensors compacted with drives above the fold, Startup/Services/System/dialog
+  padding and truncation fixed, one egui id clash and remaining sidebar noise
+  removed. A 16-surface final critic pass over the rendered PNGs scored an
+  average 7.2/10 (range 6-8; Overview up from an early 3/10). Evidence:
+  `docs/CURRENT_STATE.md` (alpha.37), commits `f0805a6`..`9f14ee8` on
+  `feat/system-specs`. Honestly still open, not fixed this pass: Details still
+  scrolls horizontally at 1000x580 (READ/CPU TIME clipped); Services stacks four
+  pieces of disabled-toolbar noise above the table header; the CPU-temperature
+  gap is worded three different ways (Overview footer, Graphs footer, Hardware
+  sensors); network units still split across in/out, Receive/Send and Rx/Tx by
+  page; the Graphs and Theme Studio tab rows shift horizontally when the
+  selected pill changes. Remaining: Trent's own visual pass on this build, then
+  fold the open items above into a follow-up ask or close them explicitly.
 
 ## Required: feels fast and leaves the desktop alone
 

@@ -1845,7 +1845,7 @@ pub fn inventory_status(
 /// `columns` gives each column's header label plus its `(fraction, minimum)`
 /// width; `flex_index` names which one is the flexible remainder column (its
 /// fraction is ignored) so callers put the flex on the actual text column
-/// (COMMAND / FILE, DISPLAY NAME) instead of whichever happens to sit last —
+/// (COMMAND / FILE, DISPLAY NAME) instead of whichever happens to sit last;
 /// a short label like PID or FRESHNESS never earns the leftover width. Every
 /// other column keeps the fixed width its fraction implies, so callers with
 /// the same `N` but different meanings (e.g. Services with and without a

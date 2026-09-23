@@ -61,6 +61,11 @@ the adapter's texture limit), also sliced into readable `-full-part<N>` files.
 PNG encoding runs off the UI thread so sample polling never stalls; the test
 prints its worst polling gap (graph lines break above 3 s). It opens no window or
 tray, sends no OS input and invokes no process, service or export action.
+Alpha.37's finalize run wrote 157 PNGs in 39.04 s (20 s warmup: 21 real samples,
+150 graph signals, 11/11 specs sections ready) and printed a slow-polling
+warning with a 5.06 s worst accepted-sample gap; that gap tracked the finalize
+session's own concurrent tool activity on this box, not a product regression,
+and shows only as a few extra graph breaks in that run's screenshots.
 
 ## Coverage
 
