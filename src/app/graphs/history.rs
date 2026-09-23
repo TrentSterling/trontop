@@ -63,6 +63,8 @@ pub(super) enum Unit {
     Rate,
     Millis,
     Count,
+    /// Outstanding disk requests: a whole count with a unit ("2 req").
+    Requests,
 }
 impl Unit {
     pub(super) fn format(self, value: f32) -> String {
@@ -71,11 +73,12 @@ impl Unit {
             Self::Celsius => format!("{value:.0} °C"),
             Self::Watts => format!("{value:.1} W"),
             Self::Mhz => format!("{value:.0} MHz"),
-            Self::Gib => format!("{value:.2} GiB"),
+            Self::Gib => crate::format::gib(value),
             Self::Rate => crate::format::rate(value as f64),
-            Self::Millis => format!("{value:.2} ms"),
-            // Counts (processes, queue depth) are whole numbers: never "369.0".
-            Self::Count => format!("{:.0}", value.round()),
+            Self::Millis => crate::format::ms(value),
+            // Counts are whole numbers: never "369.0".
+            Self::Count => crate::format::count(value, ""),
+            Self::Requests => crate::format::count(value, "req"),
         }
     }
 }
@@ -173,7 +176,7 @@ impl Chart {
         let high = self.maximum.unwrap_or(high * 1.15).max(high);
         let high = match self.unit {
             // Integer quantities get an integer axis top, e.g. 450 rather than 447.3.
-            Unit::Count if self.maximum.is_none() => whole_axis_top(high),
+            Unit::Count | Unit::Requests if self.maximum.is_none() => whole_axis_top(high),
             _ => high,
         };
         (low.min(0.0), high)
@@ -779,7 +782,7 @@ impl History {
                         unit: [
                             Unit::Percent,
                             Unit::Millis,
-                            Unit::Count,
+                            Unit::Requests,
                             Unit::Rate,
                             Unit::Rate,
                         ][index],

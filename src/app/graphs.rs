@@ -363,9 +363,9 @@ impl TrontopApp {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = theme::space::XS;
             ui.spacing_mut().button_padding = Vec2::new(8.0, 4.0);
-            ui.selectable_value(&mut self.graphs.filter, None, "Everything");
+            tab(ui, &mut self.graphs.filter, None, "Everything");
             for group in Group::ALL {
-                ui.selectable_value(&mut self.graphs.filter, Some(group), group.label());
+                tab(ui, &mut self.graphs.filter, Some(group), group.label());
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 style_toggle(ui, &mut self.graphs.style, t);
@@ -388,6 +388,7 @@ impl TrontopApp {
             });
         });
         ui.add_space(theme::space::M);
+        let page_width = ui.available_width();
         let mut scroll = egui::ScrollArea::vertical()
             .id_salt("graph_wall_scroll")
             .auto_shrink([false, false]);
@@ -411,7 +412,9 @@ impl TrontopApp {
             {
                 wall_cards = wall.cards.len();
             }
-            let count = widgets::tile_grid_columns(ui.available_width());
+            // Columns follow the page width, not the width left beside a
+            // scroll bar, so a long tab and a short one share one grid.
+            let count = widgets::tile_grid_columns(page_width);
             if wall.cards.is_empty() {
                 widgets::gap_row(
                     ui,
@@ -427,7 +430,8 @@ impl TrontopApp {
             }
             let mut row_height = 0.0;
             let row_width = ui.available_width();
-            for (row, chunk) in wall.cards.chunks(count).enumerate() {
+            let rows = wall_rows(&wall.cards, count, graphs.filter == Some(Group::Storage));
+            for (row, chunk) in rows.into_iter().enumerate() {
                 // Every card has the same single-line anatomy, so one measured
                 // row height places every offscreen row exactly.
                 let row_size = Vec2::new(row_width, row_height);
@@ -474,7 +478,8 @@ impl TrontopApp {
                     // ID, keeping later rows' hover IDs and geometry stable.
                     ui.allocate_space(row_size);
                 }
-                ui.add_space(theme::space::GAP);
+                // Rows sit one grid gap apart, the same as columns.
+                ui.add_space((theme::space::GAP - ui.spacing().item_spacing.y).max(0.0));
             }
             let footer = |ui: &mut egui::Ui, text: String, hover: String| {
                 ui.add(
@@ -483,6 +488,9 @@ impl TrontopApp {
                 )
                 .on_hover_text(hover);
             };
+            for (line, hover) in &wall.idle_adapters {
+                footer(ui, line.clone(), hover.clone());
+            }
             if !wall.idle.is_empty() {
                 footer(
                     ui,
@@ -534,6 +542,59 @@ impl TrontopApp {
             self.page = Page::Sensors;
         }
     }
+}
+
+/// One category tab. A framed (selected or hovered) button is one stroke
+/// width larger on every side than a frameless one, which dropped the active
+/// tab's text and every later tab by 1 px. A fixed outer size that fits the
+/// framed button keeps every label on one baseline and one position.
+fn tab(ui: &mut egui::Ui, filter: &mut Option<Group>, value: Option<Group>, label: &str) {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let text = ui
+        .painter()
+        .layout_no_wrap(label.into(), font, Color32::PLACEHOLDER)
+        .size();
+    let pad = ui.spacing().button_padding;
+    let stroke = ui
+        .visuals()
+        .widgets
+        .active
+        .bg_stroke
+        .width
+        .max(ui.visuals().widgets.hovered.bg_stroke.width)
+        .max(ui.visuals().selection.stroke.width);
+    let size = Vec2::new(
+        text.x + pad.x * 2.0 + stroke * 2.0,
+        (text.y + pad.y * 2.0 + stroke * 2.0).max(ui.spacing().interact_size.y),
+    );
+    let response = ui.add(egui::Button::selectable(*filter == value, label).min_size(size.ceil()));
+    if response.clicked() && *filter != value {
+        *filter = value;
+    }
+}
+
+/// Split wall cards into grid rows of at most `count`. On the Disks tab each
+/// disk starts a new row and its four cards form one block: a single row at
+/// four columns, otherwise two rows of two, so a disk never wraps into the
+/// next disk's row.
+fn wall_rows<'c, 'a>(
+    cards: &'c [wall::Card<'a>],
+    count: usize,
+    per_device: bool,
+) -> Vec<&'c [wall::Card<'a>]> {
+    if !per_device {
+        return cards.chunks(count.max(1)).collect();
+    }
+    let mut rows = Vec::new();
+    let mut rest = cards;
+    while let Some(first) = rest.first() {
+        let block = rest.iter().take_while(|c| c.device == first.device).count();
+        let (device, tail) = rest.split_at(block);
+        let columns = if count >= 4 { 4 } else { count.min(2) }.max(1);
+        rows.extend(device.chunks(columns));
+        rest = tail;
+    }
+    rows
 }
 
 /// Compact Lines / Bars segmented control.
@@ -648,6 +709,11 @@ fn series_colors(card: &wall::Card<'_>, t: Tokens) -> Vec<Color32> {
     }]
 }
 
+/// Plot height inside a wall card. With the title, value and padding a card
+/// stays at or under 150 px, so a 1000x580 window shows two full rows and
+/// part of a third.
+pub(super) const CARD_PLOT_HEIGHT: f32 = 80.0;
+
 /// Card anatomy: a 13 px title with a device chip, a 21 px value with a state
 /// chip only when not Live, then the plot. Provenance lives in hover text.
 fn card_view(
@@ -715,7 +781,7 @@ fn card_view(
             response.on_hover_text(
                 "Only measured values enter the graph. Gaps mark missing or stale samples; hollow rings and a trailing + mark partial (lower-bound) samples. Cached values are never extended into fake history.",
             );
-            plot(ui, card, now, style, &colors, t, 106.0);
+            plot(ui, card, now, style, &colors, t, CARD_PLOT_HEIGHT);
         },
     );
 }

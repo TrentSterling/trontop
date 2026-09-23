@@ -144,6 +144,10 @@ pub(super) struct Wall<'a> {
     pub cards: Vec<Card<'a>>,
     /// Engine types whose highest value in the window was exactly 0.
     pub idle: Vec<String>,
+    /// Everything only: adapters that stayed idle for the whole window (see
+    /// `idle_adapter_keys`), as `(footer line, hover with the measured
+    /// values)`. The GPU tab still graphs them.
+    pub idle_adapters: Vec<(String, String)>,
     /// One line per folded card: what it is and why it is not shown.
     pub unreported: Vec<String>,
 }
@@ -241,7 +245,8 @@ fn place(chart: &Chart) -> (String, String, &'static str, Combine, u8) {
             Combine::Sum,
             0,
         ),
-        Id::Disk(..) => single(1),
+        // Section is unused for disks: [`compose`] orders them per device.
+        Id::Disk(..) => single(0),
         Id::Network(name, direction) => (
             format!("net-{name}"),
             "Network traffic".into(),
@@ -253,16 +258,40 @@ fn place(chart: &Chart) -> (String, String, &'static str, Combine, u8) {
     }
 }
 
+/// Reading order of one disk's cards: throughput first, then how busy the
+/// device is, how long requests take and how many are waiting.
+fn disk_rank(metric: usize) -> u8 {
+    match metric {
+        3 | 4 => 0,
+        0 => 1,
+        1 => 2,
+        _ => 3,
+    }
+}
+
 /// Cards for one Graphs tab. `None` is Everything, which leaves out the
-/// per-core grid (it has its own tab).
+/// per-core grid (it has its own tab) and the per-type "All GPUs" engine
+/// cards (the GPU tab has them), and folds fully idle adapters into a line.
 pub(super) fn compose(history: &History, filter: Option<Group>, now: Instant) -> Wall<'_> {
     let mut cards: Vec<Card<'_>> = Vec::new();
     let mut index = HashMap::<String, usize>::new();
     // Each adapter's cards stay together, busiest engine first.
     let mut adapters = HashMap::<crate::gpu_adapters::Key, usize>::new();
+    // Each disk's cards stay together, in first-seen device order.
+    let mut disks = HashMap::<String, usize>::new();
+    let everything = filter.is_none();
+    let idle_adapters: Vec<crate::gpu_adapters::Key> = if everything {
+        idle_adapter_keys(history, now)
+    } else {
+        Vec::new()
+    };
     for (position, chart) in history.charts.iter().enumerate() {
         let included = match filter {
-            None => chart.group != Group::Cores,
+            None => {
+                chart.group != Group::Cores
+                    && !matches!(&chart.id, Id::Activity(name) if name != "GPU activity")
+                    && !matches!(&chart.id, Id::Adapter(key, _) if idle_adapters.contains(key))
+            }
             Some(group) => chart.group == group,
         };
         if !chart.wall || !included {
@@ -288,6 +317,15 @@ pub(super) fn compose(history: &History, filter: Option<Group>, now: Instant) ->
                         *adapters.entry(key).or_insert(position),
                         u8::from(metric != 3),
                     ),
+                    Id::Disk(ref instance, metric) => {
+                        let next = disks.len();
+                        (
+                            group_rank,
+                            0,
+                            *disks.entry(instance.clone()).or_insert(next),
+                            disk_rank(metric),
+                        )
+                    }
                     _ => (group_rank, section, position, 0),
                 },
             });
@@ -296,6 +334,10 @@ pub(super) fn compose(history: &History, filter: Option<Group>, now: Instant) ->
         cards[slot].series.push(Series { chart, label });
     }
     let mut wall = Wall::default();
+    for key in idle_adapters {
+        wall.idle_adapters
+            .push(idle_adapter_line(history, key, now));
+    }
     for mut card in cards {
         let first = card.series[0].chart;
         card.series.retain(|s| measured(s.chart, now));
@@ -319,6 +361,97 @@ pub(super) fn compose(history: &History, filter: Option<Group>, now: Instant) ->
     }
     wall.cards.sort_by_key(|card| card.order);
     wall
+}
+
+/// The three wall signals of one adapter: busiest engine, dedicated VRAM and
+/// shared memory.
+const ADAPTER_WALL_METRICS: [(u64, &str); 3] = [
+    (3, "Busiest engine"),
+    (0, "Dedicated VRAM"),
+    (1, "Shared memory"),
+];
+
+/// Highest busiest-engine percent an adapter may reach in the window and
+/// still fold as idle on Everything.
+const IDLE_BUSY_PERCENT: f32 = 1.0;
+/// Most dedicated or shared memory (GiB) an idle adapter may hold: 64 MiB,
+/// a desktop compositor surface or two, not a workload.
+const IDLE_MEMORY_GIB: f32 = 1.0 / 16.0;
+
+/// Wall adapters whose busiest engine stayed under 1% and whose dedicated
+/// and shared memory stayed under 64 MiB for the whole window (an iGPU the
+/// desktop is not using). A signal that never reported keeps the adapter on
+/// the wall: that is a gap, not idleness.
+fn idle_adapter_keys(history: &History, now: Instant) -> Vec<crate::gpu_adapters::Key> {
+    let mut keys: Vec<crate::gpu_adapters::Key> = Vec::new();
+    for chart in &history.charts {
+        if let Id::Adapter(key, 3) = chart.id
+            && chart.wall
+            && !keys.contains(&key)
+            && ADAPTER_WALL_METRICS.iter().all(|(metric, _)| {
+                let limit = if *metric == 3 {
+                    IDLE_BUSY_PERCENT
+                } else {
+                    IDLE_MEMORY_GIB
+                };
+                history
+                    .chart(&Id::Adapter(key, *metric))
+                    .and_then(|c| c.wall.then(|| window_max(c, now)).flatten())
+                    .is_some_and(|max| max < limit)
+            })
+        {
+            keys.push(key);
+        }
+    }
+    keys
+}
+
+/// The folded line with the measured window peaks, never rounded to a
+/// flattering zero: "Intel Graphics idle (0% busy, 0 GiB used)" only when
+/// every value was exactly 0, otherwise "Intel Graphics near idle (peak 0.2%
+/// busy, up to 776 KB used)". The hover lists every value.
+fn idle_adapter_line(
+    history: &History,
+    key: crate::gpu_adapters::Key,
+    now: Instant,
+) -> (String, String) {
+    let busiest = history.chart(&Id::Adapter(key, 3));
+    let name = busiest
+        .and_then(|c| c.device.clone())
+        .unwrap_or_else(|| "GPU".into());
+    let peak = |metric| {
+        history
+            .chart(&Id::Adapter(key, metric))
+            .and_then(|c| window_max(c, now))
+            .unwrap_or(0.0)
+    };
+    let busy = peak(3);
+    let memory_bytes = (f64::from(peak(0)) + f64::from(peak(1))) * 1_073_741_824.0;
+    let line = if busy == 0.0 && memory_bytes == 0.0 {
+        format!("{name} idle (0% busy, 0 GiB used)")
+    } else {
+        format!(
+            "{name} near idle (peak {} busy, up to {} used)",
+            super::history::Unit::Percent.format(busy),
+            crate::format::bytes(memory_bytes.round() as u64)
+        )
+    };
+    let mut hover = format!(
+        "{name} stayed under 1% busy and under 64 MiB of dedicated and shared memory for the whole 2 minute window, so it is one line here instead of three flat cards. The GPU tab still graphs it. Used is dedicated peak plus shared peak."
+    );
+    if let Some(detail) = busiest.map(|c| c.detail.as_str()) {
+        hover.push_str(&format!("\n{detail}"));
+    }
+    for (metric, title) in ADAPTER_WALL_METRICS {
+        if let Some(chart) = history.chart(&Id::Adapter(key, metric)) {
+            hover.push_str(&format!(
+                "\n{title}: {} now, {} highest",
+                chart.value_label(),
+                window_max(chart, now).map_or_else(|| "--".into(), |v| chart.unit.format(v))
+            ));
+        }
+    }
+    (line, hover)
 }
 
 /// "Drive temperature / WDC WD60EZAX: never reported a value (...)".

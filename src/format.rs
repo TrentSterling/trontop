@@ -46,6 +46,38 @@ pub fn nice_top(value: f32) -> f32 {
     (value / step).ceil() * step
 }
 
+/// Binary gigabytes for graph values: one decimal at 10 or more, two below,
+/// so "11.96" reads "12.0 GiB" and "0.53 GiB" keeps its precision.
+pub fn gib(value: f32) -> String {
+    if value.abs() >= 9.995 {
+        format!("{value:.1} GiB")
+    } else {
+        format!("{value:.2} GiB")
+    }
+}
+
+/// Milliseconds: one decimal at 10 or more ("22.4 ms"), two below ("1.47 ms").
+pub fn ms(value: f32) -> String {
+    if value.abs() >= 9.995 {
+        format!("{value:.1} ms")
+    } else {
+        format!("{value:.2} ms")
+    }
+}
+
+/// A count is a whole number, never "369.0". `unit` is appended when not
+/// empty ("2 req").
+pub fn count(value: f32, unit: &str) -> String {
+    let whole = value.round();
+    // Avoid "-0" for tiny negative noise.
+    let whole = if whole == 0.0 { 0.0 } else { whole };
+    if unit.is_empty() {
+        format!("{whole:.0}")
+    } else {
+        format!("{whole:.0} {unit}")
+    }
+}
+
 pub fn percent(value: f32) -> String {
     if value >= 10.0 {
         format!("{value:.1}%")
@@ -129,6 +161,26 @@ mod tests {
         assert_eq!(nice_top(447.35), 450.0);
         assert_eq!(nice_top(58.1), 60.0);
         assert_eq!(nice_top(0.0), 1.0);
+    }
+
+    #[test]
+    fn graph_number_formats_pick_decimals_by_magnitude() {
+        assert_eq!(gib(11.96), "12.0 GiB");
+        assert_eq!(gib(0.53), "0.53 GiB");
+        assert_eq!(gib(0.0), "0.00 GiB");
+        assert_eq!(gib(9.994), "9.99 GiB");
+        // 9.996 would print "10.00" with two decimals; it crosses to one.
+        assert_eq!(gib(9.996), "10.0 GiB");
+        assert_eq!(gib(10.0), "10.0 GiB");
+        assert_eq!(ms(22.43), "22.4 ms");
+        assert_eq!(ms(1.466), "1.47 ms");
+        assert_eq!(ms(0.0), "0.00 ms");
+        assert_eq!(ms(9.999), "10.0 ms");
+        assert_eq!(count(369.0, ""), "369");
+        assert_eq!(count(447.35, ""), "447");
+        assert_eq!(count(2.0, "req"), "2 req");
+        assert_eq!(count(-0.2, "req"), "0 req");
+        assert_eq!(count(0.5, ""), "1");
     }
 
     #[test]

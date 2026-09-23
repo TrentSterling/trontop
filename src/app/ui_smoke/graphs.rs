@@ -592,6 +592,10 @@ fn graph_visual_click_preserves_complete_font_texture_updates() {
     let mut app = populated(ThemeSettings::default());
     theme::install(&ctx, app.theme);
     let size = Vec2::new(1280.0, 900.0);
+    // Start on the Memory tab so the Thermal & power click is guaranteed to
+    // need glyphs (the power axis W, temperature units) not yet in the atlas,
+    // however many Everything cards fit on screen.
+    app.graphs.set_gauntlet_view(Some(1), false);
     let mut output = egui::FullOutput::default();
     for _ in 0..3 {
         output.append(frame(&ctx, &mut app, size, vec![]));

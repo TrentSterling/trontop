@@ -691,18 +691,30 @@ fn idle_engine_types_fold_into_one_line_and_software_adapters_leave_the_wall() {
     }];
     let mut history = History::default();
     history.sample(&s, now);
+    let wall = wall::compose(&history, Some(Group::Gpu), now);
+    assert_eq!(wall.idle, ["VideoDecode", "Security"], "{:?}", wall.idle);
+    assert!(wall.cards.iter().any(|c| c.title == "3D engines"));
     for filter in [None, Some(Group::Gpu)] {
-        let wall = wall::compose(&history, filter, now);
-        assert_eq!(wall.idle, ["VideoDecode", "Security"], "{:?}", wall.idle);
-        assert!(wall.cards.iter().any(|c| c.title == "3D engines"));
         assert!(
-            !wall
+            !wall::compose(&history, filter, now)
                 .cards
                 .iter()
                 .any(|c| matches!(c.series[0].chart.id, Id::Adapter(..))),
             "software adapter and per-engine-instance charts stay off the wall"
         );
     }
+    // The "All GPUs" per-type engine cards and their idle line live on the
+    // GPU tab only; Everything keeps the headline GPU activity card.
+    let everything = wall::compose(&history, None, now);
+    assert!(everything.idle.is_empty(), "{:?}", everything.idle);
+    assert!(
+        !everything
+            .cards
+            .iter()
+            .any(|c| c.device.as_deref() == Some("All GPUs")),
+        "per-type engine aggregates stay on the GPU tab"
+    );
+    assert!(everything.cards.iter().any(|c| c.title == "GPU activity"));
     // Per-instance engines remain in history for Performance > GPU.
     assert_eq!(
         history
@@ -734,14 +746,19 @@ fn network_and_disk_io_are_one_card_per_device_with_a_summed_headline() {
     s.physical_disks = std::sync::Arc::new(crate::disk_activity::Snapshot {
         at: Some(now),
         generation: 3,
-        devices: vec![crate::disk_activity::Device {
-            number: 1,
-            instance: "1 C: D:".into(),
-            readings: [5.0, 1.0, 0.0, 2_000.0, 500.0].map(|value| crate::disk_activity::Reading {
-                value: Some(value),
-                at: Some(now),
-            }),
-        }],
+        devices: [(0, "0 E:"), (1, "1 C: D:")]
+            .into_iter()
+            .map(|(number, instance)| crate::disk_activity::Device {
+                number,
+                instance: instance.into(),
+                readings: [5.0, 1.0, 0.0, 2_000.0, 500.0].map(|value| {
+                    crate::disk_activity::Reading {
+                        value: Some(value),
+                        at: Some(now),
+                    }
+                }),
+            })
+            .collect(),
         ..Default::default()
     });
     let mut history = History::default();
@@ -755,24 +772,72 @@ fn network_and_disk_io_are_one_card_per_device_with_a_summed_headline() {
         Some((5_000.0, false)),
         "receive plus send"
     );
-    let disks = wall::compose(&history, Some(Group::Storage), now);
-    let titles: Vec<_> = disks.cards.iter().map(|c| c.title.as_str()).collect();
-    assert_eq!(
-        titles,
-        [
-            "Read / write",
-            "Active time",
-            "Response time",
-            "Queue depth"
-        ]
-    );
-    assert!(
-        disks
+    // Each disk's cards group together in reading order: Disk 0 first, then
+    // Disk 1, never all read/write cards followed by all active-time cards.
+    for filter in [Some(Group::Storage), None] {
+        let disks = wall::compose(&history, filter, now);
+        let order: Vec<_> = disks
             .cards
             .iter()
-            .all(|c| c.device.as_deref() == Some("Disk 1 \u{b7} C: D:"))
-    );
+            .filter(|c| c.group == Group::Storage)
+            .map(|c| format!("{} / {}", c.device.as_deref().unwrap_or(""), c.title))
+            .collect();
+        assert_eq!(
+            order,
+            [
+                "Disk 0 \u{b7} E: / Read / write",
+                "Disk 0 \u{b7} E: / Active time",
+                "Disk 0 \u{b7} E: / Response time",
+                "Disk 0 \u{b7} E: / Queue depth",
+                "Disk 1 \u{b7} C: D: / Read / write",
+                "Disk 1 \u{b7} C: D: / Active time",
+                "Disk 1 \u{b7} C: D: / Response time",
+                "Disk 1 \u{b7} C: D: / Queue depth",
+            ]
+        );
+    }
+    let disks = wall::compose(&history, Some(Group::Storage), now);
     assert_eq!(disks.cards[0].series.len(), 2);
+    // On the Disks tab a disk never wraps into the next disk's row.
+    for (columns, sizes) in [
+        (4, vec![4, 4]),
+        (3, vec![2, 2, 2, 2]),
+        (2, vec![2, 2, 2, 2]),
+        (1, vec![1; 8]),
+    ] {
+        let rows = wall_rows(&disks.cards, columns, true);
+        assert_eq!(
+            rows.iter().map(|r| r.len()).collect::<Vec<_>>(),
+            sizes,
+            "{columns} columns"
+        );
+        assert!(
+            rows.iter()
+                .all(|r| r.iter().all(|c| c.device == r[0].device)),
+            "{columns} columns"
+        );
+    }
+    assert_eq!(
+        wall_rows(&disks.cards, 3, false)
+            .iter()
+            .map(|r| r.len())
+            .collect::<Vec<_>>(),
+        [3, 3, 2]
+    );
+    let queue = disks
+        .cards
+        .iter()
+        .find(|c| c.title == "Queue depth")
+        .unwrap();
+    assert_eq!(queue.value_label(), "0 req", "a queue is a whole count");
+    let (_, top) = queue.range(now);
+    assert_eq!(queue.series[0].chart.unit.format(top), "2 req");
+    let response = disks
+        .cards
+        .iter()
+        .find(|c| c.title == "Response time")
+        .unwrap();
+    assert_eq!(response.value_label(), "1.00 ms");
     assert_eq!(history::disk_short_name(0, "0 Fixture NVMe"), "Disk 0");
     assert_eq!(
         history::gpu_short_name("NVIDIA GeForce RTX 5070 Ti"),
@@ -782,4 +847,96 @@ fn network_and_disk_io_are_one_card_per_device_with_a_summed_headline() {
         history::gpu_short_name("Intel(R) UHD Graphics 770"),
         "Intel UHD Graphics 770"
     );
+}
+
+#[test]
+fn a_fully_idle_adapter_folds_into_one_line_on_everything_and_stays_on_the_gpu_tab() {
+    use crate::gpu_activity::Usage;
+    use crate::gpu_adapters::{Adapter, Description, Key};
+    let now = Instant::now();
+    let mut s = sample(now);
+    let adapter = |low, name: &str, busy: f32, vram: u64| {
+        let mut a = Adapter {
+            key: Key {
+                low,
+                ..Default::default()
+            },
+            description: Some(Description {
+                name: name.into(),
+                vendor_id: 0x8086,
+                device_id: 0,
+                dedicated_video: 0,
+                dedicated_system: 0,
+                shared_limit: 0,
+                software: false,
+            }),
+            sampled_at: Some(now),
+            activity: Usage::Measured(busy),
+            ..Default::default()
+        };
+        a.memory[0].record(Some(vram), now);
+        a.memory[1].record(Some(0), now);
+        a
+    };
+    s.gpu.adapters = vec![
+        adapter(1, "NVIDIA GeForce RTX 5070 Ti", 12.0, 6 << 30),
+        adapter(2, "Intel(R) Graphics", 0.0, 0),
+    ];
+    let mut history = History::default();
+    history.sample(&s, now);
+    let intel = |c: &wall::Card<'_>| c.device.as_deref() == Some("Intel Graphics");
+    let everything = wall::compose(&history, None, now);
+    assert!(!everything.cards.iter().any(intel), "idle adapter folds");
+    assert_eq!(everything.idle_adapters.len(), 1);
+    let (line, hover) = &everything.idle_adapters[0];
+    assert_eq!(line, "Intel Graphics idle (0% busy, 0 GiB used)");
+    for measured in [
+        "Busiest engine: 0.0%",
+        "Dedicated VRAM: 0.00 GiB",
+        "Shared memory: 0.00 GiB",
+    ] {
+        assert!(hover.contains(measured), "{hover}");
+    }
+    assert!(
+        everything
+            .cards
+            .iter()
+            .any(|c| c.device.as_deref() == Some("RTX 5070 Ti") && c.title == "Busiest engine"),
+        "a busy adapter keeps its cards"
+    );
+    let gpu = wall::compose(&history, Some(Group::Gpu), now);
+    assert_eq!(gpu.cards.iter().filter(|c| intel(c)).count(), 3);
+    assert!(gpu.idle_adapters.is_empty());
+
+    // A trickle (0.2% busy, 776 KB of shared memory) still folds, and the
+    // line states the measured peaks instead of rounding them to zero.
+    let later = now + Duration::from_secs(1);
+    let mut trickle = s.clone();
+    trickle.gpu.adapters[1].activity = Usage::Measured(0.2);
+    trickle.gpu.adapters[1].sampled_at = Some(later);
+    trickle.gpu.adapters[1].memory[1].record(Some(776 * 1024), later);
+    history.sample(&trickle, later);
+    let everything = wall::compose(&history, None, later);
+    assert_eq!(
+        everything.idle_adapters[0].0,
+        "Intel Graphics near idle (peak 0.2% busy, up to 776 KB used)"
+    );
+    assert!(!everything.cards.iter().any(intel));
+
+    // Real load inside the window keeps the adapter on the wall.
+    let busier = later + Duration::from_secs(1);
+    let mut busy = trickle.clone();
+    busy.gpu.adapters[1].activity = Usage::Measured(3.0);
+    busy.gpu.adapters[1].sampled_at = Some(busier);
+    history.sample(&busy, busier);
+    let everything = wall::compose(&history, None, busier);
+    assert!(everything.idle_adapters.is_empty());
+    assert_eq!(everything.cards.iter().filter(|c| intel(c)).count(), 3);
+
+    // So does memory in use, even with idle engines.
+    let mut history = History::default();
+    let mut holding = s.clone();
+    holding.gpu.adapters[1].memory[1].record(Some(256 << 20), now);
+    history.sample(&holding, now);
+    assert!(wall::compose(&history, None, now).idle_adapters.is_empty());
 }
