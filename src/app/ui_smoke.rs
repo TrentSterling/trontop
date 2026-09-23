@@ -25,6 +25,7 @@ mod process_sort;
 mod renderer_recovery;
 mod service_retention;
 mod system;
+mod table_layout;
 
 fn fixture() -> SystemSnapshot {
     let processes: Vec<_> = (0..64)

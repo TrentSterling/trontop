@@ -63,11 +63,14 @@ impl TrontopApp {
         let all_live = rows
             .iter()
             .all(|(source, entry)| source.row_state(entry, now) == "Live");
+        // COMMAND / FILE is the flexible column on both variants, at index 1;
+        // NAME and SOURCE (and FRESHNESS, when present) keep fixed widths.
         if all_live {
             widgets::inventory_table(
                 ui,
                 "startup_grid",
                 STARTUP_COLUMNS,
+                1,
                 shown,
                 None,
                 |index| {
@@ -85,6 +88,7 @@ impl TrontopApp {
                 ui,
                 "startup_grid",
                 STARTUP_COLUMNS_WITH_FRESHNESS,
+                1,
                 shown,
                 None,
                 |index| {
@@ -157,11 +161,15 @@ impl TrontopApp {
             })
             .collect::<Vec<_>>();
         let all_live = freshness_values.iter().all(|value| value == "Live");
+        // DISPLAY NAME is the flexible column on both variants, at index 0;
+        // SERVICE, STATE, PID (and FRESHNESS, when present) keep fixed
+        // widths, so PID never inherits the leftover width.
         let clicked = if all_live {
             widgets::inventory_table(
                 ui,
                 "services_grid",
                 SERVICES_COLUMNS,
+                0,
                 shown,
                 selected,
                 |index| {
@@ -194,6 +202,7 @@ impl TrontopApp {
                 ui,
                 "services_grid",
                 SERVICES_COLUMNS_WITH_FRESHNESS,
+                0,
                 shown,
                 selected,
                 |index| {

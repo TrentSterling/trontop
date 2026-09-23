@@ -1300,23 +1300,37 @@ impl TrontopApp {
             .cell_layout(Layout::left_to_right(Align::Center))
             .min_scrolled_height(0.0)
             .max_scroll_height(available_height)
+            // NAME is the flexible remainder column, not whichever numeric
+            // column happens to sit last: it grows with the window instead of
+            // leaving a truncated name next to a wide, mostly-empty tail
+            // column. It is not user-resizable (same as any last-column
+            // remainder), so PID and the rest keep their own drag handles.
             .column(
-                Column::initial(if detailed { 210.0 } else { 240.0 })
+                Column::remainder()
                     .at_least(120.0)
-                    .clip(true),
+                    .clip(true)
+                    .resizable(false),
             )
-            .column(Column::initial(72.0).at_least(64.0));
+            .column(Column::initial(56.0).at_least(50.0));
         if detailed {
             table = table
-                .column(Column::initial(86.0).at_least(64.0).clip(true))
-                .column(Column::initial(64.0).at_least(52.0));
+                .column(Column::initial(48.0).at_least(42.0).clip(true))
+                .column(Column::initial(56.0).at_least(48.0));
         }
         table = table
-            .column(Column::initial(76.0).at_least(68.0))
-            .column(Column::initial(76.0).at_least(68.0))
-            .column(Column::initial(98.0).at_least(82.0))
+            .column(Column::initial(58.0).at_least(52.0))
+            .column(Column::initial(58.0).at_least(52.0))
+            .column(Column::initial(74.0).at_least(64.0))
             .column(Column::initial(88.0).at_least(78.0))
-            .column(Column::remainder().at_least(86.0));
+            // WRITE / CPU TIME: a fixed numeric column now that NAME owns the
+            // flexible remainder, not a wide mostly-empty tail. CPU TIME is
+            // always exactly "HH:MM:SS", which needs less room than READ's
+            // and WRITE's variable-length rate strings.
+            .column(
+                Column::initial(if detailed { 74.0 } else { 88.0 })
+                    .at_least(if detailed { 64.0 } else { 78.0 })
+                    .clip(true),
+            );
 
         table
             .header(34.0, |mut header| {
@@ -1548,11 +1562,18 @@ impl TrontopApp {
                             }
                         });
                         widgets::table_column(&mut row, t, |ui| {
+                            let state_label = process_state_label(&process.status);
+                            // Running is the overwhelming common case, so it
+                            // recedes in muted text; any other state is the
+                            // noteworthy one and reads in full-contrast text.
+                            let color = if state_label == "Running" {
+                                t.text_muted
+                            } else {
+                                t.text
+                            };
                             if widgets::table_cell(
                                 ui,
-                                RichText::new(process_state_label(&process.status))
-                                    .size(10.0)
-                                    .color(t.text_muted),
+                                RichText::new(state_label).size(11.0).color(color),
                             ) {
                                 clicked_pid = Some(process.pid);
                             }

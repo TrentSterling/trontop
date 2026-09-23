@@ -100,12 +100,15 @@ fn read_folder(path: &std::path::Path, source: Source) -> (Vec<StartupRow>, Sour
         match entry {
             Ok(entry) => {
                 let path = entry.path();
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                // Windows never launches desktop.ini; it is folder-view
+                // metadata Explorer writes into every Startup folder, not a
+                // startup entry. Case-insensitive: Windows file names are.
+                if file_name.eq_ignore_ascii_case("desktop.ini") {
+                    continue;
+                }
                 let row = StartupRow {
-                    key: path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned(),
+                    key: file_name.into_owned(),
                     name: path
                         .file_stem()
                         .unwrap_or_default()
@@ -270,6 +273,26 @@ mod tests {
         inventory.add(Source::MachineRun32, vec![], SourceState::Failed);
         assert_eq!(inventory.coverage(), (2, 3));
         assert!(inventory.sources.iter().all(|read| read.rows.is_empty()));
+    }
+    #[test]
+    fn read_folder_skips_desktop_ini_case_insensitively() {
+        // Windows never launches desktop.ini; it is folder-view metadata
+        // Explorer writes into every Startup folder, not a startup entry
+        // (P17). A real temp directory, not a mock, so this exercises the
+        // same std::fs::read_dir path the live scan uses.
+        let dir = std::env::temp_dir().join(format!(
+            "trontop-startup-test-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("DeskTop.INI"), b"[.ShellClassInfo]").unwrap();
+        std::fs::write(dir.join("MyApp.lnk"), b"").unwrap();
+        let (rows, state) = read_folder(&dir, Source::UserFolder);
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(state, SourceState::Readable);
+        assert_eq!(rows.len(), 1, "desktop.ini must not become an entry");
+        assert_eq!(rows[0].name, "MyApp");
     }
     #[cfg(windows)]
     #[test]

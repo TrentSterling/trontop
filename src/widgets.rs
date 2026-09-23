@@ -487,18 +487,36 @@ struct HistoryColumns {
     pid_left: f32,
     cpu_left: f32,
     io_left: f32,
+    io_right: f32,
 }
 
+/// PID, CPU TIME and TOTAL I/O sit directly after PROCESS, not pinned to the
+/// table's far right edge: PROCESS is the flexible column, capped at
+/// [`HISTORY_PROCESS_MAX`] so a wide window leaves the numeric columns close
+/// to the name instead of stretching a huge gap between them.
+const HISTORY_PID_WIDTH: f32 = 94.0;
+const HISTORY_CPU_WIDTH: f32 = 134.0;
+const HISTORY_IO_WIDTH: f32 = 110.0;
+const HISTORY_COLUMN_GAP: f32 = 10.0;
+const HISTORY_PROCESS_MIN: f32 = 140.0;
+const HISTORY_PROCESS_MAX: f32 = 480.0;
+
 fn history_columns(rect: egui::Rect) -> HistoryColumns {
-    let io_left = rect.right() - 110.0;
-    let cpu_left = io_left - 10.0 - 134.0;
-    let pid_left = cpu_left - 10.0 - 94.0;
     let name_left = rect.left() + 42.0;
+    let trailing =
+        HISTORY_COLUMN_GAP * 3.0 + HISTORY_PID_WIDTH + HISTORY_CPU_WIDTH + HISTORY_IO_WIDTH;
+    let name_width =
+        (rect.right() - name_left - trailing).clamp(HISTORY_PROCESS_MIN, HISTORY_PROCESS_MAX);
+    let pid_left = name_left + name_width + HISTORY_COLUMN_GAP;
+    let cpu_left = pid_left + HISTORY_PID_WIDTH + HISTORY_COLUMN_GAP;
+    let io_left = cpu_left + HISTORY_CPU_WIDTH + HISTORY_COLUMN_GAP;
+    let io_right = io_left + HISTORY_IO_WIDTH;
     HistoryColumns {
         name_left,
         pid_left,
         cpu_left,
         io_left,
+        io_right,
     }
 }
 
@@ -515,7 +533,7 @@ pub fn history_header(ui: &mut egui::Ui, t: Tokens) {
         ("PROCESS", cols.name_left, cols.pid_left - 10.0, Align::Min),
         ("PID", cols.pid_left, cols.cpu_left - 10.0, Align::Max),
         ("CPU TIME", cols.cpu_left, cols.io_left - 10.0, Align::Max),
-        ("TOTAL I/O", cols.io_left, rect.right(), Align::Max),
+        ("TOTAL I/O", cols.io_left, cols.io_right, Align::Max),
     ] {
         paint_text(
             ui,
@@ -593,7 +611,7 @@ pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Toke
         (
             io.as_str(),
             cols.io_left,
-            rect.right(),
+            cols.io_right,
             FontId::monospace(11.0),
             t.text_muted,
             Align::Max,
@@ -855,17 +873,17 @@ pub fn cpu_cell(ui: &mut egui::Ui, value: f32, t: Tokens) -> bool {
     .clicked()
 }
 
-/// Unreported GPU rows read "--" with no "%" (there is no measurement to round),
-/// and an exact-zero measured row reads a calm "0%" instead of a busy "0.00%".
-/// Both are muted; every other state keeps [`crate::gpu_activity::Usage::label`]
-/// unchanged, which already gives Partial its "x.xx%+" lower-bound marker.
-pub fn gpu_cell(
-    ui: &mut egui::Ui,
-    usage: crate::gpu_activity::Usage,
-    grouped: bool,
-    t: Tokens,
-) -> bool {
+/// Pure label/mute/explanation for [`gpu_cell`], split out so the zero-rounding
+/// rule is unit-testable without an egui context. Unreported rows read "--"
+/// with no "%" (there is no measurement to round), an exact-zero measured row
+/// reads a calm "0%" instead of a busy "0.00%", and a partial reading that
+/// rounds to zero reads the same calm "0%+" instead of the noisy "0.0%+" a
+/// plain lower-bound marker would produce; a partial reading that still rounds
+/// to a nonzero digit keeps its precise "0.2%+". Every other state keeps
+/// [`crate::gpu_activity::Usage::label`] unchanged.
+fn gpu_cell_parts(usage: crate::gpu_activity::Usage, grouped: bool) -> (String, bool, String) {
     use crate::gpu_activity::Usage;
+    const PARTIAL_HOVER: &str = "Partial: some engines not readable.";
     let (label, muted, mut explanation) = match usage {
         Usage::Unreported => (
             "--".to_string(),
@@ -876,11 +894,29 @@ pub fn gpu_cell(
         Usage::Measured(value) if value <= 0.0 => {
             ("0%".to_string(), true, usage.explanation().to_string())
         }
+        Usage::Partial(value) => {
+            let percent = format::percent(value);
+            if percent == "0.0%" {
+                ("0%+".to_string(), true, PARTIAL_HOVER.to_string())
+            } else {
+                (format!("{percent}+"), false, PARTIAL_HOVER.to_string())
+            }
+        }
         _ => (usage.label(), false, usage.explanation().to_string()),
     };
     if grouped {
         explanation.push_str(" Grouped rows sum process peaks; this is not whole-GPU utilization.");
     }
+    (label, muted, explanation)
+}
+
+pub fn gpu_cell(
+    ui: &mut egui::Ui,
+    usage: crate::gpu_activity::Usage,
+    grouped: bool,
+    t: Tokens,
+) -> bool {
+    let (label, muted, explanation) = gpu_cell_parts(usage, grouped);
     heat_cell_response(
         ui,
         usage.value().unwrap_or_default(),
@@ -1797,14 +1833,21 @@ pub fn inventory_status(
 /// their own display text; a column that wants to keep its cell short (e.g. a
 /// freshness word with the observation age on hover) gives a longer hover string.
 /// `columns` gives each column's header label plus its `(fraction, minimum)`
-/// width; the last column always becomes the flexible remainder (its fraction
-/// is ignored), so callers with the same `N` but different meanings (e.g.
-/// Services with and without a FRESHNESS column) pass their own widths instead
-/// of sharing one by column count alone.
+/// width; `flex_index` names which one is the flexible remainder column (its
+/// fraction is ignored) so callers put the flex on the actual text column
+/// (COMMAND / FILE, DISPLAY NAME) instead of whichever happens to sit last —
+/// a short label like PID or FRESHNESS never earns the leftover width. Every
+/// other column keeps the fixed width its fraction implies, so callers with
+/// the same `N` but different meanings (e.g. Services with and without a
+/// FRESHNESS column) pass their own widths instead of sharing one by column
+/// count alone. The flex column is not user-resizable, matching how a
+/// last-column remainder already behaves; every other column still drags.
+#[allow(clippy::too_many_arguments)]
 pub fn inventory_table<const N: usize>(
     ui: &mut egui::Ui,
     id: &str,
     columns: [(&str, f32, f32); N],
+    flex_index: usize,
     row_count: usize,
     selected: Option<usize>,
     mut values: impl FnMut(usize) -> [(String, String); N],
@@ -1820,10 +1863,11 @@ pub fn inventory_table<const N: usize>(
             .resizable(true)
             .cell_layout(Layout::left_to_right(Align::Center));
         for (index, &(_, fraction, minimum)) in columns.iter().enumerate() {
-            table = table.column(if index + 1 == N {
+            table = table.column(if index == flex_index {
                 egui_extras::Column::remainder()
                     .at_least(minimum)
                     .clip(true)
+                    .resizable(false)
             } else {
                 egui_extras::Column::initial(width * fraction)
                     .at_least(minimum)
@@ -1912,6 +1956,24 @@ pub fn fill_last_row<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_cell_partial_rounds_zero_to_a_muted_plus_and_keeps_nonzero_precise() {
+        use crate::gpu_activity::Usage;
+        // P17: a partial reading that rounds to zero reads the same calm "0%"
+        // convention as an exact zero, never the noisy "0.0%+".
+        let (label, muted, _) = gpu_cell_parts(Usage::Partial(0.03), false);
+        assert_eq!(label, "0%+");
+        assert!(muted);
+        // A partial reading that still rounds to a nonzero digit keeps its
+        // precise lower-bound marker and stays unmuted.
+        let (label, muted, _) = gpu_cell_parts(Usage::Partial(0.2), false);
+        assert_eq!(label, "0.2%+");
+        assert!(!muted);
+        let (label, muted, _) = gpu_cell_parts(Usage::Partial(12.34), false);
+        assert_eq!(label, "12.3%+");
+        assert!(!muted);
+    }
 
     #[test]
     fn sparkline_draws_nothing_for_fewer_than_two_points_and_breaks_on_gaps() {
@@ -2059,6 +2121,7 @@ mod tests {
                         ("SOURCE", 0.27, 175.0),
                         ("FRESHNESS", 0.15, 90.0),
                     ],
+                    1,
                     20_000,
                     None,
                     |index| {
