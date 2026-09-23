@@ -86,6 +86,7 @@ fn table_cells_show_keyboard_focus_without_moving_text_or_changing_tab_order() {
                                             value,
                                             format!("{value:.1}%"),
                                             t.accent,
+                                            t.text,
                                             t,
                                         )
                                     };
@@ -188,7 +189,7 @@ fn table_keyboard_activation_keeps_disabled_cells_inert() {
                                 ui.disable();
                             }
                             let response = if heat {
-                                heat_cell_response(ui, 27.5, "27.5%".into(), t.accent, t)
+                                heat_cell_response(ui, 27.5, "27.5%".into(), t.accent, t.text, t)
                             } else {
                                 table_label(ui, RichText::new("MEMORY"))
                             };

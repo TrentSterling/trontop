@@ -1102,9 +1102,18 @@ fn gpu_cells_keep_right_alignment_and_distinguish_unknown_zero_and_partial() {
             }
             assert!(output.platform_output.commands.is_empty());
             let texts = text_shapes(&output);
+            // gpu_cell renders its own compact label for two states instead of
+            // Usage::label()'s generic text: an exact-zero measured reading drops
+            // the "0.00%" clutter for a calm "0%", and Unreported drops the "%"
+            // entirely since there is nothing to round.
+            let expected_label = match usage {
+                Usage::Measured(value) if value <= 0.0 => "0%".to_string(),
+                Usage::Unreported => "--".to_string(),
+                _ => usage.label(),
+            };
             let (text, clip) = texts
                 .iter()
-                .find(|(text, _)| text.galley.job.text == usage.label())
+                .find(|(text, _)| text.galley.job.text == expected_label)
                 .unwrap();
             let bounds = text.visual_bounding_rect();
             assert!(clip.contains_rect(bounds));
@@ -1143,7 +1152,7 @@ fn gpu_activity_states_reach_process_user_and_inspector_surfaces() {
             for _ in 0..3 {
                 output = frame(&ctx, &mut app, size, vec![]);
             }
-            for expected in ["0.00%", "12.3%", "4.56%+", "-- %"] {
+            for expected in ["0%", "12.3%", "4.56%+", "-- %"] {
                 assert!(
                     text_shapes(&output).iter().any(|(text, clip)| {
                         text.galley.job.text == expected

@@ -384,6 +384,11 @@ pub fn mini_meter_text(
     response
 }
 
+/// A labeled value card with a colored status dot and a muted detail line. The
+/// polish gauntlet moved every page off this in favor of compact cards and KPI
+/// tiles (see `theme::space`, `kpi_tile`); kept for the hover/background fuzz
+/// coverage below and any future page that wants this exact shape again.
+#[allow(dead_code)]
 pub fn stat_card(
     ui: &mut egui::Ui,
     label: &str,
@@ -474,6 +479,59 @@ pub fn identity_card(ui: &mut egui::Ui, name: &str, identity: &str, t: Tokens) {
     });
 }
 
+/// Shared column geometry for the History page: [`history_header`] and
+/// [`history_row`] both lay their fields out from the same left edges, so
+/// header and data always line up.
+struct HistoryColumns {
+    name_left: f32,
+    pid_left: f32,
+    cpu_left: f32,
+    io_left: f32,
+}
+
+fn history_columns(rect: egui::Rect) -> HistoryColumns {
+    let io_left = rect.right() - 110.0;
+    let cpu_left = io_left - 10.0 - 134.0;
+    let pid_left = cpu_left - 10.0 - 94.0;
+    let name_left = rect.left() + 42.0;
+    HistoryColumns {
+        name_left,
+        pid_left,
+        cpu_left,
+        io_left,
+    }
+}
+
+/// A static column header for the History table: RANK / PROCESS / PID / CPU
+/// TIME / TOTAL I/O, styled like [`table_header`] but over plain painted
+/// columns rather than an `egui_extras` table (History has no sortable
+/// columns of its own).
+pub fn history_header(ui: &mut egui::Ui, t: Tokens) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::hover());
+    let cols = history_columns(rect);
+    let font = FontId::proportional(10.0);
+    for (text, left, right, align) in [
+        ("RANK", rect.left(), cols.name_left - 8.0, Align::Min),
+        ("PROCESS", cols.name_left, cols.pid_left - 10.0, Align::Min),
+        ("PID", cols.pid_left, cols.cpu_left - 10.0, Align::Max),
+        ("CPU TIME", cols.cpu_left, cols.io_left - 10.0, Align::Max),
+        ("TOTAL I/O", cols.io_left, rect.right(), Align::Max),
+    ] {
+        paint_text(
+            ui,
+            egui::Rect::from_min_max(
+                egui::pos2(left, rect.top()),
+                egui::pos2(right, rect.bottom()),
+            ),
+            text,
+            font.clone(),
+            t.text_muted,
+            align,
+        );
+    }
+    ui.add_space(theme::space::XS);
+}
+
 /// Fixed numeric tracks keep names from consuming the PID and lifetime totals.
 /// Only the name track flexes; every field uses one vertically centered line.
 pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Tokens) {
@@ -494,46 +552,43 @@ pub fn history_row(ui: &mut egui::Ui, rank: usize, process: &ProcessRow, t: Toke
         |ui| {
             let (rect, _) =
                 ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
-            let io_left = rect.right() - 110.0;
-            let cpu_left = io_left - 10.0 - 134.0;
-            let pid_left = cpu_left - 10.0 - 94.0;
-            let name_left = rect.left() + 32.0;
+            let cols = history_columns(rect);
             for (text, left, right, font, color, align) in [
                 (
                     ordinal.as_str(),
                     rect.left(),
-                    name_left - 8.0,
+                    cols.name_left - 8.0,
                     FontId::monospace(11.0),
                     t.ink(t.accent),
                     Align::Min,
                 ),
                 (
                     process.name.as_str(),
-                    name_left,
-                    pid_left - 10.0,
+                    cols.name_left,
+                    cols.pid_left - 10.0,
                     FontId::proportional(13.0),
                     t.text,
                     Align::Min,
                 ),
                 (
                     pid.as_str(),
-                    pid_left,
-                    cpu_left - 10.0,
+                    cols.pid_left,
+                    cols.cpu_left - 10.0,
                     FontId::monospace(10.0),
                     t.text_muted,
                     Align::Max,
                 ),
                 (
                     cpu.as_str(),
-                    cpu_left,
-                    io_left - 10.0,
+                    cols.cpu_left,
+                    cols.io_left - 10.0,
                     FontId::monospace(11.0),
                     t.ink(t.secondary),
                     Align::Max,
                 ),
                 (
                     io.as_str(),
-                    io_left,
+                    cols.io_left,
                     rect.right(),
                     FontId::monospace(11.0),
                     t.text_muted,
@@ -585,6 +640,39 @@ pub fn paint_text(
         galley,
         color,
     );
+}
+
+/// Elides the middle of a long file name so a short extension (".exe", ".dll",
+/// ...) survives instead of egui's plain tail ellipsis dropping it. Returns
+/// `name` untouched when it already fits or carries no short extension to
+/// protect; the caller's own truncating label still clips it as a fallback.
+pub fn truncate_keep_extension(ui: &egui::Ui, name: &str, max_width: f32) -> String {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let measure = |text: &str| {
+        ui.painter()
+            .layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE)
+            .size()
+            .x
+    };
+    if max_width <= 0.0 || measure(name) <= max_width {
+        return name.to_string();
+    }
+    let Some(dot) = name.rfind('.').filter(|&i| i > 0 && name.len() - i <= 5) else {
+        return name.to_string();
+    };
+    let (stem, extension) = name.split_at(dot);
+    const ELLIPSIS: char = '\u{2026}';
+    let mut end = stem.len();
+    loop {
+        let candidate = format!("{}{ELLIPSIS}{extension}", &stem[..end]);
+        if end == 0 || measure(&candidate) <= max_width {
+            return candidate;
+        }
+        end -= 1;
+        while end > 0 && !stem.is_char_boundary(end) {
+            end -= 1;
+        }
+    }
 }
 
 pub fn table_header(
@@ -709,24 +797,41 @@ fn paint_table_focus(ui: &egui::Ui, response: &egui::Response) {
 }
 
 pub fn heat_cell(ui: &mut egui::Ui, value: f32, label: String, color: Color32, t: Tokens) -> bool {
-    heat_cell_response(ui, value, label, color, t).clicked()
+    heat_cell_response(ui, value, label, color, t.text, t).clicked()
 }
 
+/// Unreported GPU rows read "--" with no "%" (there is no measurement to round),
+/// and an exact-zero measured row reads a calm "0%" instead of a busy "0.00%".
+/// Both are muted; every other state keeps [`crate::gpu_activity::Usage::label`]
+/// unchanged, which already gives Partial its "x.xx%+" lower-bound marker.
 pub fn gpu_cell(
     ui: &mut egui::Ui,
     usage: crate::gpu_activity::Usage,
     grouped: bool,
     t: Tokens,
 ) -> bool {
-    let mut explanation = usage.explanation().to_string();
+    use crate::gpu_activity::Usage;
+    let (label, muted, mut explanation) = match usage {
+        Usage::Unreported => (
+            "--".to_string(),
+            true,
+            "This process has no GPU engine instance, so Windows reports nothing for it."
+                .to_string(),
+        ),
+        Usage::Measured(value) if value <= 0.0 => {
+            ("0%".to_string(), true, usage.explanation().to_string())
+        }
+        _ => (usage.label(), false, usage.explanation().to_string()),
+    };
     if grouped {
         explanation.push_str(" Grouped rows sum process peaks; this is not whole-GPU utilization.");
     }
     heat_cell_response(
         ui,
         usage.value().unwrap_or_default(),
-        usage.label(),
+        label,
         t.secondary,
+        if muted { t.text_muted } else { t.text },
         t,
     )
     .on_hover_text(explanation)
@@ -738,6 +843,7 @@ fn heat_cell_response(
     value: f32,
     label: String,
     color: Color32,
+    text_color: Color32,
     t: Tokens,
 ) -> egui::Response {
     let response = ui.allocate_response(ui.available_size(), Sense::click());
@@ -754,7 +860,7 @@ fn heat_cell_response(
         egui::Align2::RIGHT_CENTER,
         label,
         FontId::monospace(11.0),
-        t.text,
+        text_color,
     );
     paint_table_focus(ui, &response);
     response

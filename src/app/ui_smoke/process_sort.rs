@@ -132,10 +132,10 @@ fn headers_sort_displayed_groups_and_flat_switch_uses_individual_values() {
             assert_root_order(&ctx, &mut app, size, &[4, 2, 0]);
             click_text(&ctx, &mut app, size, &format!("{label}  ^"));
             assert_root_order(&ctx, &mut app, size, &[0, 2, 4]);
-            click_text(&ctx, &mut app, size, "Flat list");
+            click_text(&ctx, &mut app, size, "Flat");
             assert!(!app.tree_mode);
             assert_eq!(app.visible_processes[0], 1); // Worker has the largest individual value.
-            click_text(&ctx, &mut app, size, "Process tree");
+            click_text(&ctx, &mut app, size, "Tree");
             assert!(app.tree_mode);
             assert_root_order(&ctx, &mut app, size, &[0, 2, 4]);
         }

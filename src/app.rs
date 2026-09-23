@@ -1017,9 +1017,10 @@ impl TrontopApp {
                 egui::ScrollArea::vertical().id_salt("inspector_scroll").auto_shrink([false, false]).show(ui, |ui| {
                 let selected = self.selected_process().cloned();
                 if let Some(process) = selected {
+                    let state_label = process_state_label(&process.status);
                     ui.horizontal(|ui| {
                         self.process_icons.paint(ui, process.executable.as_deref(), 32.0, t.text_muted, egui::Sense::hover()).on_hover_text("Executable icon; not a verified publisher identity");
-                        widgets::status_pill(ui, &process.status, if process.status == "Running" { t.good } else { t.text_muted });
+                        widgets::status_pill(ui, &state_label, if state_label == "Running" { t.good } else { t.text_muted });
                     });
                     ui.add_space(8.0);
                     ui.add(egui::Label::new(RichText::new(&process.name).size(19.0).strong().color(t.text)).truncate())
@@ -1027,7 +1028,7 @@ impl TrontopApp {
                     ui.add_space(10.0);
                     widgets::detail_row(ui, "PID", &process.pid.to_string(), t);
                     widgets::detail_row(ui, "Account", &process.user, t);
-                    widgets::detail_row(ui, "Status", &process.status, t);
+                    widgets::detail_row(ui, "Status", &state_label, t);
                     widgets::detail_row(ui, "CPU", &format::percent(process.cpu_percent), t);
                     widgets::detail_row(ui, "GPU", &process.gpu_percent.label(), t);
                     widgets::hover_label(ui, RichText::new(process.gpu_percent.status()).size(10.0).color(t.text_muted))
@@ -1170,54 +1171,20 @@ impl TrontopApp {
 
     fn processes_page(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        self.page_header(
-            ui,
-            "Processes",
-            "Live hierarchy and resource totals, sampled outside the render thread",
-            true,
-        );
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            widgets::hover_label(
-                ui,
-                RichText::new("VIEW")
-                    .size(10.0)
-                    .strong()
-                    .color(t.text_muted),
-            );
-            if ui
-                .selectable_label(self.tree_mode, "Process tree")
-                .clicked()
-            {
-                self.tree_mode = true;
-            }
-            if ui.selectable_label(!self.tree_mode, "Flat list").clicked() {
-                self.tree_mode = false;
-            }
-            if self.tree_mode {
-                ui.separator();
-                widgets::hover_label(
-                    ui,
-                    RichText::new("Parent rows include descendants")
-                        .size(10.0)
-                        .color(t.text_muted),
-                );
-            }
-        });
-        ui.add_space(12.0);
-        self.telemetry_strip(ui);
-        ui.add_space(12.0);
+        self.page_intro(ui);
+        ui.add_space(theme::space::M);
+        self.process_toolbar(ui);
+        ui.add_space(theme::space::M);
         self.process_table(ui, false);
         let footer = if self.tree_mode {
             format!(
-                "{} table rows | {} matching of {} processes",
-                self.visible_process_tree.len(),
-                self.visible_processes.len(),
-                self.snapshot.process_count
+                "{} processes \u{b7} {} rows",
+                self.snapshot.process_count,
+                self.visible_process_tree.len()
             )
         } else {
             format!(
-                "{} visible of {} processes",
+                "{} of {} shown",
                 self.visible_processes.len(),
                 self.snapshot.process_count
             )
@@ -1247,66 +1214,37 @@ impl TrontopApp {
         );
     }
 
-    fn telemetry_strip(&self, ui: &mut egui::Ui) {
+    /// One 30 px row: a Tree/Flat segmented toggle, the total process count, and
+    /// (tree mode only) a right-aligned hint that parent rows include children.
+    /// This replaces the old CPU/MEMORY/GPU/UPTIME badge row, which duplicated
+    /// the sidebar meters and cost the table about 100 px of body height.
+    fn process_toolbar(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
-        let gpu_value = self.snapshot.gpu.reading().label();
-        let cpu_value = format::percent(self.snapshot.cpu_percent);
-        let memory_value = format::percent(memory_percent(&self.snapshot));
-        let memory_detail = format!(
-            "{} / {}",
-            format::bytes(self.snapshot.memory_used_bytes),
-            format::bytes(self.snapshot.memory_total_bytes)
-        );
-        let uptime_value = format::duration(self.snapshot.uptime_seconds);
-        let uptime_detail = format!("{} live entries", self.snapshot.process_count);
-        let cards = [
-            (
-                "CPU",
-                cpu_value.as_str(),
-                if self.snapshot.cpu.brand.is_empty() {
-                    "total machine load"
-                } else {
-                    &self.snapshot.cpu.brand
-                },
-                t.accent,
-            ),
-            (
-                "MEMORY",
-                memory_value.as_str(),
-                memory_detail.as_str(),
-                t.secondary,
-            ),
-            (
-                "GPU",
-                gpu_value.as_str(),
-                if self.snapshot.gpu.available {
-                    "Busiest Windows GPU engine"
-                } else {
-                    self.snapshot
-                        .gpu
-                        .error
-                        .as_deref()
-                        .unwrap_or("collecting exact counters")
-                },
-                theme::mix(t.accent, t.secondary, 0.5),
-            ),
-            (
-                "UPTIME",
-                uptime_value.as_str(),
-                uptime_detail.as_str(),
-                t.good,
-            ),
-        ];
-        // Keep complete metric values above the table, even with a wide inspector.
-        // Breakpoints use logical egui points, not physical screen pixels.
-        let count = if ui.available_width() >= 736.0 { 4 } else { 2 };
-        for row in cards.chunks(count) {
-            ui.columns(count, |columns| {
-                for (ui, &(label, value, detail, color)) in columns.iter_mut().zip(row) {
-                    widgets::stat_card(ui, label, value, detail, color, self.theme, t);
+        let count_text = format!("{} processes", self.snapshot.process_count);
+        ui.allocate_ui_with_layout(
+            Vec2::new(ui.available_width(), 30.0),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = theme::space::M;
+                if ui.selectable_label(self.tree_mode, "Tree").clicked() {
+                    self.tree_mode = true;
                 }
-            });
-        }
+                if ui.selectable_label(!self.tree_mode, "Flat").clicked() {
+                    self.tree_mode = false;
+                }
+                widgets::hover_label(ui, RichText::new(count_text).size(10.0).color(t.text_muted));
+                if self.tree_mode {
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        widgets::hover_label(
+                            ui,
+                            RichText::new("Parent rows include children")
+                                .size(10.0)
+                                .color(t.text_muted),
+                        );
+                    });
+                }
+            },
+        );
     }
 
     fn process_table(&mut self, ui: &mut egui::Ui, detailed: bool) {
@@ -1350,8 +1288,10 @@ impl TrontopApp {
         let mut toggled_pid = None;
         let mut requested_sort = None;
         // max_scroll_height is the BODY height, excluding the fixed header.
-        // Reserve the footer and a possible horizontal scrollbar as well.
-        let available_height = (ui.available_height() - 60.0).max(32.0);
+        // Reserve a possible horizontal scrollbar and (on Processes) the row
+        // count footer below the table; Details has none since P5 folded its
+        // footer into the page intro.
+        let available_height = (ui.available_height() - 40.0).max(32.0);
         let mut table = TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
@@ -1547,7 +1487,11 @@ impl TrontopApp {
                             let name = if tree_mode && display.has_children {
                                 format!("{}  [{}]", process.name, display.descendant_count + 1)
                             } else {
-                                process.name.clone()
+                                widgets::truncate_keep_extension(
+                                    ui,
+                                    &process.name,
+                                    ui.available_width(),
+                                )
                             };
                             let response = widgets::table_label(
                                 ui,
@@ -1597,7 +1541,7 @@ impl TrontopApp {
                         widgets::table_column(&mut row, t, |ui| {
                             if widgets::table_cell(
                                 ui,
-                                RichText::new(&process.status)
+                                RichText::new(process_state_label(&process.status))
                                     .size(10.0)
                                     .color(t.text_muted),
                             ) {
@@ -2253,6 +2197,7 @@ impl TrontopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 widgets::section_label(ui, "HEAVIEST LIFETIME CPU CONSUMERS", t);
+                widgets::history_header(ui, t);
                 ui.spacing_mut().item_spacing.y = 4.0;
                 for (rank, &index) in self.history_processes.iter().enumerate() {
                     let process = &self.snapshot.processes[index];
@@ -2281,6 +2226,7 @@ impl TrontopApp {
         );
         ui.add_space(12.0);
         let users = &self.snapshot.users;
+        let total_processes = self.snapshot.process_count.max(1) as f32;
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let width = ui.available_width();
@@ -2308,8 +2254,18 @@ impl TrontopApp {
                     }
                 })
                 .body(|body| {
-                    body.rows(46.0, users.len(), |mut row| {
+                    body.rows(34.0, users.len(), |mut row| {
                         let user = &users[row.index()];
+                        // Windows sometimes will not disclose the owner of a system
+                        // service's processes without admin rights; that gap reads
+                        // as "Not readable", never a guessed account name.
+                        let unreadable = user.name == "Unknown account";
+                        let display_name: &str = if unreadable {
+                            "Not readable"
+                        } else {
+                            &user.name
+                        };
+                        let share = user.process_count as f32 / total_processes * 100.0;
                         widgets::table_column(&mut row, t, |ui| {
                             ui.spacing_mut().item_spacing.x = 10.0;
                             let (rect, _) =
@@ -2318,17 +2274,27 @@ impl TrontopApp {
                             ui.painter().text(
                                 rect.center(),
                                 egui::Align2::CENTER_CENTER,
-                                user.name.chars().next().unwrap_or('?').to_ascii_uppercase(),
+                                display_name
+                                    .chars()
+                                    .next()
+                                    .unwrap_or('?')
+                                    .to_ascii_uppercase(),
                                 FontId::proportional(15.0),
                                 t.text,
                             );
-                            widgets::table_cell(
+                            let response = widgets::table_label(
                                 ui,
-                                RichText::new(&user.name).strong().color(t.text),
+                                RichText::new(display_name).strong().color(t.text),
                             );
+                            if unreadable {
+                                response.on_hover_text(
+                                    "Windows did not let Trontop read the owner of these \
+                                     processes (usually system services; needs admin).",
+                                );
+                            }
                         });
                         for (value, label, color) in [
-                            (0.0, user.process_count.to_string(), t.accent),
+                            (share, user.process_count.to_string(), t.accent),
                             (
                                 user.cpu_percent,
                                 format::percent(user.cpu_percent),
@@ -2364,14 +2330,6 @@ impl TrontopApp {
         );
         ui.add_space(12.0);
         self.process_table(ui, true);
-        widgets::hover_label(
-            ui,
-            RichText::new(
-                "Drag dividers to resize columns. Scroll horizontally for more counters.",
-            )
-            .size(10.0)
-            .color(self.colors().text_muted),
-        );
     }
 
     fn services_page(&mut self, ui: &mut egui::Ui) {
@@ -3044,6 +3002,30 @@ fn chrome_button(
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
     });
     response.on_hover_text(label)
+}
+
+/// Sysinfo's abbreviated `ProcessStatus` debug names translated to full words for
+/// display (Windows currently only ever reports `Run` through this crate, but the
+/// mapping stays exhaustive so unexpected values still read as words, not code).
+fn process_state_label(status: &str) -> String {
+    match status {
+        "Run" => "Running",
+        "Sleep" => "Sleeping",
+        "Idle" => "Idle",
+        "Stop" => "Stopped",
+        "Zombie" => "Zombie",
+        "Tracing" => "Tracing",
+        "Dead" => "Dead",
+        "Wakekill" => "Wakekill",
+        "Waking" => "Waking",
+        "Parked" => "Parked",
+        "LockBlocked" => "Lock blocked",
+        "UninterruptibleDiskSleep" => "Uninterruptible disk sleep",
+        "Suspended" => "Suspended",
+        "Unknown" => "Unknown",
+        other => return other.to_string(),
+    }
+    .to_string()
 }
 
 fn memory_percent(snapshot: &SystemSnapshot) -> f32 {

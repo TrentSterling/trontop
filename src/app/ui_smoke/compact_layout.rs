@@ -94,14 +94,19 @@ fn compact_layout_metric_values_and_footer_fit_with_or_without_inspector() {
                     frame(&ctx, &mut app, size, vec![]);
                 }
                 let output = frame(&ctx, &mut app, size, vec![]);
-                let uptime = visible_text(&output, "365d 23h 59m");
+                let toolbar_count = visible_text(
+                    &output,
+                    &format!("{} processes", app.snapshot.process_count),
+                );
                 let name = visible_text(&output, "NAME");
-                assert!(uptime.bottom() < name.top(), "cards overlap table");
+                assert!(
+                    toolbar_count.bottom() < name.top(),
+                    "toolbar overlaps table"
+                );
                 let footer = format!(
-                    "{} table rows | {} matching of {} processes",
-                    app.visible_process_tree.len(),
-                    app.visible_processes.len(),
-                    app.snapshot.process_count
+                    "{} processes \u{b7} {} rows",
+                    app.snapshot.process_count,
+                    app.visible_process_tree.len()
                 );
                 let footer = visible_text(&output, &footer);
                 assert!(footer.bottom() < size.y - 4.0);
@@ -109,6 +114,40 @@ fn compact_layout_metric_values_and_footer_fit_with_or_without_inspector() {
             }
         }
     }
+}
+
+#[test]
+fn processes_table_shows_at_least_eleven_rows_at_1000x580() {
+    // Removing the CPU/MEMORY/GPU/UPTIME badge row and folding the view toggle
+    // into one 30 px toolbar line should hand the table enough of a 580 px tall
+    // window to clear 11 visible rows (32 px each, per process_table_inner).
+    let settings = ThemeSettings::default();
+    let ctx = egui::Context::default();
+    theme::install(&ctx, settings);
+    let mut app = app(settings, true);
+    app.page = Page::Processes;
+    app.tree_mode = false;
+    app.selected_pid = None;
+    let size = Vec2::new(1000.0, 580.0);
+    let mut output = egui::FullOutput::default();
+    for _ in 0..5 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    // Every fixture PID is a distinct 6-digit number that appears nowhere else
+    // on the page, so a fully unclipped one marks one visible table row.
+    let visible_rows = text_shapes(&output)
+        .into_iter()
+        .filter(|(text, clip)| {
+            let job = &text.galley.job.text;
+            job.len() == 6
+                && job.bytes().all(|b| b.is_ascii_digit())
+                && clip.contains_rect(text.visual_bounding_rect())
+        })
+        .count();
+    assert!(
+        visible_rows >= 11,
+        "expected at least 11 process rows visible at 1000x580, found {visible_rows}"
+    );
 }
 
 #[test]
