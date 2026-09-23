@@ -1355,6 +1355,8 @@ pub struct Kpi<'a> {
     pub label: &'a str,
     pub value: &'a str,
     pub sub: &'a str,
+    /// Drawn instead of `sub` when `sub` does not fit; empty for none.
+    pub sub_short: &'a str,
     pub hover: &'a str,
     pub series: &'a [Option<f32>],
     pub max: Option<f32>,
@@ -1366,8 +1368,8 @@ pub struct Kpi<'a> {
 /// Base height of a [`kpi_tile`], regardless of width.
 pub const KPI_TILE_HEIGHT: f32 = 84.0;
 
-/// A raised, fixed-height at-a-glance tile: a label row, a big value, a small
-/// caption, and a full-width sparkline band along the bottom.
+/// A raised, fixed-height at-a-glance tile: a 12 px label row, a big value, an
+/// 11 px caption, and a full-width sparkline band along the bottom.
 #[cfg(test)]
 pub fn kpi_tile(
     ui: &mut egui::Ui,
@@ -1415,7 +1417,7 @@ pub fn kpi_tile_sized(
     // Sparkline: a full-width band under the caption, so it never runs
     // through the value or the caption at narrow tile widths.
     let spark_rect = egui::Rect::from_min_max(
-        egui::pos2(content.left(), rect.top() + 60.0),
+        egui::pos2(content.left(), rect.top() + 61.0),
         egui::pos2(content.right(), content.bottom()),
     );
     if spark_rect.width() > 2.0 && spark_rect.height() > 2.0 {
@@ -1433,14 +1435,14 @@ pub fn kpi_tile_sized(
     }
 
     // Row 1: label, plus a color dot or a state chip on the right.
-    let row1 = egui::Rect::from_min_size(content.min, Vec2::new(content.width(), 12.0));
+    let row1 = egui::Rect::from_min_size(content.min, Vec2::new(content.width(), 14.0));
     ui.scope_builder(
         egui::UiBuilder::new()
             .max_rect(row1)
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
             ui.add(
-                egui::Label::new(RichText::new(kpi.label).size(11.0).color(t.text_muted))
+                egui::Label::new(RichText::new(kpi.label).size(12.0).color(t.text_muted))
                     .truncate(),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1456,7 +1458,7 @@ pub fn kpi_tile_sized(
 
     // Row 2: the big value.
     let row2 = egui::Rect::from_min_size(
-        egui::pos2(content.left(), rect.top() + 20.0),
+        egui::pos2(content.left(), rect.top() + 21.0),
         Vec2::new(content.width(), 24.0),
     );
     ui.scope_builder(
@@ -1478,16 +1480,28 @@ pub fn kpi_tile_sized(
 
     // Row 3: the caption.
     let row3 = egui::Rect::from_min_max(
-        egui::pos2(content.left(), rect.top() + 44.0),
-        egui::pos2(content.right(), rect.top() + 58.0),
+        egui::pos2(content.left(), rect.top() + 45.0),
+        egui::pos2(content.right(), rect.top() + 59.0),
     );
+    let fits = |text: &str| {
+        ui.painter()
+            .layout_no_wrap(text.to_owned(), FontId::proportional(11.0), t.text_muted)
+            .size()
+            .x
+            <= row3.width()
+    };
+    let caption = if !kpi.sub_short.is_empty() && !fits(kpi.sub) {
+        kpi.sub_short
+    } else {
+        kpi.sub
+    };
     ui.scope_builder(
         egui::UiBuilder::new()
             .max_rect(row3)
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
             ui.add(
-                egui::Label::new(RichText::new(kpi.sub).size(10.0).color(t.text_muted)).truncate(),
+                egui::Label::new(RichText::new(caption).size(11.0).color(t.text_muted)).truncate(),
             );
         },
     );
@@ -1970,6 +1984,7 @@ mod tests {
                                     label: "CPU",
                                     value: "37.2%",
                                     sub: "12 cores",
+                                    sub_short: "",
                                     hover: "CPU utilization",
                                     series: &[Some(1.0), Some(2.0), Some(3.0)],
                                     max: None,

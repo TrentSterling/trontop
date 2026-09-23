@@ -148,12 +148,22 @@ fn drive_without_sensors_is_a_gap_row_not_a_tile() {
 
     let output = render(&mut app, SMALL);
     let texts = text_shapes(&output);
+    let gap_lines: Vec<_> = texts
+        .iter()
+        .filter(|(text, _)| text.galley.job.text.starts_with("Not reported:"))
+        .collect();
+    assert_eq!(gap_lines.len(), 1, "one gap line");
     assert!(
-        texts
-            .iter()
-            .any(|(text, _)| text.galley.job.text.starts_with("No reading:")
-                && text.galley.job.text.contains("WDC WD60EZAX")),
-        "the silent drive is listed on the gap row"
+        gap_lines[0].0.galley.job.text.contains("WDC WD60EZAX"),
+        "the silent drive is listed on the gap line"
+    );
+    // One element: no separate "N missing" or reason chip beside it.
+    assert!(
+        texts.iter().all(|(text, _)| {
+            let text = &text.galley.job.text;
+            !text.ends_with(" missing") && text != "No sensor" && text != "Not checked"
+        }),
+        "the gap line carries no chip"
     );
 }
 
@@ -248,36 +258,8 @@ fn top_list_rows_are_24px_apart_at_every_size() {
 }
 
 #[test]
-fn share_bar_lies_inside_its_own_row_and_clears_the_next_icon() {
-    use super::super::overview::{PROCESS_ROW_HEIGHT, RowLayout};
-    let row = egui::Rect::from_min_size(
-        egui::pos2(200.0, 300.0),
-        Vec2::new(380.0, PROCESS_ROW_HEIGHT),
-    );
-    for value_width in [0.0, 40.0, 70.0] {
-        let layout = RowLayout::new(row, value_width);
-        let next = RowLayout::new(
-            row.translate(Vec2::new(0.0, PROCESS_ROW_HEIGHT)),
-            value_width,
-        );
-        for fraction in [0.0, 0.01, 0.5, 1.0, 3.0] {
-            let bar = layout.bar(fraction);
-            assert!(row.contains_rect(bar), "bar {bar:?} leaves row {row:?}");
-            assert!(bar.height() == 2.0 && bar.bottom() < row.bottom());
-            assert!(!bar.intersects(next.icon), "bar under the next icon");
-            assert!(!bar.intersects(layout.icon) && bar.left() >= layout.name.left());
-            assert!(bar.right() <= layout.value_left + value_width + 0.01);
-            assert!(
-                bar.top() >= layout.line.bottom(),
-                "bar crosses the text line"
-            );
-        }
-    }
-}
-
-#[test]
-fn overview_plan_matches_the_rendered_page_and_fills_tall_windows() {
-    use super::super::overview::{Plan, Shape};
+fn overview_plan_fits_small_windows_and_caps_tile_growth() {
+    use super::super::overview::{CORE_CELL_MAX, KPI_TILE_MAX, Plan, Shape, THERMAL_TILE_MAX};
     let shape = Shape {
         kpi_rows: 1,
         thermal_rows: 1,
@@ -290,31 +272,60 @@ fn overview_plan_matches_the_rendered_page_and_fills_tall_windows() {
     let small = Plan::fit(440.0, &shape);
     assert_eq!(small.slots, 5);
     assert_eq!(small.core_cell, 18.0);
-    // Tall windows spend spare height on rows, then cores, then bands.
-    // 1000x580 leaves a 464 px viewport: the base layout, gaps and degraded
-    // footer included, fits without a scroll bar.
+    // 1000x580 leaves a 464 px viewport: the base layout, gap line and
+    // degraded footer included, fits without a scroll bar.
     assert!(Plan::fit(464.0, &shape).height(&shape) < 464.0);
-    for (viewport, margin) in [(700.0, 8.0), (900.0, 8.0)] {
+    // Spare height goes to rows, then cores, then tiles up to their caps;
+    // the rest stays empty.
+    for viewport in [700.0, 900.0, 2000.0] {
         let plan = Plan::fit(viewport, &shape);
         assert_eq!(plan.slots, 10, "{viewport}");
-        assert_eq!(plan.core_cell, 28.0, "{viewport}");
-        assert!(plan.kpi_height > small.kpi_height && plan.thermal_height > small.thermal_height);
-        let height = plan.height(&shape);
-        assert!(
-            height <= viewport && viewport - height < margin,
-            "{viewport}: plan height {height}"
-        );
+        assert_eq!(plan.core_cell, CORE_CELL_MAX, "{viewport}");
+        assert!(plan.kpi_height <= KPI_TILE_MAX && plan.thermal_height <= THERMAL_TILE_MAX);
+        assert!(plan.height(&shape) < viewport, "{viewport}");
     }
+    let huge = Plan::fit(2000.0, &shape);
+    assert_eq!(huge.kpi_height, KPI_TILE_MAX);
+    assert_eq!(huge.thermal_height, THERMAL_TILE_MAX);
 
-    // Rendered: the page ends within 80 px of the window bottom when tall,
-    // and nothing scrolls.
-    for size in [Vec2::new(1280.0, 800.0), Vec2::new(1600.0, 1000.0)] {
+    // Rendered: tiles stop at their caps on a large window and the page
+    // still ends inside it.
+    for size in [SMALL, Vec2::new(1280.0, 800.0), Vec2::new(1600.0, 1000.0)] {
         let mut app = app(ThemeSettings::default(), true);
+        add_silent_drive(&mut app);
         let output = render(&mut app, size);
+        let texts = text_shapes(&output);
+        let all = rect_shapes(&output);
+        let tile_height = |label: &str| {
+            let pos = texts
+                .iter()
+                .find(|(text, _)| text.galley.job.text == label && text.pos.x > 205.0)
+                .unwrap_or_else(|| panic!("{size:?}: missing tile {label}"))
+                .0
+                .pos;
+            all.iter()
+                .filter(|rect| {
+                    rect.contains(pos + Vec2::splat(1.0))
+                        && rect.width() < size.x * 0.6
+                        && rect.height() >= 60.0
+                })
+                .map(|rect| rect.height())
+                .fold(0.0_f32, f32::max)
+        };
+        let kpi = tile_height("Memory");
+        let thermal = tile_height("GPU power");
+        assert!(
+            (84.0..=KPI_TILE_MAX + 0.5).contains(&kpi),
+            "{size:?}: KPI tile {kpi}"
+        );
+        assert!(
+            (70.0..=THERMAL_TILE_MAX + 0.5).contains(&thermal),
+            "{size:?}: thermal tile {thermal}"
+        );
+        // The last line (the degraded footer or the core strip) is on screen.
         let bottom = output
             .shapes
             .iter()
-            .filter(|clipped| clipped.clip_rect.left() > 196.0 || clipped.clip_rect.left() == 0.0)
             .filter_map(|clipped| {
                 let rect = clipped.shape.visual_bounding_rect();
                 (rect.is_positive()
@@ -325,10 +336,189 @@ fn overview_plan_matches_the_rendered_page_and_fills_tall_windows() {
             })
             .fold(0.0_f32, f32::max);
         assert!(
-            bottom <= size.y && size.y - bottom <= 80.0,
+            bottom <= size.y,
             "{size:?}: Overview content ends at {bottom}"
         );
     }
+}
+
+#[test]
+fn share_fill_spans_the_row_from_its_left_edge_behind_the_text() {
+    use super::super::overview::{PROCESS_ROW_HEIGHT, RowLayout};
+    let row = egui::Rect::from_min_size(
+        egui::pos2(200.0, 300.0),
+        Vec2::new(380.0, PROCESS_ROW_HEIGHT),
+    );
+    for value_width in [0.0, 40.0, 70.0] {
+        let layout = RowLayout::new(row, value_width);
+        for fraction in [0.0, 0.01, 0.5, 1.0, 3.0] {
+            let fill = layout.fill(fraction);
+            assert!(row.contains_rect(fill), "fill {fill:?} leaves row {row:?}");
+            assert_eq!(fill.left(), row.left(), "fill starts at the left edge");
+            assert!(
+                fill.height() >= PROCESS_ROW_HEIGHT - 2.0,
+                "fill covers the row height, not an underline: {fill:?}"
+            );
+            assert!(
+                fill.top() <= layout.name.center().y && fill.bottom() >= layout.name.center().y
+            );
+        }
+        assert!((layout.fill(0.5).width() - row.width() * 0.5).abs() < 0.01);
+        assert!((layout.fill(1.0).width() - row.width()).abs() < 0.01);
+    }
+}
+
+/// Three instances of one executable, differing only in case.
+fn add_find_instances(app: &mut TrontopApp) {
+    let mut snapshot = app.snapshot.clone();
+    for (offset, name) in ["find.exe", "FIND.EXE", "Find.exe"].into_iter().enumerate() {
+        let mut row = snapshot.processes[1].clone();
+        row.pid = 700_000 + offset as u32;
+        row.name = name.into();
+        row.cpu_percent = 4.2;
+        row.memory_bytes = 10_000_000;
+        snapshot.processes.push(row);
+    }
+    snapshot.process_count = snapshot.processes.len();
+    snapshot.sequence += 1;
+    app.accept_sample(snapshot);
+}
+
+fn rect_shapes(output: &egui::FullOutput) -> Vec<egui::Rect> {
+    fn visit(shape: &egui::Shape, out: &mut Vec<egui::Rect>) {
+        match shape {
+            egui::Shape::Rect(rect) => out.push(rect.rect),
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| visit(shape, out)),
+            _ => {}
+        }
+    }
+    let mut all = Vec::new();
+    for clipped in &output.shapes {
+        visit(&clipped.shape, &mut all);
+    }
+    all
+}
+
+#[test]
+fn top_lists_group_instances_by_app_with_a_count_chip() {
+    use super::super::overview::top_apps;
+    let mut app = app(ThemeSettings::default(), true);
+    add_find_instances(&mut app);
+    let top = top_apps(&app.snapshot.processes, false);
+    let find: Vec<_> = top
+        .iter()
+        .filter(|group| group.lead.name.eq_ignore_ascii_case("find.exe"))
+        .collect();
+    assert_eq!(find.len(), 1, "three instances make one row");
+    assert_eq!(find[0].pids.len(), 3);
+    assert!(
+        (find[0].value - 12.6).abs() < 1e-4,
+        "summed CPU {}",
+        find[0].value
+    );
+    assert!(!find[0].partial);
+    assert!(
+        std::ptr::eq(top[0].lead, find[0].lead),
+        "12.6% outranks every single worker"
+    );
+    let memory = top_apps(&app.snapshot.processes, true);
+    assert!(memory.len() <= 10);
+    assert!(
+        memory.windows(2).all(|pair| pair[0].value >= pair[1].value),
+        "memory list is heaviest first"
+    );
+
+    // A non-finite instance is left out of the sum and marks a lower bound.
+    let mut rows = app.snapshot.processes.clone();
+    rows.last_mut().unwrap().cpu_percent = f32::NAN;
+    let partial = top_apps(&rows, false);
+    let find = partial
+        .iter()
+        .find(|group| group.lead.name.eq_ignore_ascii_case("find.exe"))
+        .unwrap();
+    assert!(find.partial && (find.value - 8.4).abs() < 1e-4 && find.pids.len() == 3);
+
+    let output = render(&mut app, SMALL);
+    let texts = text_shapes(&output);
+    let chip = texts
+        .iter()
+        .find(|(text, _)| text.galley.job.text == "x3")
+        .expect("x3 instance chip");
+    let value = texts
+        .iter()
+        .find(|(text, _)| text.galley.job.text == "12.6%")
+        .expect("summed value 12.6%");
+    assert!(
+        (chip.0.visual_bounding_rect().center().y - value.0.visual_bounding_rect().center().y)
+            .abs()
+            < 2.0,
+        "the chip and the summed value share one row"
+    );
+    let names = texts
+        .iter()
+        .filter(|(text, _)| text.galley.job.text.eq_ignore_ascii_case("find.exe"))
+        .count();
+    assert_eq!(names, 1, "find.exe is listed once in Top CPU");
+}
+
+#[test]
+fn top_rows_draw_no_underline_bars() {
+    use super::super::overview::PROCESS_ROW_HEIGHT;
+    let mut app = app(ThemeSettings::default(), true);
+    let output = render(&mut app, SMALL);
+    let names = top_cpu_names(&output);
+    assert!(names.len() >= 5);
+    let all = rect_shapes(&output);
+    let mut fills = 0;
+    for name in &names {
+        for rect in &all {
+            let below = rect.top() >= name.bottom() - 1.0 && rect.top() < name.bottom() + 10.0;
+            let overlaps = rect.left() < name.right() && rect.right() > name.left();
+            assert!(
+                !(below && overlaps && rect.height() <= 4.0),
+                "underline bar {rect:?} under row {name:?}"
+            );
+        }
+        if all.iter().any(|rect| {
+            rect.height() >= PROCESS_ROW_HEIGHT - 2.0
+                && rect.height() <= PROCESS_ROW_HEIGHT
+                && rect.top() <= name.center().y
+                && rect.bottom() >= name.center().y
+                && rect.left() < name.left()
+        }) {
+            fills += 1;
+        }
+    }
+    assert!(
+        fills >= 5,
+        "each top row has a full-height share fill ({fills})"
+    );
+}
+
+#[test]
+fn disk_and_drive_sparklines_follow_the_theme_preset() {
+    let mut colors = Vec::new();
+    for settings in [ThemeSettings::default(), ThemeSettings::copper_legacy()] {
+        let app = app(settings, true);
+        let t = app.colors();
+        let kpis = app.overview_kpis(Instant::now(), t);
+        let disk = kpis.iter().find(|tile| tile.label == "Disk").unwrap();
+        assert_eq!(disk.color, theme::mix(t.accent, t.secondary, 0.25));
+        assert_ne!(disk.color, t.good, "Disk must not use the fixed good color");
+        let (tiles, _) = app.overview_thermals(Instant::now(), t);
+        let drive = tiles
+            .iter()
+            .find(|tile| tile.label == "Fixture NVMe")
+            .unwrap();
+        assert_eq!(drive.color, t.secondary);
+        assert_ne!(drive.color, t.good);
+        colors.push((disk.color, drive.color));
+    }
+    assert_ne!(colors[0].0, colors[1].0, "presets recolor the Disk KPI");
+    assert_ne!(
+        colors[0].1, colors[1].1,
+        "presets recolor drive temperatures"
+    );
 }
 
 #[test]
@@ -345,4 +535,13 @@ fn thermal_band_range_keeps_a_steady_reading_mid_band() {
         "power never ranges below zero"
     );
     assert!(widgets::padded_range(&[None, None], 10.0).is_none());
+}
+
+#[test]
+fn network_short_caption_shares_one_unit() {
+    use super::super::overview::rate_pair;
+    assert_eq!(rate_pair(2_058.0, 6_420.0), "in 2.01 \u{b7} out 6.27 KB/s");
+    assert_eq!(rate_pair(532.0, 1_229.0), "in 0.52 \u{b7} out 1.20 KB/s");
+    assert_eq!(rate_pair(180.0, 146.0), "in 180 \u{b7} out 146 B/s");
+    assert_eq!(rate_pair(0.0, 0.0), "in 0 \u{b7} out 0 B/s");
 }
