@@ -35,4 +35,6 @@ pub use model::{Group, Item, Row, Section, SectionId, SectionState, SummaryLine,
 #[cfg(test)]
 pub use report::probe_text;
 pub use report::{LiveSource, group_text, json, section_text, text};
+#[cfg(test)]
+pub use worker::Provider;
 pub use worker::{CADENCE, Context, Monitor, Snapshot};

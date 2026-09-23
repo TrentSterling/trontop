@@ -52,14 +52,13 @@ fn group_id(section: SectionId, path: &[usize]) -> egui::Id {
 }
 
 impl TrontopApp {
-    /// Called from `logic`: start the workers the first time the System or
-    /// Sensors page is shown and pull the latest published snapshot. Only
+    /// Called from `logic`, and again from `ui` when the page changed in
+    /// that pass: start the workers the first time the System or Sensors
+    /// page is shown and pull the latest published snapshot. Only
     /// publication reads here.
-    pub(super) fn poll_specs(&mut self) {
+    pub(super) fn poll_specs(&mut self, ctx: &egui::Context) {
         let visible = matches!(self.page, Page::System | Page::Sensors);
-        if visible && self.specs.is_none() && self.specs_enabled {
-            self.specs = Some(crate::specs::Monitor::spawn());
-        }
+        self.prepare_page(self.page, ctx);
         // Overview shows CPU temperature and power tiles from the same bridge,
         // but never starts the specs workers itself.
         let visible = visible || (self.page == Page::Overview && self.specs.is_some());
@@ -68,6 +67,21 @@ impl TrontopApp {
             if visible {
                 self.specs_view = monitor.snapshot(self.graphs.now());
             }
+        }
+    }
+
+    /// Starts the specs workers for a System or Hardware sensors visit
+    /// (shown or about to be); no-op for other pages or once started. A
+    /// published read requests one repaint so it reaches the screen at once.
+    pub(super) fn prepare_page(&mut self, page: Page, ctx: &egui::Context) {
+        if matches!(page, Page::System | Page::Sensors)
+            && self.specs.is_none()
+            && self.specs_enabled
+        {
+            let ctx = ctx.clone();
+            self.specs = Some(crate::specs::Monitor::spawn(std::sync::Arc::new(
+                move || ctx.request_repaint(),
+            )));
         }
     }
 
@@ -92,7 +106,8 @@ impl TrontopApp {
                     egui::ScrollArea::vertical()
                         .id_salt("system_nav")
                         .auto_shrink([false, false])
-                        .show(ui, |ui| self.system_nav(ui));
+                        .show(ui, |ui| self.system_nav(ui))
+                        .settled(ui, widgets::VERTICAL);
                 },
             );
             ui.add_space(10.0);
@@ -111,7 +126,8 @@ impl TrontopApp {
                             } else {
                                 self.system_section_body(ui, self.system_section);
                             }
-                        });
+                        })
+                        .settled(ui, widgets::VERTICAL);
                 },
             );
         });

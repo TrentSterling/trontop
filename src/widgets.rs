@@ -11,6 +11,64 @@ mod contrast_tests;
 #[cfg(test)]
 mod table_interaction_tests;
 
+/// Scroll directions for [`settle_scroll_bars`]: `[horizontal, vertical]`.
+pub const VERTICAL: [bool; 2] = [false, true];
+pub const HORIZONTAL: [bool; 2] = [true, false];
+
+/// Trontop's solid scroll bars take layout width. egui decides a bar is
+/// needed only after laying the content out without one, stores that for the
+/// next frame and then slides the bar in over ~5 frames, so a page that
+/// opens or grows past the fold paints full width, then narrows step by step
+/// (text and right-aligned values visibly shift). Call right after a
+/// `ScrollArea` (or table body) with its enabled directions: when the bar
+/// reserved this pass differs from the one the content needs, the bar snaps
+/// to its final width and the pass is discarded and redone, so only the
+/// settled layout reaches the screen. If egui has no pass left, the very
+/// next frame is requested instead of waiting for the next sample.
+pub fn settle_scroll_bars<R>(
+    ui: &egui::Ui,
+    output: &egui::scroll_area::ScrollAreaOutput<R>,
+    directions: [bool; 2],
+) {
+    if ui.spacing().scroll.floating {
+        return;
+    }
+    let ctx = ui.ctx();
+    let mut unsettled = false;
+    for (axis, key) in [(0, "h"), (1, "v")] {
+        if !directions[axis] {
+            continue;
+        }
+        // egui's own test for VisibleWhenNeeded bars with solid scroll bars.
+        let needed = output.inner_rect.size()[axis].ceil() < output.content_size[axis];
+        let id = output.id.with(key);
+        // Same pass, same clock: this reads the width egui reserved.
+        let reserved = ctx.animate_bool_responsive(id, needed);
+        if reserved != if needed { 1.0 } else { 0.0 } {
+            ctx.animate_bool_with_time(id, needed, 0.0);
+            unsettled = true;
+        }
+    }
+    if unsettled {
+        ctx.request_discard("scroll bar reservation changed");
+        if !ctx.will_discard() {
+            ctx.request_repaint();
+        }
+    }
+}
+
+/// [`settle_scroll_bars`] as a suffix: `area.show(ui, add).settled(ui, VERTICAL)`.
+pub trait Settled: Sized {
+    fn settled(self, ui: &egui::Ui, directions: [bool; 2]) -> Self;
+}
+
+impl<R> Settled for egui::scroll_area::ScrollAreaOutput<R> {
+    fn settled(self, ui: &egui::Ui, directions: [bool; 2]) -> Self {
+        settle_scroll_bars(ui, &self, directions);
+        self
+    }
+}
+
 /// Passive labels respond visually without becoming selectable or clickable.
 pub fn hover_label(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
     let background = ui.painter().add(egui::Shape::Noop);
@@ -214,7 +272,15 @@ pub fn status_pill(ui: &mut egui::Ui, label: &str, color: Color32) -> egui::Resp
     response.expect("hover_frame runs its contents once")
 }
 
-pub fn nav_button(ui: &mut egui::Ui, selected: bool, icon: Icon, label: &str, t: Tokens) -> bool {
+/// A navigation rail entry. The caller opens the page on `clicked()` and may
+/// prepare it on `hovered()`.
+pub fn nav_button(
+    ui: &mut egui::Ui,
+    selected: bool,
+    icon: Icon,
+    label: &str,
+    t: Tokens,
+) -> egui::Response {
     let height = if ui.ctx().content_rect().height() < 700.0 {
         28.0
     } else {
@@ -247,7 +313,7 @@ pub fn nav_button(ui: &mut egui::Ui, selected: bool, icon: Icon, label: &str, t:
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, label)
     });
-    response.clicked()
+    response
 }
 
 /// An icon-only or icon-and-label button with the same stable hover geometry.
@@ -1965,7 +2031,8 @@ pub fn inventory_table<const N: usize>(
                         });
                     }
                 })
-            });
+            })
+            .settled(ui, VERTICAL);
     });
     clicked
 }
@@ -2580,7 +2647,7 @@ mod tests {
                                     )),
                                     |ui| match widget {
                                         0 => {
-                                            nav_button(
+                                            let _ = nav_button(
                                                 ui,
                                                 false,
                                                 Icon::Performance,
@@ -2647,7 +2714,7 @@ mod tests {
                                             );
                                         }
                                         9 => {
-                                            nav_button(
+                                            let _ = nav_button(
                                                 ui,
                                                 true,
                                                 Icon::Performance,

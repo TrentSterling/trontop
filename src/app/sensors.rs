@@ -91,7 +91,8 @@ impl TrontopApp {
                 ui.add_space(theme::space::L);
                 self.bridge_sensor_cards(ui, now);
                 ui.add_space(theme::space::L);
-            });
+            })
+            .settled(ui, widgets::VERTICAL);
     }
 
     /// CPU and motherboard readings from the specs sensor bridge. One compact

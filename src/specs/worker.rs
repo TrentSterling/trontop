@@ -22,6 +22,10 @@ pub const LIVE_IDLE_INTERVAL: Duration = Duration::from_secs(30);
 
 pub type Provider = fn(&Context) -> Section;
 pub type LiveProvider = fn(&Context) -> BridgeReadings;
+/// Asks the UI for one repaint when a worker publishes something new, so a
+/// finished read reaches the screen at once instead of on the next system
+/// sample.
+pub type Wake = Arc<dyn Fn() + Send + Sync>;
 
 /// What a provider may know about its own read: a soft deadline and shutdown.
 /// Check `should_stop()` between sub-queries and return what you have (with an
@@ -159,18 +163,34 @@ pub struct Monitor {
 
 impl Monitor {
     /// Starts every section worker (each reads immediately) and the bridge.
-    pub fn spawn() -> Self {
-        Self::spawn_with(provider, super::bridge::read_live)
+    pub fn spawn(wake: Wake) -> Self {
+        Self::spawn_with(provider, super::bridge::read_live, wake)
     }
 
-    fn spawn_with(providers: impl Fn(SectionId) -> Option<Provider>, live: LiveProvider) -> Self {
+    /// Fixture sections and a fixture bridge; no native reads.
+    #[cfg(test)]
+    pub(crate) fn fixture(providers: impl Fn(SectionId) -> Option<Provider>, wake: Wake) -> Self {
+        fn bridge(_: &Context) -> BridgeReadings {
+            BridgeReadings {
+                retry_after: Some(Duration::from_secs(60)),
+                ..Default::default()
+            }
+        }
+        Self::spawn_with(providers, bridge, wake)
+    }
+
+    fn spawn_with(
+        providers: impl Fn(SectionId) -> Option<Provider>,
+        live: LiveProvider,
+        wake: Wake,
+    ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let live_active = Arc::new(AtomicBool::new(true));
         let sections = SectionId::COLLECTED
             .into_iter()
-            .filter_map(|id| providers(id).map(|p| spawn_section(id, p, &stop)))
+            .filter_map(|id| providers(id).map(|p| spawn_section(id, p, &stop, wake.clone())))
             .collect();
-        let live = spawn_live(live, &stop, &live_active);
+        let live = spawn_live(live, &stop, &live_active, wake);
         Self {
             sections,
             live,
@@ -273,7 +293,12 @@ impl Drop for Monitor {
     }
 }
 
-fn spawn_section(id: SectionId, provider: Provider, stop: &Arc<AtomicBool>) -> SectionWorker {
+fn spawn_section(
+    id: SectionId,
+    provider: Provider,
+    stop: &Arc<AtomicBool>,
+    wake: Wake,
+) -> SectionWorker {
     let shared = Arc::new(Mutex::new(Slot::default()));
     let (tx, rx) = mpsc::sync_channel(1);
     let thread_shared = Arc::clone(&shared);
@@ -322,6 +347,8 @@ fn spawn_section(id: SectionId, provider: Provider, stop: &Arc<AtomicBool>) -> S
                         health,
                     };
                 }
+                // Reads are rare (first visit, refresh, every five minutes).
+                wake();
                 match rx.recv_timeout(CADENCE) {
                     Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -338,7 +365,12 @@ fn spawn_section(id: SectionId, provider: Provider, stop: &Arc<AtomicBool>) -> S
     }
 }
 
-fn spawn_live(live: LiveProvider, stop: &Arc<AtomicBool>, active: &Arc<AtomicBool>) -> LiveWorker {
+fn spawn_live(
+    live: LiveProvider,
+    stop: &Arc<AtomicBool>,
+    active: &Arc<AtomicBool>,
+    wake: Wake,
+) -> LiveWorker {
     let initial = Arc::new(BridgeReadings::default());
     let shared = Arc::new(Mutex::new(Arc::clone(&initial)));
     let (tx, rx) = mpsc::sync_channel(1);
@@ -348,6 +380,7 @@ fn spawn_live(live: LiveProvider, stop: &Arc<AtomicBool>, active: &Arc<AtomicBoo
     let thread = thread::Builder::new()
         .name("trontop-specs-live".into())
         .spawn(move || {
+            let mut first = true;
             loop {
                 if thread_stop.load(Ordering::Acquire) {
                     break;
@@ -359,7 +392,8 @@ fn spawn_live(live: LiveProvider, stop: &Arc<AtomicBool>, active: &Arc<AtomicBoo
                     break;
                 }
                 readings.collected_at = Some(at);
-                let wait = if thread_active.load(Ordering::Acquire) {
+                let visible = thread_active.load(Ordering::Acquire);
+                let wait = if visible {
                     readings
                         .retry_after
                         .unwrap_or(LIVE_INTERVAL)
@@ -369,6 +403,11 @@ fn spawn_live(live: LiveProvider, stop: &Arc<AtomicBool>, active: &Arc<AtomicBoo
                 };
                 if let Ok(mut slot) = thread_shared.lock() {
                     *slot = Arc::new(readings);
+                }
+                // The first reading replaces "not checked yet"; later ones
+                // only while a page shows them (at most every second).
+                if std::mem::take(&mut first) || visible {
+                    wake();
                 }
                 match rx.recv_timeout(wait) {
                     Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -442,6 +481,8 @@ mod tests {
 
     #[test]
     fn slow_section_does_not_block_others_and_is_reported_slow() {
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&wakes);
         let mut monitor = Monitor::spawn_with(
             |id| match id {
                 SectionId::Cpu => Some(quick as Provider),
@@ -450,6 +491,9 @@ mod tests {
                 _ => None,
             },
             live,
+            Arc::new(move || {
+                counter.fetch_add(1, Ordering::AcqRel);
+            }),
         );
         // Also wait until the blocked worker has actually begun its first
         // read: thread start order is not guaranteed, and under load the
@@ -461,6 +505,9 @@ mod tests {
                 && s.get(SectionId::Peripherals)
                     .is_some_and(|e| e.section.is_some())
                 && s.bridge.collected_at.is_some()
+                // Two published sections and the first bridge reading each
+                // ask for a repaint; the blocked Memory read has not.
+                && wakes.load(Ordering::Acquire) >= 3
         });
         let cpu = snapshot.get(SectionId::Cpu).unwrap();
         assert_eq!(cpu.health.state, SectionState::Partial);

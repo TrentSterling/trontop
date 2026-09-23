@@ -574,7 +574,7 @@ impl TrontopApp {
                     "Trontop keeps at most 512 histories so the wall stays fast.".into(),
                 );
             }
-        });
+        }).settled(ui, widgets::VERTICAL);
         #[cfg(test)]
         {
             self.graphs.laid_out_cards = laid_out;

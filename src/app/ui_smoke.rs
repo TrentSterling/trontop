@@ -13,6 +13,7 @@ mod cpu_clock;
 mod disks;
 mod export;
 mod failure;
+mod first_paint;
 mod gauntlet;
 mod gpu_adapters;
 mod graphs;
@@ -24,6 +25,7 @@ mod process_perf;
 mod process_sort;
 mod renderer_recovery;
 mod service_retention;
+mod settle;
 mod system;
 mod table_layout;
 

@@ -10,7 +10,7 @@ use crate::process_actions::{Action as ProcessAction, Request as ProcessRequest}
 use crate::sampler::Sampler;
 use crate::theme::{self, ThemeSettings, Tokens};
 use crate::tray::{TrayAction, TrayController};
-use crate::widgets;
+use crate::widgets::{self, Settled as _};
 use eframe::egui;
 use egui::{Align, Color32, FontId, Layout, RichText, Sense, Stroke, Vec2};
 use egui_extras::{Column, TableBuilder};
@@ -714,14 +714,20 @@ impl TrontopApp {
                                 t.text_muted,
                             );
                             for &page in pages {
-                                if widgets::nav_button(
+                                let entry = widgets::nav_button(
                                     ui,
                                     self.page == page,
                                     page.icon(),
                                     page.title(),
                                     t,
-                                ) {
+                                );
+                                if entry.clicked() {
                                     self.page = page;
+                                } else if entry.hovered() {
+                                    // Pointing at System or Hardware sensors
+                                    // starts their workers, so the first
+                                    // reads are usually done by the click.
+                                    self.prepare_page(page, ui.ctx());
                                 }
                                 // Very short windows cannot fit every entry above
                                 // the footer: keep the active one in view, once per
@@ -735,7 +741,8 @@ impl TrontopApp {
                                 }
                             }
                         }
-                    });
+                    })
+                    .settled(ui, widgets::VERTICAL);
             });
     }
 
@@ -1189,7 +1196,7 @@ impl TrontopApp {
                             .color(t.text_muted),
                     );
                 }
-                });
+                }).settled(ui, widgets::VERTICAL);
             });
     }
 
@@ -1285,7 +1292,8 @@ impl TrontopApp {
                     // even narrower window.
                     ui.set_min_width(if detailed { DETAILS_MIN_WIDTH } else { 660.0 });
                     self.process_table_inner(ui, detailed);
-                });
+                })
+                .settled(ui, widgets::HORIZONTAL);
         });
     }
 
@@ -1683,7 +1691,8 @@ impl TrontopApp {
                         clicked_pid = Some(process.pid);
                     }
                 });
-            });
+            })
+            .settled(ui, widgets::VERTICAL);
         if let Some(pid) = clicked_pid {
             self.selected_pid = Some(pid);
         }
@@ -1716,7 +1725,8 @@ impl TrontopApp {
                     egui::ScrollArea::vertical()
                         .id_salt("performance_rail")
                         .auto_shrink([false, false])
-                        .show(ui, |ui| self.performance_rail(ui));
+                        .show(ui, |ui| self.performance_rail(ui))
+                        .settled(ui, widgets::VERTICAL);
                 },
             );
             ui.add_space(8.0);
@@ -1739,7 +1749,8 @@ impl TrontopApp {
                             PerformanceDevice::Gpu => self.gpu_performance(ui),
                             PerformanceDevice::GpuSensors => self.gpu_sensor_performance(ui),
                             PerformanceDevice::PhysicalDisks => self.physical_disks_performance(ui),
-                        });
+                        })
+                        .settled(ui, widgets::VERTICAL);
                 },
             );
         });
@@ -2068,7 +2079,7 @@ impl TrontopApp {
                                 t,
                             );
                         }
-                    });
+                    }).settled(ui, widgets::VERTICAL);
             }
         });
     }
@@ -2435,7 +2446,8 @@ Counters: {state}."
                     let process = &self.snapshot.processes[index];
                     widgets::history_row(ui, rank, process, t);
                 }
-            });
+            })
+            .settled(ui, widgets::VERTICAL);
     }
 
     fn startup_page(&mut self, ui: &mut egui::Ui) {
@@ -2542,7 +2554,8 @@ Counters: {state}."
                             });
                         }
                     })
-                });
+                })
+                .settled(ui, widgets::VERTICAL);
         });
     }
 
@@ -2762,7 +2775,8 @@ Counters: {state}."
                                     }
                                 }
                             });
-                    });
+                    })
+                    .settled(ui, widgets::VERTICAL);
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() {
@@ -3079,7 +3093,7 @@ impl eframe::App for TrontopApp {
         {
             self.accept_sample(snapshot);
         }
-        self.poll_specs();
+        self.poll_specs(ctx);
         if let Some(action) = self.tray.as_ref().and_then(TrayController::poll) {
             match action {
                 TrayAction::Show => {
@@ -3113,6 +3127,7 @@ impl eframe::App for TrontopApp {
             self.preferences_close_dialog(&ctx);
             return;
         }
+        let page = self.page;
         self.process_icons.begin_frame(&ctx);
         self.poll_service_command();
         if let Some(result) = self.exporter.poll() {
@@ -3127,6 +3142,12 @@ impl eframe::App for TrontopApp {
         self.navigation(ui);
         self.command_bar(ui);
         self.inspector(ui);
+        if self.page != page {
+            // `logic` polled the specs workers for the previous page. A page
+            // opened in this pass paints what they have published now (or
+            // starts them), never the view left from its last visit.
+            self.poll_specs(&ctx);
+        }
         let t = self.colors();
         egui::CentralPanel::default()
             .frame(

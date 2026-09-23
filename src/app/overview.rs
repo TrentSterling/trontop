@@ -503,7 +503,8 @@ impl TrontopApp {
                     );
                 }
                 ui.add_space(theme::space::XS);
-            });
+            })
+            .settled(ui, widgets::VERTICAL);
         if let Some(pid) = select_pid {
             self.selected_pid = Some(pid);
             self.page = Page::Processes;

@@ -1,3 +1,4 @@
+use crate::widgets::Settled as _;
 use crate::{
     theme::{self, ThemeSettings, Tokens},
     widgets,
@@ -111,7 +112,7 @@ impl Studio {
                         1 => self.appearance(ui, settings, t),
                         2 => self.presets(ui, settings, t),
                         _ => self.library(ui, settings, t),
-                    });
+                    }).settled(ui, crate::widgets::VERTICAL);
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.add_enabled(Some(*settings) != self.baseline, egui::Button::new("Revert session")).on_hover_text("Restore the theme from when this editor opened. Changes apply live, so use this before closing to undo them.").clicked() {

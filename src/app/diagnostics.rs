@@ -38,7 +38,8 @@ impl TrontopApp {
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         widgets::dialog_body(ui, |ui| self.about_body(ui, ctx, t))
-                    });
+                    })
+                    .settled(ui, widgets::VERTICAL);
             });
         if close {
             self.show_diagnostics = false;
