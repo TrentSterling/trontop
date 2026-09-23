@@ -54,16 +54,18 @@ fn compact_layout_keeps_process_headers_and_actions_visible_without_inspector() 
                     );
                     assert!(!text.galley.elided);
                 }
-                for label in [
-                    "Run task",
-                    "End task",
-                    "Inspector",
-                    "Theme",
-                    "About",
-                    "Export",
-                ] {
-                    visible_text(&output, label);
+                // Compact command bars are icon-only; every action must still be
+                // drawn fully inside the bar. Theme Studio lives in the sidebar.
+                let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
+                for label in ["Run task", "End task", "Inspector", "About", "Export"] {
+                    let rect = command_rect(&ctx, label)
+                        .unwrap_or_else(|| panic!("missing command {label}"));
+                    assert!(
+                        screen.contains_rect(rect) && rect.left() > 196.0 && rect.top() >= 42.0,
+                        "command {label} misplaced at {size:?}/{scale}: {rect:?}"
+                    );
                 }
+                assert!(command_rect(&ctx, "Theme").is_none());
                 assert!(
                     !text_shapes(&output)
                         .iter()
@@ -103,7 +105,7 @@ fn compact_layout_metric_values_and_footer_fit_with_or_without_inspector() {
                 );
                 let footer = visible_text(&output, &footer);
                 assert!(footer.bottom() < size.y - 4.0);
-                visible_text(&output, "Inspector");
+                assert!(command_rect(&ctx, "Inspector").is_some());
             }
         }
     }

@@ -17,6 +17,8 @@ use egui_extras::{Column, TableBuilder};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 const HISTORY_LENGTH: usize = 120;
+/// Sidebar footer: three 20 px meters, host line and a 28 px Theme Studio button.
+const NAV_FOOTER_HEIGHT: f32 = 126.0;
 
 mod diagnostics;
 mod disks;
@@ -81,6 +83,59 @@ impl Page {
         (Self::Sensors, "08", "Hardware sensors"),
         (Self::System, "10", "System"),
     ];
+
+    /// Sidebar groups, top to bottom. Every page appears exactly once.
+    const NAV_GROUPS: [(&'static str, &'static [Self]); 3] = [
+        (
+            "MONITOR",
+            &[
+                Self::Overview,
+                Self::Graphs,
+                Self::Performance,
+                Self::Sensors,
+            ],
+        ),
+        (
+            "PROCESSES",
+            &[Self::Processes, Self::Details, Self::Users, Self::History],
+        ),
+        ("SYSTEM", &[Self::Startup, Self::Services, Self::System]),
+    ];
+
+    /// The page name shown in the navigation and the command bar.
+    fn title(self) -> &'static str {
+        Self::ALL
+            .iter()
+            .find(|(page, _, _)| *page == self)
+            .map_or("", |&(_, _, name)| name)
+    }
+
+    /// One plain-English sentence under the command bar, or nothing.
+    fn intro(self) -> &'static str {
+        match self {
+            Self::Overview => "",
+            Self::Graphs => "Two minutes of every signal. Hover any graph for exact readings.",
+            Self::Processes => "Everything running now. Parent rows include their children.",
+            Self::Performance => "Pick a device on the left for its detail view.",
+            Self::History => "Which processes used the most CPU time and disk since they started.",
+            Self::Startup => "Programs Windows starts when you sign in. Read-only.",
+            Self::Users => "Resource use per Windows account.",
+            Self::Details => "Every process with all counters. Drag column edges to resize.",
+            Self::Services => "Windows services. Start, stop and restart ask first.",
+            Self::Sensors => "Temperatures, power, clocks and fans.",
+            Self::System => "What is inside this PC.",
+        }
+    }
+
+    /// Pages whose search box lives in the command bar, with its hint.
+    fn search_hint(self) -> Option<&'static str> {
+        match self {
+            Self::Processes | Self::Details | Self::History => Some("Search processes"),
+            Self::Startup => Some("Search startup"),
+            Self::Services => Some("Search services"),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -496,14 +551,9 @@ impl TrontopApp {
                         ui,
                         RichText::new("TRONTOP").size(15.0).strong().color(t.text),
                     );
-                    widgets::hover_label(
-                        ui,
-                        RichText::new("SYSTEM CONTROL DECK")
-                            .size(9.0)
-                            .strong()
-                            .color(t.text_muted),
-                    );
-                    ui.add_space(8.0);
+                    ui.add_space(theme::space::XS);
+                    // Live is the normal state and needs no badge. Anything else
+                    // (Starting, Partial, Stale, Unavailable) earns a pill.
                     let state = self
                         .snapshot
                         .diagnostics
@@ -512,11 +562,13 @@ impl TrontopApp {
                             crate::diagnostics::Provider::System,
                             std::time::Instant::now(),
                         );
-                    widgets::status_pill(
-                        ui,
-                        &state.label().to_uppercase(),
-                        diagnostics::state_color(state, t),
-                    );
+                    if state != crate::diagnostics::State::Live {
+                        widgets::status_pill(
+                            ui,
+                            &state.label().to_uppercase(),
+                            diagnostics::state_color(state, t),
+                        );
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if chrome_button(ui, Icon::Close, "Close", t, true).clicked() {
                             self.request_close(ui.ctx());
@@ -582,107 +634,168 @@ impl TrontopApp {
             .frame(
                 egui::Frame::new()
                     .fill(theme::panel_color(self.theme))
-                    .inner_margin(egui::Margin::symmetric(10, 14))
+                    .inner_margin(egui::Margin {
+                        left: 10,
+                        right: 10,
+                        top: 12,
+                        bottom: 10,
+                    })
                     .stroke(Stroke::new(1.0, t.border)),
             )
             .show(root, |ui| {
-                egui::Panel::bottom("navigation_footer")
-                    .exact_size(230.0)
+                let footer = egui::Panel::bottom("navigation_footer")
+                    .exact_size(NAV_FOOTER_HEIGHT)
                     .frame(egui::Frame::NONE)
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 4.0;
-                        widgets::mini_meter(
-                            ui,
-                            "CPU",
-                            (self.seen_generation > 0).then_some(self.snapshot.cpu_percent),
-                            t.accent,
-                            t,
-                        );
-                        widgets::mini_meter(
-                            ui,
-                            "MEMORY",
-                            (self.snapshot.memory_total_bytes > 0)
-                                .then(|| memory_percent(&self.snapshot)),
-                            t.secondary,
-                            t,
-                        );
-                        // Same reading and label as every other GPU surface; the
-                        // old exact-only meter went blank on any partial sample.
-                        let gpu = self.snapshot.gpu.reading();
-                        widgets::mini_meter_text(
-                            ui,
-                            "GPU",
-                            &gpu.label(),
-                            gpu.value(),
-                            theme::mix(t.accent, t.secondary, 0.5),
-                            t,
-                        );
-                        ui.add_space(8.0);
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(if self.snapshot.host_name.is_empty() {
-                                    "Windows PC"
-                                } else {
-                                    &self.snapshot.host_name
-                                })
-                                .size(9.0)
-                                .color(t.text_muted),
-                            )
-                            .truncate(),
-                        );
-                        widgets::hover_label(
-                            ui,
-                            RichText::new(format!(
-                                "Native telemetry | {:.2}s",
-                                self.snapshot.sample_seconds
-                            ))
-                            .size(9.0)
-                            .color(t.text_muted),
-                        );
-                        if widgets::icon_button(
-                            ui,
-                            Icon::Theme,
-                            "Theme Studio",
-                            Vec2::new(ui.available_width(), 31.0),
-                            t.accent_dim,
-                            t,
-                        )
-                        .clicked()
-                        {
-                            self.show_theme_editor = true;
-                        }
-                    });
+                    .show(ui, |ui| self.navigation_footer(ui, t))
+                    .response
+                    .rect;
+                // Hairline between the page list and the meters, in the gap
+                // above the footer (no extra height).
+                ui.painter().hline(
+                    footer.x_range(),
+                    footer.top() - 4.0,
+                    Stroke::new(1.0, t.border),
+                );
                 egui::ScrollArea::vertical()
                     .id_salt("navigation_scroll")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 3.0;
-                        widgets::hover_label(
-                            ui,
-                            RichText::new("CONTROL")
-                                .size(9.0)
-                                .strong()
-                                .color(t.text_muted),
-                        );
-                        ui.add_space(3.0);
+                        ui.spacing_mut().item_spacing.y = 2.0;
                         let reveal = (self.page, ui.ctx().content_rect().height() as u32);
-                        for (page, _, label) in Page::ALL {
-                            if widgets::nav_button(ui, self.page == page, page.icon(), label, t) {
-                                self.page = page;
+                        for (group, (heading, pages)) in Page::NAV_GROUPS.into_iter().enumerate() {
+                            if group > 0 {
+                                ui.add_space(theme::space::S);
                             }
-                            // Short windows cannot fit every entry above the
-                            // footer: keep the active one in view, once per
-                            // page or height change (no per-frame scrolling).
-                            if page == reveal.0 && self.nav_revealed != Some(reveal) {
-                                ui.scroll_to_cursor_animation(
-                                    None,
-                                    egui::style::ScrollAnimation::none(),
-                                );
-                                self.nav_revealed = Some(reveal);
+                            let (rect, _) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), 12.0),
+                                Sense::hover(),
+                            );
+                            ui.painter().text(
+                                rect.left_bottom() + Vec2::new(4.0, -1.0),
+                                egui::Align2::LEFT_BOTTOM,
+                                heading,
+                                FontId::proportional(9.0),
+                                t.text_muted,
+                            );
+                            for &page in pages {
+                                if widgets::nav_button(
+                                    ui,
+                                    self.page == page,
+                                    page.icon(),
+                                    page.title(),
+                                    t,
+                                ) {
+                                    self.page = page;
+                                }
+                                // Very short windows cannot fit every entry above
+                                // the footer: keep the active one in view, once per
+                                // page or height change (no per-frame scrolling).
+                                if page == reveal.0 && self.nav_revealed != Some(reveal) {
+                                    ui.scroll_to_cursor_animation(
+                                        None,
+                                        egui::style::ScrollAnimation::none(),
+                                    );
+                                    self.nav_revealed = Some(reveal);
+                                }
                             }
                         }
                     });
             });
+    }
+
+    /// Frameless meters, host line and Theme Studio. Fixed height so the page
+    /// list above it never has to scroll at 1000x580.
+    fn navigation_footer(&mut self, ui: &mut egui::Ui, t: Tokens) {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let has_sample = self.seen_generation > 0;
+        let cpu = has_sample.then_some(self.snapshot.cpu_percent);
+        widgets::mini_meter_text(
+            ui,
+            "CPU",
+            &cpu.map_or_else(|| "--".into(), format::percent),
+            cpu,
+            &self.cpu_history,
+            t.accent,
+            t,
+        )
+        .on_hover_text(if has_sample {
+            "Whole-machine CPU load. The line shows the last two minutes."
+        } else {
+            "Waiting for the first system sample."
+        });
+        ui.add_space(theme::space::S);
+        let memory = (self.snapshot.memory_total_bytes > 0).then(|| memory_percent(&self.snapshot));
+        widgets::mini_meter_text(
+            ui,
+            "MEMORY",
+            &memory.map_or_else(|| "--".into(), format::percent),
+            memory,
+            &self.memory_history,
+            t.secondary,
+            t,
+        )
+        .on_hover_text(if memory.is_some() {
+            format!(
+                "{} of {} physical memory in use.",
+                format::bytes(self.snapshot.memory_used_bytes),
+                format::bytes(self.snapshot.memory_total_bytes)
+            )
+        } else {
+            "Waiting for the first system sample.".into()
+        });
+        ui.add_space(theme::space::S);
+        // Same reading as every other GPU surface: a partial sample shows its
+        // lower bound as "3.1%+", and only a missing reading shows "--".
+        let gpu = self.snapshot.gpu.reading();
+        widgets::mini_meter_text(
+            ui,
+            "GPU",
+            &gpu.value().map_or_else(|| "--".into(), |_| gpu.label()),
+            gpu.value(),
+            &self.gpu_history,
+            theme::mix(t.accent, t.secondary, 0.5),
+            t,
+        )
+        .on_hover_text(gpu.explanation());
+        ui.add_space(theme::space::M);
+        let host = if self.snapshot.host_name.is_empty() {
+            "Windows PC"
+        } else {
+            &self.snapshot.host_name
+        };
+        let line = if self.snapshot.sample_seconds > 0.0 {
+            format!("{host} \u{b7} {:.1} s", self.snapshot.sample_seconds)
+        } else {
+            host.to_owned()
+        };
+        ui.allocate_ui_with_layout(
+            Vec2::new(ui.available_width(), 12.0),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(line).size(9.0).color(t.text_muted))
+                        .truncate()
+                        .selectable(false),
+                )
+                .on_hover_text(
+                    "Computer name and sample interval. Telemetry runs in the background.",
+                );
+            },
+        );
+        ui.add_space(theme::space::S);
+        if widgets::icon_button(
+            ui,
+            Icon::Theme,
+            "Theme Studio",
+            Vec2::new(ui.available_width(), 28.0),
+            t.accent_dim,
+            t,
+        )
+        .on_hover_text("Colors, presets and appearance (Ctrl+T)")
+        .clicked()
+        {
+            self.show_theme_editor = true;
+        }
     }
 
     fn command_bar(&mut self, root: &mut egui::Ui) {
@@ -696,66 +809,76 @@ impl TrontopApp {
                     .stroke(Stroke::new(1.0, t.border)),
             )
             .show(root, |ui| {
+                #[cfg(test)]
+                ui.ctx().data_mut(|data| {
+                    data.remove_temp::<Vec<(String, egui::Rect)>>(command_rects_id());
+                });
+                // Labels need about 1100 px of content width; below that the
+                // buttons keep their icons and say what they do on hover.
+                let compact = ui.max_rect().width() + 36.0 < 1100.0;
                 ui.horizontal_centered(|ui| {
                     widgets::hover_label(
                         ui,
-                        RichText::new(match self.page {
-                            Page::Overview => "MACHINE OVERVIEW",
-                            Page::Graphs => "LIVE GRAPH WALL",
-                            Page::Sensors => "HARDWARE SENSORS",
-                            Page::Processes => "PROCESS MATRIX",
-                            Page::Performance => "PERFORMANCE ARRAY",
-                            Page::History => "RESOURCE HISTORY",
-                            Page::Startup => "BOOT SEQUENCE",
-                            Page::Users => "USER SESSIONS",
-                            Page::Details => "PROCESS DETAILS",
-                            Page::Services => "SERVICE CONTROL",
-                            Page::System => "SYSTEM SPECIFICATIONS",
-                        })
-                        .size(10.0)
-                        .strong()
-                        .color(t.text_muted),
+                        RichText::new(self.page.title())
+                            .size(17.0)
+                            .strong()
+                            .color(t.text),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if widgets::icon_button(
-                            ui,
-                            Icon::Startup,
-                            "Run task",
-                            Vec2::ZERO,
-                            t.accent_dim,
-                            t,
-                        )
-                        .clicked()
+                        if command_button(ui, Icon::Startup, "Run task", compact, t.accent_dim, t)
+                            .on_hover_text("Start a program or command (Ctrl+R)")
+                            .clicked()
                         {
                             self.show_run_task = true;
                         }
-                        if matches!(self.page, Page::Processes | Page::Details)
-                            && ui
-                                .add_enabled_ui(self.selected_pid.is_some() && !self.process_actions.busy(), |ui| {
-                                    widgets::icon_button(
+                        if command_button(ui, Icon::Info, "About", compact, t.panel_raised, t)
+                            .on_hover_text("Version, telemetry providers and support report")
+                            .clicked()
+                        {
+                            self.show_diagnostics = true;
+                        }
+                        if command_button(ui, Icon::Export, "Export", compact, t.panel_raised, t)
+                            .on_hover_text("Save a snapshot as CSV or JSON")
+                            .clicked()
+                        {
+                            if !self.exporter.busy() {
+                                self.export_options = crate::export::Options::default();
+                                self.export_result = None;
+                            }
+                            self.show_export = true;
+                        }
+                        if matches!(self.page, Page::Processes | Page::Details) {
+                            ui.add_space(theme::space::M);
+                            let can_end =
+                                self.selected_pid.is_some() && !self.process_actions.busy();
+                            if ui
+                                .add_enabled_ui(can_end, |ui| {
+                                    command_button(
                                         ui,
                                         Icon::Stop,
                                         "End task",
-                                        Vec2::ZERO,
+                                        compact,
                                         t.panel_raised,
                                         t,
                                     )
                                 })
                                 .inner
+                                .on_disabled_hover_text("Select a process to end it.")
                                 .clicked()
-                        {
-                            self.request_end_selected();
-                        }
-                        if matches!(self.page, Page::Processes | Page::Details) {
+                            {
+                                self.request_end_selected();
+                            }
                             let selected = self.selected_pid.is_some();
                             let fill = if selected && self.inspector_visible {
                                 t.accent_dim
                             } else {
                                 t.panel_raised
                             };
-                            if ui.add_enabled_ui(selected, |ui| {
-                                widgets::icon_button(ui, Icon::Details, "Inspector", Vec2::ZERO, fill, t)
-                            }).inner
+                            if ui
+                                .add_enabled_ui(selected, |ui| {
+                                    command_button(ui, Icon::Details, "Inspector", compact, fill, t)
+                                })
+                                .inner
                                 .on_hover_text(if self.inspector_visible {
                                     "Hide inspector and give the table more room. Selection is retained."
                                 } else {
@@ -767,45 +890,32 @@ impl TrontopApp {
                                 self.inspector_visible = !self.inspector_visible;
                             }
                         }
-                        if widgets::icon_button(
-                            ui,
-                            Icon::Theme,
-                            "Theme",
-                            Vec2::ZERO,
-                            t.panel_raised,
-                            t,
-                        )
-                        .clicked()
-                        {
-                            self.show_theme_editor = true;
-                        }
-                        if widgets::icon_button(
-                            ui,
-                            Icon::Info,
-                            "About",
-                            Vec2::ZERO,
-                            t.panel_raised,
-                            t,
-                        )
-                        .clicked()
-                        {
-                            self.show_diagnostics = true;
-                        }
-                        if widgets::icon_button(
-                            ui,
-                            Icon::Export,
-                            "Export",
-                            Vec2::ZERO,
-                            t.panel_raised,
-                            t,
-                        )
-                        .clicked()
-                        {
-                            if !self.exporter.busy() {
-                                self.export_options = crate::export::Options::default();
-                                self.export_result = None;
+                        if let Some(hint) = self.page.search_hint() {
+                            ui.add_space(theme::space::M);
+                            let width = (ui.available_width() - theme::space::M).min(220.0);
+                            if width >= 96.0 {
+                                let processes = matches!(
+                                    self.page,
+                                    Page::Processes | Page::Details | Page::History
+                                );
+                                let query = if processes {
+                                    &mut self.query
+                                } else {
+                                    &mut self.secondary_query
+                                };
+                                let edit = egui::TextEdit::singleline(query)
+                                    .hint_text(hint)
+                                    .margin(egui::Margin::symmetric(10, 6))
+                                    .desired_width(width);
+                                let response = ui.add(edit).on_hover_text(match self.page {
+                                    Page::Startup => "Filter by name, command or source",
+                                    Page::Services => "Filter by service or display name",
+                                    _ => "Search name, user, PID, executable path, or command line",
+                                });
+                                if processes && response.changed() {
+                                    self.rebuild_visible_processes();
+                                }
                             }
-                            self.show_export = true;
                         }
                     });
                 });
@@ -1096,27 +1206,26 @@ impl TrontopApp {
         widgets::hover_label(ui, RichText::new(footer).size(10.0).color(t.text_muted));
     }
 
-    fn page_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str, searchable: bool) {
+    /// The command bar owns the page title and search box, so a page header is
+    /// only the page's one-line intro ([`Page::intro`]), or nothing. The
+    /// arguments are kept so page modules need no signature churn; the copy
+    /// lives in one table so every page reads the same way.
+    fn page_header(&mut self, ui: &mut egui::Ui, _title: &str, _subtitle: &str, _searchable: bool) {
+        self.page_intro(ui);
+    }
+
+    fn page_intro(&self, ui: &mut egui::Ui) {
+        let intro = self.page.intro();
+        if intro.is_empty() {
+            return;
+        }
         let t = self.colors();
-        ui.horizontal(|ui| {
-            ui.heading(RichText::new(title).size(24.0).strong().color(t.text));
-            if searchable {
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let edit = egui::TextEdit::singleline(&mut self.query)
-                        .hint_text("Search processes...")
-                        .margin(egui::Margin::symmetric(10, 7))
-                        .desired_width(ui.available_width().clamp(140.0, 300.0));
-                    if ui
-                        .add(edit)
-                        .on_hover_text("Search name, user, PID, executable path, or command line")
-                        .changed()
-                    {
-                        self.rebuild_visible_processes();
-                    }
-                });
-            }
-        });
-        widgets::hover_label(ui, RichText::new(subtitle).size(11.0).color(t.text_muted));
+        // A truncated label shows its full text on hover.
+        ui.add(
+            egui::Label::new(RichText::new(intro).size(11.0).color(t.text_muted))
+                .truncate()
+                .selectable(false),
+        );
     }
 
     fn telemetry_strip(&self, ui: &mut egui::Ui) {
@@ -2256,20 +2365,9 @@ impl TrontopApp {
         self.service_inventory(ui);
     }
 
-    fn inventory_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str, hint: &str) {
-        let t = self.colors();
-        ui.horizontal(|ui| {
-            ui.heading(RichText::new(title).color(t.text));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.secondary_query)
-                        .hint_text(hint)
-                        .margin(egui::Margin::symmetric(10, 7))
-                        .desired_width(ui.available_width().clamp(140.0, 300.0)),
-                );
-            });
-        });
-        widgets::hover_label(ui, RichText::new(subtitle).size(11.0).color(t.text_muted));
+    /// Startup and Services: the search box is in the command bar now.
+    fn inventory_header(&mut self, ui: &mut egui::Ui, _title: &str, _subtitle: &str, _hint: &str) {
+        self.page_intro(ui);
     }
 
     fn confirm_end_task(&mut self, ctx: &egui::Context) {
@@ -2832,7 +2930,14 @@ impl eframe::App for TrontopApp {
             .frame(
                 egui::Frame::new()
                     .fill(theme::panel_color(self.theme))
-                    .inner_margin(egui::Margin::same(18))
+                    // A short top edge: the page title already sits in the
+                    // command bar right above.
+                    .inner_margin(egui::Margin {
+                        left: 18,
+                        right: 18,
+                        top: 10,
+                        bottom: 18,
+                    })
                     .stroke(Stroke::new(1.0, t.border)),
             )
             .show(ui, |ui| match self.page {
@@ -2867,6 +2972,40 @@ impl eframe::App for TrontopApp {
         self.preferences.schedule(&ctx);
         self.preferences_close_dialog(&ctx);
     }
+}
+
+/// A command-bar action. Compact bars draw the icon only; the label stays the
+/// accessible name and the hover text.
+fn command_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    compact: bool,
+    base: Color32,
+    t: Tokens,
+) -> egui::Response {
+    let response = if compact {
+        let response = widgets::icon_button(ui, icon, "", Vec2::new(32.0, 28.0), base, t);
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+        });
+        response.on_hover_text(label)
+    } else {
+        widgets::icon_button(ui, icon, label, Vec2::new(0.0, 28.0), base, t)
+    };
+    #[cfg(test)]
+    ui.ctx().data_mut(|data| {
+        data.get_temp_mut_or_default::<Vec<(String, egui::Rect)>>(command_rects_id())
+            .push((label.to_owned(), response.rect));
+    });
+    response
+}
+
+/// Test hook: command buttons drawn this frame, by label. Icon-only buttons
+/// have no text shape for tests to find.
+#[cfg(test)]
+fn command_rects_id() -> egui::Id {
+    egui::Id::new("trontop_command_rects")
 }
 
 fn chrome_button(

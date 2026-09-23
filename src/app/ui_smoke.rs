@@ -506,11 +506,8 @@ fn all_pages_render_headlessly_across_sizes_themes_and_empty_data() {
                             output = frame(&ctx, &mut app, size, vec![]);
                         }
                         let texts = text_shapes(&output);
-                        let title = if page == Page::History {
-                            "Resource history"
-                        } else {
-                            name
-                        };
+                        // The page title lives in the command bar.
+                        let title = name;
                         assert!(
                             texts
                                 .iter()
@@ -794,7 +791,8 @@ fn compact_sidebar_preserves_footer_and_performance_details_are_scrollable() {
     let texts = text_shapes(&output);
     let footer = texts
         .iter()
-        .find(|(text, _)| text.galley.job.text.starts_with("Native telemetry"))
+        // Host name and sample interval share one footer line.
+        .find(|(text, _)| text.galley.job.text.contains('\u{b7}') && text.pos.x < 196.0)
         .unwrap()
         .0
         .visual_bounding_rect();
@@ -1424,6 +1422,15 @@ fn failed_inventory_cannot_replace_newer_command_observation_but_complete_read_c
     assert!(!app.service_status(&app.snapshot.services[0]).1);
 }
 
+/// Where the command bar drew the button labelled `label` in the last frame.
+fn command_rect(ctx: &egui::Context, label: &str) -> Option<egui::Rect> {
+    ctx.data(|data| data.get_temp::<Vec<(String, egui::Rect)>>(command_rects_id()))
+        .unwrap_or_default()
+        .into_iter()
+        .find(|(name, _)| name == label)
+        .map(|(_, rect)| rect)
+}
+
 fn click_local_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label: &str) {
     click_local_text_output(ctx, app, size, label);
 }
@@ -1440,15 +1447,16 @@ fn click_local_text_output(
     for _ in 0..20 {
         output.append(frame(ctx, app, size, vec![]));
     }
+    // Compact command bars draw icon-only buttons with no text shape; fall
+    // back to the button the command bar recorded under that label.
     let position = text_shapes(&output)
         .iter()
         .find(|(text, clip)| {
             text.galley.job.text == label && clip.contains_rect(text.visual_bounding_rect())
         })
-        .unwrap_or_else(|| panic!("missing visible local control {label}"))
-        .0
-        .visual_bounding_rect()
-        .center();
+        .map(|(text, _)| text.visual_bounding_rect().center())
+        .or_else(|| command_rect(ctx, label).map(|rect| rect.center()))
+        .unwrap_or_else(|| panic!("missing visible local control {label}"));
     for pressed in [true, false] {
         output.append(frame(
             ctx,
@@ -1619,6 +1627,105 @@ fn sidebar_gpu_meter_shows_measured_and_partial_readings_not_dashes() {
     assert!(partial.exact().is_none() && partial.value().is_some());
     assert!(partial.label().ends_with('+'));
     assert!(meter_text(&output, &partial.label()), "partial GPU meter");
+}
+
+#[test]
+fn app_shell_fits_1000x580_with_grouped_nav_titles_and_short_chrome() {
+    let mut grouped: Vec<Page> = Vec::new();
+    for (_, pages) in Page::NAV_GROUPS {
+        grouped.extend_from_slice(pages);
+    }
+    assert_eq!(grouped.len(), Page::ALL.len());
+    for (page, _, _) in Page::ALL {
+        assert_eq!(grouped.iter().filter(|p| **p == page).count(), 1);
+    }
+    let removed = [
+        "SYSTEM CONTROL DECK",
+        "MACHINE OVERVIEW",
+        "LIVE GRAPH WALL",
+        "HARDWARE SENSORS",
+        "PROCESS MATRIX",
+        "PERFORMANCE ARRAY",
+        "RESOURCE HISTORY",
+        "BOOT SEQUENCE",
+        "USER SESSIONS",
+        "PROCESS DETAILS",
+        "SERVICE CONTROL",
+        "SYSTEM SPECIFICATIONS",
+        "CONTROL",
+    ];
+    for settings in [
+        ThemeSettings::default(),
+        ThemeSettings {
+            dark: false,
+            ..ThemeSettings::copper_legacy()
+        },
+    ] {
+        let ctx = egui::Context::default();
+        theme::install(&ctx, settings);
+        let mut app = app(settings, true);
+        let size = Vec2::new(1000.0, 580.0);
+        for (page, _, name) in Page::ALL {
+            app.page = page;
+            let mut output = frame(&ctx, &mut app, size, vec![]);
+            for _ in 0..3 {
+                output = frame(&ctx, &mut app, size, vec![]);
+            }
+            let texts = text_shapes(&output);
+            let sidebar = |label: &str| {
+                texts
+                    .iter()
+                    .find(|(text, _)| text.galley.job.text == label && text.pos.x < 196.0)
+                    .unwrap_or_else(|| panic!("missing sidebar text {label} on {name}"))
+            };
+            // Every nav entry sits fully inside the nav clip, above the footer:
+            // nothing is scrolled away and no scrollbar is needed.
+            let footer_top = sidebar("CPU").0.visual_bounding_rect().top();
+            for (_, _, entry) in Page::ALL {
+                let (text, clip) = sidebar(entry);
+                let rect = text.visual_bounding_rect();
+                assert!(
+                    clip.contains_rect(rect) && rect.bottom() < footer_top,
+                    "nav entry {entry} clipped or under the footer on {name}: {rect:?}"
+                );
+            }
+            let (_, clip) = sidebar("Theme Studio");
+            assert!(clip.contains_rect(sidebar("Theme Studio").0.visual_bounding_rect()));
+            assert!(sidebar("Theme Studio").0.visual_bounding_rect().bottom() <= size.y);
+            // The page title is in the 44 px command bar under the 42 px title bar.
+            let (title, clip) = texts
+                .iter()
+                .find(|(text, _)| {
+                    text.galley.job.text == name && text.pos.x >= 196.0 && text.pos.y < 86.0
+                })
+                .unwrap_or_else(|| panic!("missing command bar title {name}"));
+            assert!(clip.contains_rect(title.visual_bounding_rect()));
+            assert!(!title.galley.elided);
+            for gone in removed {
+                assert!(
+                    !texts.iter().any(|(text, _)| text.galley.job.text == gone),
+                    "{gone} still drawn on {name}"
+                );
+            }
+            assert!(command_rect(&ctx, "Theme").is_none());
+            assert!(command_rect(&ctx, "Run task").is_some());
+            // Chrome budget: title bar, command bar and intro end by 110 px.
+            let intro = page.intro();
+            if !intro.is_empty() {
+                let (text, clip) = texts
+                    .iter()
+                    .find(|(text, _)| text.galley.job.text == intro)
+                    .unwrap_or_else(|| panic!("missing intro on {name}"));
+                let rect = text.visual_bounding_rect();
+                assert_eq!(text.galley.rows.len(), 1, "intro wrapped on {name}");
+                assert!(clip.contains_rect(rect));
+                assert!(
+                    rect.bottom() <= 110.0,
+                    "chrome too tall on {name}: {rect:?}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

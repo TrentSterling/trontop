@@ -302,34 +302,86 @@ fn paint_interactive_surface(
     fill
 }
 
-pub fn mini_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32, t: Tokens) {
-    let text = value.map_or_else(|| "-- %".into(), format::percent);
-    mini_meter_text(ui, label, &text, value, color, t);
-}
-
-/// Mini meter with caller-formatted text, e.g. a GPU lower bound shown as `3.1%+`.
+/// Frameless 20 px sidebar meter: label left, a 40x10 two-minute sparkline and
+/// the caller-formatted value right (e.g. a GPU lower bound shown as `3.1%+`),
+/// and a 3 px bar underneath. A missing value reads as a muted `--`, never 0.
+/// `history` uses NaN for missing samples, which the sparkline leaves as gaps.
 pub fn mini_meter_text(
     ui: &mut egui::Ui,
     label: &str,
     text: &str,
     value: Option<f32>,
+    history: &VecDeque<f32>,
     color: Color32,
     t: Tokens,
-) {
-    hover_frame(ui, surface(ui, t, false), |ui| {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(label).size(10.0).color(t.text_muted));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(RichText::new(text).monospace().size(10.0).color(t.text));
-            });
-        });
-        ui.add(
-            egui::ProgressBar::new((value.unwrap_or(0.0) / 100.0).clamp(0.0, 1.0))
-                .fill(t.ink(color))
-                .desired_width(ui.available_width())
-                .desired_height(3.0),
-        );
+) -> egui::Response {
+    const VALUE_WIDTH: f32 = 46.0;
+    const SPARK: Vec2 = Vec2::new(40.0, 10.0);
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
+    let painter = ui.painter_at(rect.expand(1.0));
+    let text_y = rect.top() + 7.0;
+    painter.text(
+        egui::pos2(rect.left(), text_y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(10.0),
+        t.text_muted,
+    );
+    painter.text(
+        egui::pos2(rect.right(), text_y),
+        egui::Align2::RIGHT_CENTER,
+        text,
+        FontId::monospace(10.0),
+        if value.is_some() {
+            t.text
+        } else {
+            t.text_muted
+        },
+    );
+    let spark = egui::Rect::from_min_size(
+        egui::pos2(
+            rect.right() - VALUE_WIDTH - 4.0 - SPARK.x,
+            text_y - SPARK.y / 2.0,
+        ),
+        SPARK,
+    );
+    sparkline(
+        &painter,
+        spark,
+        history.iter().map(|value| Some(*value)),
+        100.0,
+        color,
+        t,
+    );
+    let track = egui::Rect::from_min_max(
+        egui::pos2(rect.left(), rect.bottom() - 3.0),
+        rect.right_bottom(),
+    );
+    // Hover lifts the track: the meter is frameless, but still answers the
+    // pointer before its tooltip appears.
+    let track_fill = if response.hovered() {
+        theme::mix(t.panel_raised, t.text_muted, 0.45)
+    } else {
+        theme::mix(t.panel_raised, t.border, 0.5)
+    };
+    painter.rect_filled(track, 1.5, track_fill);
+    if let Some(value) = value {
+        let fraction = (value / 100.0).clamp(0.0, 1.0);
+        if fraction > 0.0 {
+            let mut fill = track;
+            fill.set_width((track.width() * fraction).max(2.0));
+            painter.rect_filled(fill, 1.5, t.ink(color));
+        }
+    }
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::ProgressIndicator,
+            true,
+            format!("{label} {text}"),
+        )
     });
+    response
 }
 
 pub fn stat_card(
@@ -1838,7 +1890,17 @@ mod tests {
                                             t,
                                         ),
                                         5 => status_pill(ui, "LIVE", t.good),
-                                        6 => mini_meter(ui, "CPU", Some(37.2), t.accent, t),
+                                        6 => {
+                                            mini_meter_text(
+                                                ui,
+                                                "CPU",
+                                                "37.2%",
+                                                Some(37.2),
+                                                &VecDeque::from([12.0, 37.2]),
+                                                t.accent,
+                                                t,
+                                            );
+                                        }
                                         7 => engine_meter(ui, "3D", Some(37.2), t.accent, t),
                                         8 => {
                                             action_button(

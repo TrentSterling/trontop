@@ -415,7 +415,8 @@ fn switching_process_pages_never_leaves_an_invisible_sort_key() {
             let marked_headers = text_shapes(&output)
                 .into_iter()
                 .filter(|(text, clip)| {
-                    text.pos.y > 150.0
+                    // Below the title bar and command bar.
+                    text.pos.y > 86.0
                         && clip.contains_rect(text.visual_bounding_rect())
                         && (text.galley.job.text.ends_with("  ^")
                             || text.galley.job.text.ends_with("  v"))
