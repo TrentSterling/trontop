@@ -95,6 +95,7 @@ fn main() -> io::Result<()> {
         .set("Comments", "Native Windows process and performance manager")
         .set("FileVersion", &version)
         .set("ProductVersion", &version)
+        .set("PrivateBuild", &identity)
         .set_version_info(winresource::VersionInfo::FILEVERSION, numeric_version)
         .set_version_info(winresource::VersionInfo::PRODUCTVERSION, numeric_version);
     if version.contains('-') {
