@@ -3,7 +3,7 @@
 Trontop is an active hand-driven Codex project. The overnight coordination loop
 must not modify this repository.
 
-## Current checkpoint: public preview preparation
+## Current checkpoint: public preview published
 
 2026-09-24: Trent approved source publication and distribution, including the
 product page/blog/gallery/OG image. License: Apache 2.0 + Commons Clause 1.0,
@@ -11,7 +11,11 @@ retained attribution, free personal/workplace use. Alpha.41 adds packaging and
 222 dependency notices; alpha.39/40 feature changes are included. Current
 verification: 429 ordinary tests pass, 48 ignored; fmt/strict Clippy/release pass;
 16 synthetic demo-data UI renders and three-width dark/light browser checks pass.
-Public URLs must be verified after publishing. See A36 and docs/MARKETING.md.
+Source and alpha.41 release are now public. The release is the passing Windows CI
+artifact from commit `92a6d4cc5d136592699904482b11808bd1189ca2`, with embedded identity
+and ZIP checksums verified. Product page, blog, 35 assets and public browser
+interactions pass anonymous checks. See A36, `docs/PUBLIC_LAUNCH_2026-09-24.md`
+and `docs/MARKETING.md`. Native/clean-machine/soak acceptance remains open.
 
 ## Previous checkpoint
 

@@ -1,12 +1,17 @@
-# Public preview preparation, 2026-09-24
+# Public preview published, 2026-09-24
 
 Alpha.41 includes the accepted alpha.39/40 theme and polish slices plus
 Apache 2.0 + Commons Clause, attribution/dependency notices, reproducible
 public screenshots/themes/OG, and Windows release packaging.
 Local checks: 429 passed, 48 ignored; fmt, strict Clippy and release build pass.
 Browser checks pass at 390/768/1280 in light/dark, including preview interactions.
-Publication and exact CI artifact verification pending. Native and clean-machine
-acceptance remain explicitly open in docs/RELEASE_ALPHA41.md.
+Public source and release are live at tag `v0.3.0-alpha.41`, commit
+`92a6d4cc5d136592699904482b11808bd1189ca2`. The published executable is from passing
+Windows CI run `36068499326`, not the local build. Embedded identity, ZIP contents,
+and anonymous public download checksums pass. Product page and blog deployments
+pass; 35 live assets, theme switching, lightbox, mode persistence and mobile layout
+were checked. Full receipt: `PUBLIC_LAUNCH_2026-09-24.md`. Native and clean-machine
+acceptance remain explicitly open in `RELEASE_ALPHA41.md`.
 
 # Trontop current state
 

@@ -31,9 +31,11 @@ Alpha.41 is an unsigned development preview. Native/clean-machine/extended-soak
 checks below remain open and are disclosed in `docs/RELEASE_ALPHA41.md`; this
 launch does not assert that the broader completion ledger is closed.
 
-- [ ] **A36: Public preview and launch materials. IN PROGRESS.** Build/test/package
-  locally, verify exact CI artifact, publish repository/release/site/blog, and
-  check anonymous URLs. Media: 16 real UI renders with demo data and 12 themes.
+- [x] **A36: Public preview and launch materials. PUBLISHED.** Alpha.41 source,
+  CI-built Windows download, product page and blog are public. Exact binary
+  identity/checksums and anonymous download verified; 35 live assets and browser
+  interactions pass. Media: 16 real UI renders with demo data and 12 themes.
+  Evidence: `docs/PUBLIC_LAUNCH_2026-09-24.md`. Broader native acceptance stays open.
 
 ## Required: useful task manager
 
