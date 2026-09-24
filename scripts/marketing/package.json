@@ -1,0 +1,7 @@
+{
+  "name": "trontop-marketing-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Headless browser validation and social-card rendering for Trontop",
+  "dependencies": { "playwright": "1.58.2" }
+}

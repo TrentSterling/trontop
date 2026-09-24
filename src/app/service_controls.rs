@@ -273,37 +273,66 @@ impl TrontopApp {
             && self.service_controller.available()
             && !self.service_controller.busy();
         let mut open = true;
-        egui::Window::new("Confirm service command").open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).collapsible(false).resizable(false)
-            .show(ctx, |ui| {
-                ui.set_width(430.0);
-                widgets::hover_label(ui, RichText::new(format!("{} this service?", request.action.label())).size(18.0).strong().color(t.text));
-                widgets::identity_card(ui, &request.display_name, &request.name, t);
-                widgets::detail_row(ui, "Reported state", request.expected.state.label(), t);
-                widgets::hover_label(ui, RichText::new(match request.action {
+        let closed = widgets::action_dialog(ctx, "Confirm service command", 430.0, t, |ui| {
+            widgets::hover_label(
+                ui,
+                RichText::new(format!("{} this service?", request.action.label()))
+                    .size(18.0)
+                    .strong()
+                    .color(t.text),
+            );
+            widgets::identity_card(ui, &request.display_name, &request.name, t);
+            widgets::detail_row(ui, "Reported state", request.expected.state.label(), t);
+            widgets::hover_label(ui, RichText::new(match request.action {
                     Action::Start => "Windows may start required dependencies. Disabled startup settings are not changed.",
                     Action::Stop => "Stopping a service can interrupt applications, network connections or system functions. Running dependents will not be stopped automatically.",
                     Action::Restart => "Stop, wait for Stopped, then Start. This interrupts service users and can leave the service stopped if Start fails or Trontop closes midway.",
                 }).color(t.text));
-                widgets::hover_label(ui, RichText::new(if valid {
+            widgets::hover_label(ui, RichText::new(if valid {
                     "Current state and host PID are rechecked on the service handle. Confirmation expires in 30 seconds."
                 } else if !self.service_observations.can_track(&request.name) {
                     "Command history is full or incomplete. Cancel and refresh the service list."
                 } else { "The confirmation expired or the service changed/is unavailable. Cancel and select again." }).size(11.0).color(t.text));
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() { self.pending_service = None; }
-                    if widgets::action_button_enabled(ui, RichText::new("Confirm command"), Vec2::new(145.0, 28.0),
-                        if request.action == Action::Start { t.accent_dim } else { theme::mix(t.panel, t.danger, 0.35) }, t, valid).clicked() {
-                        let result = self.service_controller.submit(request.clone());
-                        self.service_event = Some(crate::service_control::Event {
-                            name: request.name.clone(), action: request.action, phase: if result.is_ok() { "Queued" } else { "Not submitted" },
-                            observed: None, command_at: None, done: result.is_err(), error: result.err(),
-                        });
-                        self.pending_service = None;
-                    }
-                });
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    self.pending_service = None;
+                }
+                if widgets::action_button_enabled(
+                    ui,
+                    RichText::new("Confirm command"),
+                    Vec2::new(145.0, 28.0),
+                    if request.action == Action::Start {
+                        t.accent_dim
+                    } else {
+                        theme::mix(t.panel, t.danger, 0.35)
+                    },
+                    t,
+                    valid,
+                )
+                .clicked()
+                {
+                    let result = self.service_controller.submit(request.clone());
+                    self.service_event = Some(crate::service_control::Event {
+                        name: request.name.clone(),
+                        action: request.action,
+                        phase: if result.is_ok() {
+                            "Queued"
+                        } else {
+                            "Not submitted"
+                        },
+                        observed: None,
+                        command_at: None,
+                        done: result.is_err(),
+                        error: result.err(),
+                    });
+                    self.pending_service = None;
+                }
             });
+        });
+        if closed {
+            open = false;
+        }
         if !open {
             self.pending_service = None;
         }

@@ -3,7 +3,45 @@
 Trontop is an active hand-driven Codex project. The overnight coordination loop
 must not modify this repository.
 
-## Current checkpoint
+## Current checkpoint: public preview preparation
+
+2026-09-24: Trent approved source publication and distribution, including the
+product page/blog/gallery/OG image. License: Apache 2.0 + Commons Clause 1.0,
+retained attribution, free personal/workplace use. Alpha.41 adds packaging and
+222 dependency notices; alpha.39/40 feature changes are included. Current
+verification: 429 ordinary tests pass, 48 ignored; fmt/strict Clippy/release pass;
+16 synthetic demo-data UI renders and three-width dark/light browser checks pass.
+Public URLs must be verified after publishing. See A36 and docs/MARKETING.md.
+
+## Previous checkpoint
+
+**2026-09-24: alpha.40 daily-use polish, built and running.** Trent requested
+movable dialogs, bright close-button outlines, easy Lines / Bars access, pinned
+inspector End task, and random-palette logo contrast repair. Read
+`docs/POLISH_2026-09-24.md`, the newest `docs/CURRENT_STATE.md` and A35.
+All 429 ordinary tests pass, strict Clippy/format/release pass, all 16 selected
+offscreen PNGs inspected. The running alpha.39 closed normally; alpha.40 opened
+at `target-latest/release/trontop.exe`, PID 74912, visible HWND 29361722,
+responding at 21:22:19 UTC. Exact hash and backup are in CURRENT_STATE.
+Local source remains uncommitted, including the previous alpha.39 changes.
+Await Trent's review; broader native acceptance and cross-app parity stay open.
+
+## Previous checkpoint: alpha.39
+
+**2026-09-24: explicitly requested theme/logo pass, alpha.39.** Trent accepted the
+generated transparent T mark and asked for theme-aware branding, stronger frost/
+intensity control like TrontSnap, and Boxel-inspired color/contrast/font controls.
+He explicitly deferred cross-app engine parity. Read
+`docs/THEME_CONTROLS_2026-09-24.md` and the newest `docs/CURRENT_STATE.md` entry.
+Code is scoped to Trontop; no other Rust app was changed. Local source is
+uncommitted on `feat/system-specs`. The animated tray graph stays. After the
+headless checks, Trent explicitly requested replacement of his running copy.
+Alpha.38 closed normally and the verified alpha.39 opened from
+`target-latest/release/trontop.exe` at 2026-09-24 19:53:41 UTC: PID 278768,
+visible HWND 106565772, responding. Backup and hash are in `docs/CURRENT_STATE.md`.
+Broader native theme/window/tray/drag/close/soak acceptance remains separate.
+
+## Earlier checkpoint (2026-09-06)
 
 **Thread closed at Trent's request on 2026-09-06. Documentation-only shutdown.**
 Do not automatically resume implementation, launch/replace previews, run a soak,

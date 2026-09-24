@@ -737,7 +737,7 @@ fn render_graph_wall_visual_pass() {
 }
 
 #[test]
-fn graph_tabs_and_style_toggle_fit_one_row_at_the_smallest_window() {
+fn graph_tabs_fit_one_row_and_style_toggle_stays_in_command_bar() {
     let size = Vec2::new(1000.0, 580.0);
     let mut app = populated(ThemeSettings::default());
     app.page = Page::Graphs;
@@ -764,8 +764,6 @@ fn graph_tabs_and_style_toggle_fit_one_row_at_the_smallest_window() {
         "Disks",
         "Network",
         "All cores",
-        "Lines",
-        "Bars",
     ] {
         let rect = row(label);
         assert!(
@@ -775,7 +773,10 @@ fn graph_tabs_and_style_toggle_fit_one_row_at_the_smallest_window() {
         assert!(rect.right() <= size.x, "{label} is clipped: {rect:?}");
     }
     assert!(row("Everything").left() < row("All cores").left());
-    assert!(row("All cores").right() < row("Lines").left());
+    assert!(row("Lines").bottom() < everything.top());
+    assert!(row("Lines").right() < row("Bars").left());
+    assert!((row("Lines").center().y - row("Bars").center().y).abs() < 1.0);
+    assert!(row("Bars").right() < size.x);
 }
 
 #[test]

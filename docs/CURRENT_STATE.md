@@ -1,7 +1,94 @@
+# Public preview preparation, 2026-09-24
+
+Alpha.41 includes the accepted alpha.39/40 theme and polish slices plus
+Apache 2.0 + Commons Clause, attribution/dependency notices, reproducible
+public screenshots/themes/OG, and Windows release packaging.
+Local checks: 429 passed, 48 ignored; fmt, strict Clippy and release build pass.
+Browser checks pass at 390/768/1280 in light/dark, including preview interactions.
+Publication and exact CI artifact verification pending. Native and clean-machine
+acceptance remain explicitly open in docs/RELEASE_ALPHA41.md.
+
 # Trontop current state
 
-Last updated: 2026-09-23 (alpha.38 release candidate; the checklist below is
-the saved 2026-09-06 handoff)
+Last updated: 2026-09-24 (alpha.40 polish built, installed and opened; older release and
+shutdown notes below are historical)
+
+## alpha.40 (2026-09-24): daily-use polish follow-up
+
+Trent requested the shared dialog/close-button polish, movable About, easy chart
+style switching, higher End task placement and logo contrast fixes after a video
+showed very dark random palettes hiding the T. See `POLISH_2026-09-24.md` and A35.
+
+- Shared, movable dialog chrome with visible hover/press/focus outlines, a larger
+  X and theme-colored header rule. Ten dialog cases pass local drag/close/reopen.
+- Lines / Bars is in the command bar across Overview, Graphs, Performance and
+  Hardware sensors, sharing a saved UI preference with small history bands.
+- Inspector identity and End task stay above scrolling content; confirmation
+  and process-identity checks remain. Run task no longer repeatedly steals focus
+  from other dialog controls while the command field is empty.
+- Logo rendering corrects extreme/random palette contrast for dark/light mode,
+  preserving theme settings and the generated alpha mask/cutouts.
+- `cargo fmt --all --check` PASS; `cargo test --offline --quiet`: **429 passed,
+  0 failed, 47 ignored**; strict all-target Clippy PASS; offline release build PASS.
+- Selected `render_polish_visual_pass` PASS; all 16 offscreen PNGs inspected,
+  including 28 palette samples at three logo sizes. No native input used in tests.
+
+Verified alpha.40 review EXE:
+`C:/trontstack/trontop/target/review/alpha40-polish/trontop.exe`.
+Product version `0.3.0-alpha.40`, 15485440 bytes, SHA-256
+`D9558ADA1DCC44EE46D23E0CB7DBC167C28741076D0ED683F29F034CBB69CB43`.
+Source remains uncommitted on `feat/system-specs` based on
+`a521986eb4643188637468b0b6228a493c316606`, including the preceding alpha.39 changes.
+
+Updated the running copy at `target-latest/release/trontop.exe` as the continuation
+of Trent's running-build/polish request. Alpha.39 PID 278768 exited normally via
+WM_CLOSE. At 2026-09-24 21:22:19 UTC, alpha.40 PID 74912 was responding with visible
+Trontop HWND 29361722. Previous EXE backup:
+`target-latest/release/trontop-before-alpha40-20260924-162213.exe.bak`.
+Receipt: `C:/trontstack/tmp/trontop-alpha40-launch-20260924-162213.json`.
+No settings edited externally, other apps manipulated, commits or uploads.
+Initial launch is verified; Trent's visual acceptance and broader native runtime
+gates remain open. Do not infer a native drag performance or soak result.
+
+## alpha.39 (2026-09-24): theme controls and generated logo
+
+Trent explicitly requested the new logo follow the theme, stronger intensity/frost
+like TrontSnap, and Boxel-inspired color/contrast/font controls. Cross-app parity
+is explicitly deferred. See `THEME_CONTROLS_2026-09-24.md` for the exact scope.
+
+- Full-range intensity/frost, independent dark/light opacity, composed previews,
+  surface tint, text contrast and Type tab with Sans/Rajdhani/SemiBold/Monospace.
+- Generated mark integrated through embedded alpha masks and cached live theme
+  colors. Native window/taskbar follows the palette; static EXE resource embeds
+  the source colors. Existing animated tray graph retained.
+- Version 4 theme exports migrate version 3 and legacy codes. Implementation and
+  headless validation did not alter personal settings or upload artifacts. The
+  subsequent explicitly requested running-copy replacement is recorded below.
+- Final ordinary gate: `cargo fmt --all --check` PASS; `cargo test --offline
+  --quiet`: **423 passed, 0 failed, 46 ignored**; `cargo clippy --offline
+  --all-targets -- -D warnings` PASS; `cargo build --release --offline` PASS.
+- Selected offscreen pass: 11 PNGs under `target/ui-smoke/theme-controls`, covering
+  Palette/Appearance/Type, full intensity/zero frost, dark/light, fonts and compact
+  process/Overview pages. All eleven views inspected. This found and fixed the
+  monospace Type/Dark overlap; a font/compact-zoom regression now covers it.
+- Read-only native embedded-icon probe PASS: 32x32 extraction, 40 repeats,
+  GDI/USER resources `(4, 2) -> (4, 2)`. No native window, tray or input created.
+
+Local review executable:
+`C:/trontstack/trontop/target/review/alpha39-theme-controls/trontop.exe`.
+Product version `0.3.0-alpha.39`, 15463424 bytes, SHA-256
+`FD342579A58DD409446AE74FA54A6C38F900AAC26B16C9BA9BC610BFE5A15A39`.
+Source is uncommitted on `feat/system-specs`, based on
+`a521986eb4643188637468b0b6228a493c316606` with local modifications.
+On Trent's explicit request, replaced alpha.38 at
+`target-latest/release/trontop.exe` with that exact alpha.39 build and opened it.
+At 2026-09-24 19:53:41 UTC, PID 278768 was responding with visible Trontop HWND
+106565772. Old PID 58272 exited normally through WM_CLOSE and its preference-save
+flow; no forced termination. Previous EXE retained at
+`target-latest/release/trontop-before-alpha39-20260924-145335.exe.bak`.
+Receipt: `C:/trontstack/tmp/trontop-alpha39-launch-20260924-145335.json`.
+This verifies replacement and initial launch only, not a runtime soak.
+Native theme/window acceptance and unrelated ledger items remain open.
 
 ## alpha.38 (2026-09-23): first tagged private pre-release
 

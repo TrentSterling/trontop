@@ -56,6 +56,19 @@ pub(super) struct Dashboard {
     pub(super) fixed_now: Option<Instant>,
 }
 impl Dashboard {
+    /// One remembered choice shared by Overview, Graphs, Performance and the
+    /// small history bands. It lives in UI memory, separately from theme colors.
+    pub(super) fn style_control(&mut self, ui: &mut egui::Ui, t: Tokens) -> bool {
+        let key = egui::Id::new(widgets::CHART_BARS_KEY);
+        if let Some(bars) = ui.ctx().data_mut(|data| data.get_persisted::<bool>(key)) {
+            self.style = if bars { Style::Bars } else { Style::Lines };
+        }
+        let before = self.style;
+        style_toggle(ui, &mut self.style, t);
+        ui.ctx()
+            .data_mut(|data| data.insert_persisted(key, self.style == Style::Bars));
+        self.style != before
+    }
     /// Performance > GPU: the selected adapter's per-engine or memory charts.
     /// Per-engine-instance charts appear only here, never on the wall.
     pub(super) fn adapter_charts(
@@ -413,7 +426,6 @@ impl TrontopApp {
                 tab(ui, &mut self.graphs.filter, Some(group), group.label());
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                style_toggle(ui, &mut self.graphs.style, t);
                 if let Some((short, reason)) = cpu_temperature
                     .as_ref()
                     .filter(|_| matches!(self.graphs.filter, None | Some(Group::Thermal)))

@@ -181,6 +181,7 @@ pub struct TrontopApp {
     graphics_recovering: std::sync::Arc<std::sync::atomic::AtomicBool>,
     sampler: Option<Sampler>,
     process_icons: crate::process_icons::Cache,
+    native_icon: crate::branding::NativeIcon,
     snapshot: SystemSnapshot,
     seen_generation: u64,
     page: Page,
@@ -269,6 +270,7 @@ impl TrontopApp {
         let sampler = Sampler::spawn(cc.egui_ctx.clone(), tray.as_ref().map(TrayController::sink));
         let mut app = Self::with_services(saved_theme, Some(sampler), tray);
         app.preferences = preferences;
+        app.native_icon = crate::branding::NativeIcon::new();
         app.graphics_recovering = graphics_recovering;
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
@@ -293,6 +295,7 @@ impl TrontopApp {
             graphics_recovering: Default::default(),
             sampler,
             process_icons: crate::process_icons::Cache::default(),
+            native_icon: crate::branding::NativeIcon::default(),
             snapshot: SystemSnapshot::default(),
             seen_generation: 0,
             page: Page::Processes,
@@ -575,7 +578,7 @@ impl TrontopApp {
             .show(root, |ui| {
                 let chrome_rect = ui.max_rect();
                 ui.horizontal_centered(|ui| {
-                    widgets::tront_mark(ui, t.accent, t.secondary, 25.0);
+                    widgets::tront_mark(ui, self.theme, 25.0);
                     widgets::hover_label(
                         ui,
                         RichText::new("TRONTOP").size(15.0).strong().color(t.text),
@@ -890,6 +893,11 @@ impl TrontopApp {
                             }
                             self.show_export = true;
                         }
+                        if matches!(self.page, Page::Overview | Page::Graphs | Page::Performance | Page::Sensors)
+                            && self.graphs.style_control(ui, t)
+                        {
+                            self.capture_preferences(ui.ctx());
+                        }
                         let selected = self.selected_pid.is_some();
                         // Below the 1100 px label breakpoint, an unselected row
                         // leaves End task and Inspector nothing to act on, so
@@ -1045,9 +1053,8 @@ impl TrontopApp {
             .show(root, |ui| {
                 widgets::hover_label(ui, RichText::new("INSPECTOR").size(10.0).strong().color(t.text_muted));
                 ui.add_space(10.0);
-                egui::ScrollArea::vertical().id_salt("inspector_scroll").auto_shrink([false, false]).show(ui, |ui| {
-                let selected = self.selected_process().cloned();
-                if let Some(process) = selected {
+                // Identity and the confirmed End task action stay above the scroll.
+                if let Some(process) = self.selected_process().cloned() {
                     let state_label = process_state_label(&process.status);
                     ui.horizontal(|ui| {
                         self.process_icons.paint(ui, process.executable.as_deref(), 32.0, t.text_muted, egui::Sense::hover()).on_hover_text("Executable icon; not a verified publisher identity");
@@ -1057,6 +1064,20 @@ impl TrontopApp {
                     ui.add(egui::Label::new(RichText::new(&process.name).size(19.0).strong().color(t.text)).truncate())
                         .on_hover_text(&process.name);
                     ui.add_space(10.0);
+                    ui.scope(|ui| {
+                        if widgets::action_button_enabled(ui, RichText::new("End task").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t, self.process_actions.ready())
+                            .on_disabled_hover_text("Wait for the process action worker to be ready.")
+                            .clicked()
+                        {
+                            self.request_end_selected();
+                        }
+                    });
+                }
+                ui.separator();
+                egui::ScrollArea::vertical().id_salt("inspector_scroll").auto_shrink([false, false]).show(ui, |ui| {
+                let selected = self.selected_process().cloned();
+                if let Some(process) = selected {
+                    let state_label = process_state_label(&process.status);
                     widgets::detail_row(ui, "PID", &process.pid.to_string(), t);
                     widgets::detail_row(ui, "Account", &process.user, t);
                     widgets::detail_row(ui, "Status", &state_label, t);
@@ -1153,14 +1174,7 @@ impl TrontopApp {
                         );
                     }
                     ui.add_space(12.0);
-                    ui.scope(|ui| {
-                        if widgets::action_button_enabled(ui, RichText::new("End task").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t, !self.process_actions.busy())
-                            .on_disabled_hover_text("Wait for the pending process action to finish.")
-                            .clicked()
-                        {
-                            self.request_end_selected();
-                        }
-                    });
+
                 } else {
                     ui.add_space(8.0);
                     let frame = egui::Frame::new()
@@ -1171,7 +1185,7 @@ impl TrontopApp {
                     widgets::hover_frame(ui, frame, |ui| {
                             ui.set_width(ui.available_width());
                             ui.vertical_centered(|ui| {
-                                widgets::tront_mark(ui, t.accent, t.secondary, 44.0);
+                                widgets::tront_mark(ui, self.theme, 44.0);
                                 ui.add_space(8.0);
                                 widgets::hover_label(ui,
                                     RichText::new("Select a process")
@@ -2597,30 +2611,56 @@ Counters: {state}."
             .processes
             .iter()
             .any(|row| row.identity() == Some(target.identity));
-        egui::Window::new("Confirm end task")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.set_width(390.0);
-                widgets::hover_label(ui, RichText::new("End this process?").size(18.0).strong().color(t.text));
-                widgets::identity_card(ui, &name, &format!("PID {pid}"), t);
-                widgets::hover_label(ui, RichText::new(format!("PID {pid} will be terminated immediately. Unsaved data in that process will be lost.")).color(t.text_muted));
-                widgets::hover_label(ui, RichText::new(if still_listed {
+        let closed = widgets::action_dialog(ctx, "Confirm end task", 390.0, t, |ui| {
+            widgets::hover_label(
+                ui,
+                RichText::new("End this process?")
+                    .size(18.0)
+                    .strong()
+                    .color(t.text),
+            );
+            widgets::identity_card(ui, &name, &format!("PID {pid}"), t);
+            widgets::hover_label(ui, RichText::new(format!("PID {pid} will be terminated immediately. Unsaved data in that process will be lost.")).color(t.text_muted));
+            widgets::hover_label(
+                ui,
+                RichText::new(if still_listed {
                     "The native process creation time is rechecked when you confirm."
-                } else { "The original process exited or changed. Cancel and select again." }).size(11.0).color(t.text));
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        self.pending_end_task = None;
-                    }
-                    if widgets::action_button_enabled(ui, RichText::new("End process").color(Color32::WHITE), Vec2::ZERO, t.danger, t, still_listed && self.process_actions.ready())
-                        .on_disabled_hover_text("The process must still match and the action worker must be ready.").clicked()
-                        && self.submit_process_action(ctx, ProcessAction::End(target.identity), format!("{name} ({pid})")) {
-                            self.pending_end_task = None;
-                    }
-                });
+                } else {
+                    "The original process exited or changed. Cancel and select again."
+                })
+                .size(11.0)
+                .color(t.text),
+            );
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    self.pending_end_task = None;
+                }
+                if widgets::action_button_enabled(
+                    ui,
+                    RichText::new("End process").color(Color32::WHITE),
+                    Vec2::ZERO,
+                    t.danger,
+                    t,
+                    still_listed && self.process_actions.ready(),
+                )
+                .on_disabled_hover_text(
+                    "The process must still match and the action worker must be ready.",
+                )
+                .clicked()
+                    && self.submit_process_action(
+                        ctx,
+                        ProcessAction::End(target.identity),
+                        format!("{name} ({pid})"),
+                    )
+                {
+                    self.pending_end_task = None;
+                }
             });
+        });
+        if closed {
+            self.pending_end_task = None;
+        }
     }
 
     fn priority_editor(&mut self, ctx: &egui::Context) {
@@ -2632,41 +2672,43 @@ Counters: {state}."
             return;
         };
         let t = self.colors();
-        let mut open = true;
         let mut requested = None;
-        egui::Window::new("Process priority")
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.set_width(410.0);
-                widgets::identity_card(ui, &process.name, &format!("PID {}", process.pid), t);
-                widgets::hover_label(ui,
+        let closed = widgets::action_dialog(ctx, "Process priority", 410.0, t, |ui| {
+            widgets::identity_card(ui, &process.name, &format!("PID {}", process.pid), t);
+            widgets::hover_label(ui,
                     RichText::new("Choose a Windows scheduler priority class. Realtime is deliberately unavailable as an action.")
                         .color(t.text_muted),
                 );
-                ui.add_space(12.0);
-                for priority in PriorityClass::EDITABLE {
-                    let current = process.control.priority == priority;
-                    let text = if current {
-                        format!("{}  |  CURRENT", priority.label())
+            ui.add_space(12.0);
+            for priority in PriorityClass::EDITABLE {
+                let current = process.control.priority == priority;
+                let text = if current {
+                    format!("{}  |  CURRENT", priority.label())
+                } else {
+                    priority.label().into()
+                };
+                let response = widgets::action_button(
+                    ui,
+                    RichText::new(text).color(t.text),
+                    Vec2::new(ui.available_width(), 31.0),
+                    if current {
+                        t.accent_dim
                     } else {
-                        priority.label().into()
-                    };
-                    let response = widgets::action_button(ui, RichText::new(text).color(t.text), Vec2::new(ui.available_width(), 31.0),
-                        if current { t.accent_dim } else { t.panel_raised }, t);
-                    if response.clicked() && !current {
-                        requested = Some(priority);
-                    }
+                        t.panel_raised
+                    },
+                    t,
+                );
+                if response.clicked() && !current {
+                    requested = Some(priority);
                 }
-                ui.add_space(8.0);
-                widgets::hover_label(ui,
+            }
+            ui.add_space(8.0);
+            widgets::hover_label(ui,
                     RichText::new("High priority can reduce responsiveness elsewhere on the machine and receives an additional explicit confirmation.")
                         .size(10.0)
                         .color(t.ink(t.danger)),
                 );
-            });
+        });
         if let Some(priority) = requested {
             let Some(identity) = process.identity() else {
                 self.message = Some((
@@ -2680,7 +2722,7 @@ Counters: {state}."
                 Some(PendingControlAction::Priority { identity, priority });
             self.show_priority_editor = false;
         } else {
-            self.show_priority_editor = open;
+            self.show_priority_editor = !closed;
         }
     }
 
@@ -2698,111 +2740,103 @@ Counters: {state}."
             return;
         }
         let t = self.colors();
-        let mut open = true;
         let mut apply = false;
         let mut cancel = false;
-        egui::Window::new("CPU affinity")
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.set_width(520.0);
-                widgets::identity_card(ui, &process.name, &format!("PID {}", process.pid), t);
-                widgets::hover_label(
-                    ui,
-                    RichText::new(
-                        "Logical processors available in the process's Windows processor group.",
-                    )
-                    .color(t.text_muted),
-                );
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Select all").clicked() {
-                        self.affinity_draft = system_mask;
-                    }
-                    if ui.button("Current mask").clicked() {
-                        self.affinity_draft = process.control.affinity_mask;
-                    }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        widgets::hover_label(
-                            ui,
-                            RichText::new(format!("{} selected", self.affinity_draft.count_ones()))
-                                .monospace()
-                                .color(t.ink(t.secondary)),
-                        );
-                    });
-                });
-                ui.add_space(8.0);
-                // Keep review/cancel outside the scrolling processor grid.
-                egui::ScrollArea::vertical()
-                    .id_salt("affinity_processors")
-                    .max_height((ctx.content_rect().height() - 310.0).clamp(100.0, 340.0))
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        let columns =
-                            (ui.available_width() / 76.0).floor().clamp(1.0, 8.0) as usize;
-                        let cell_width =
-                            (ui.available_width() - (columns - 1) as f32 * 6.0) / columns as f32;
-                        egui::Grid::new("affinity_processor_grid")
-                            .num_columns(columns)
-                            .spacing([6.0, 6.0])
-                            .show(ui, |ui| {
-                                let mut shown = 0;
-                                for processor in 0..usize::BITS {
-                                    let bit = 1_usize << processor;
-                                    if system_mask & bit == 0 {
-                                        continue;
-                                    }
-                                    let enabled = self.affinity_draft & bit != 0;
-                                    if ui
-                                        .add_sized(
-                                            [cell_width, 28.0],
-                                            egui::Button::new(format!("CPU {processor:02}"))
-                                                .selected(enabled),
-                                        )
-                                        .clicked()
-                                    {
-                                        if enabled {
-                                            self.affinity_draft &= !bit;
-                                        } else {
-                                            self.affinity_draft |= bit;
-                                        }
-                                    }
-                                    shown += 1;
-                                    if shown % columns == 0 {
-                                        ui.end_row();
-                                    }
-                                }
-                            });
-                    })
-                    .settled(ui, widgets::VERTICAL);
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        cancel = true;
-                    }
-                    if ui
-                        .add_enabled(
-                            self.affinity_draft != 0
-                                && self.affinity_draft & !system_mask == 0
-                                && self.affinity_draft != process.control.affinity_mask,
-                            egui::Button::new("Review change"),
-                        )
-                        .clicked()
-                    {
-                        apply = true;
-                    }
-                    if self.affinity_draft == 0 {
-                        widgets::hover_label(
-                            ui,
-                            RichText::new("Select at least one processor.")
-                                .size(10.0)
-                                .color(t.ink(t.danger)),
-                        );
-                    }
+        let closed = widgets::action_dialog(ctx, "CPU affinity", 520.0, t, |ui| {
+            widgets::identity_card(ui, &process.name, &format!("PID {}", process.pid), t);
+            widgets::hover_label(
+                ui,
+                RichText::new(
+                    "Logical processors available in the process's Windows processor group.",
+                )
+                .color(t.text_muted),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button("Select all").clicked() {
+                    self.affinity_draft = system_mask;
+                }
+                if ui.button("Current mask").clicked() {
+                    self.affinity_draft = process.control.affinity_mask;
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    widgets::hover_label(
+                        ui,
+                        RichText::new(format!("{} selected", self.affinity_draft.count_ones()))
+                            .monospace()
+                            .color(t.ink(t.secondary)),
+                    );
                 });
             });
+            ui.add_space(8.0);
+            // Keep review/cancel outside the scrolling processor grid.
+            egui::ScrollArea::vertical()
+                .id_salt("affinity_processors")
+                .max_height((ctx.content_rect().height() - 310.0).clamp(100.0, 340.0))
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    let columns = (ui.available_width() / 76.0).floor().clamp(1.0, 8.0) as usize;
+                    let cell_width =
+                        (ui.available_width() - (columns - 1) as f32 * 6.0) / columns as f32;
+                    egui::Grid::new("affinity_processor_grid")
+                        .num_columns(columns)
+                        .spacing([6.0, 6.0])
+                        .show(ui, |ui| {
+                            let mut shown = 0;
+                            for processor in 0..usize::BITS {
+                                let bit = 1_usize << processor;
+                                if system_mask & bit == 0 {
+                                    continue;
+                                }
+                                let enabled = self.affinity_draft & bit != 0;
+                                if ui
+                                    .add_sized(
+                                        [cell_width, 28.0],
+                                        egui::Button::new(format!("CPU {processor:02}"))
+                                            .selected(enabled),
+                                    )
+                                    .clicked()
+                                {
+                                    if enabled {
+                                        self.affinity_draft &= !bit;
+                                    } else {
+                                        self.affinity_draft |= bit;
+                                    }
+                                }
+                                shown += 1;
+                                if shown % columns == 0 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
+                })
+                .settled(ui, widgets::VERTICAL);
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+                if ui
+                    .add_enabled(
+                        self.affinity_draft != 0
+                            && self.affinity_draft & !system_mask == 0
+                            && self.affinity_draft != process.control.affinity_mask,
+                        egui::Button::new("Review change"),
+                    )
+                    .clicked()
+                {
+                    apply = true;
+                }
+                if self.affinity_draft == 0 {
+                    widgets::hover_label(
+                        ui,
+                        RichText::new("Select at least one processor.")
+                            .size(10.0)
+                            .color(t.ink(t.danger)),
+                    );
+                }
+            });
+        });
         if apply {
             let Some(identity) = process.identity() else {
                 self.message = Some((
@@ -2818,7 +2852,7 @@ Counters: {state}."
             });
             self.show_affinity_editor = false;
         } else {
-            self.show_affinity_editor = open && !cancel;
+            self.show_affinity_editor = !closed && !cancel;
         }
     }
 
@@ -2863,105 +2897,103 @@ Counters: {state}."
             ),
         };
         let t = self.colors();
-        egui::Window::new("Confirm process control")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.set_width(420.0);
-                widgets::hover_label(ui, RichText::new(title).size(18.0).strong().color(t.text));
-                widgets::identity_card(ui, name, &format!("PID {pid}"), t);
-                if let PendingControlAction::Affinity { affinity_mask, .. } = action {
-                    widgets::detail_row(ui, "Requested CPUs", &format::cpu_set(affinity_mask), t);
-                    widgets::detail_row(
-                        ui,
-                        "Processor count",
-                        &format!("{} selected in this group", affinity_mask.count_ones()),
-                        t,
-                    );
-                }
-                widgets::hover_label(ui, RichText::new(description).color(t.text_muted));
-                widgets::hover_label(
+        let closed = widgets::action_dialog(ctx, "Confirm process control", 420.0, t, |ui| {
+            widgets::hover_label(ui, RichText::new(title).size(18.0).strong().color(t.text));
+            widgets::identity_card(ui, name, &format!("PID {pid}"), t);
+            if let PendingControlAction::Affinity { affinity_mask, .. } = action {
+                widgets::detail_row(ui, "Requested CPUs", &format::cpu_set(affinity_mask), t);
+                widgets::detail_row(
                     ui,
-                    RichText::new(format!(
-                        "PID {pid} | native creation time rechecked on confirmation"
-                    ))
-                    .size(10.0)
-                    .monospace()
-                    .color(t.ink(t.secondary)),
+                    "Processor count",
+                    &format!("{} selected in this group", affinity_mask.count_ones()),
+                    t,
                 );
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
+            }
+            widgets::hover_label(ui, RichText::new(description).color(t.text_muted));
+            widgets::hover_label(
+                ui,
+                RichText::new(format!(
+                    "PID {pid} | native creation time rechecked on confirmation"
+                ))
+                .size(10.0)
+                .monospace()
+                .color(t.ink(t.secondary)),
+            );
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    self.pending_control_action = None;
+                }
+                let fill = if dangerous { t.danger } else { t.accent };
+                if widgets::action_button_enabled(
+                    ui,
+                    RichText::new(button).color(Color32::WHITE),
+                    Vec2::ZERO,
+                    fill,
+                    t,
+                    process.is_some() && self.process_actions.ready(),
+                )
+                .on_disabled_hover_text(
+                    "The process must still match and the action worker must be ready.",
+                )
+                .clicked()
+                {
+                    let action = match action {
+                        PendingControlAction::Priority { priority, .. } => {
+                            ProcessAction::Priority(identity, priority)
+                        }
+                        PendingControlAction::Affinity { affinity_mask, .. } => {
+                            ProcessAction::Affinity(identity, affinity_mask)
+                        }
+                    };
+                    if self.submit_process_action(ctx, action, format!("{name} ({pid})")) {
                         self.pending_control_action = None;
                     }
-                    let fill = if dangerous { t.danger } else { t.accent };
-                    if widgets::action_button_enabled(
-                        ui,
-                        RichText::new(button).color(Color32::WHITE),
-                        Vec2::ZERO,
-                        fill,
-                        t,
-                        process.is_some() && self.process_actions.ready(),
-                    )
-                    .on_disabled_hover_text(
-                        "The process must still match and the action worker must be ready.",
-                    )
-                    .clicked()
-                    {
-                        let action = match action {
-                            PendingControlAction::Priority { priority, .. } => {
-                                ProcessAction::Priority(identity, priority)
-                            }
-                            PendingControlAction::Affinity { affinity_mask, .. } => {
-                                ProcessAction::Affinity(identity, affinity_mask)
-                            }
-                        };
-                        if self.submit_process_action(ctx, action, format!("{name} ({pid})")) {
-                            self.pending_control_action = None;
-                        }
-                    }
-                });
+                }
             });
+        });
+        if closed {
+            self.pending_control_action = None;
+        }
     }
 
     fn run_task_window(&mut self, ctx: &egui::Context) {
+        let focus_key = egui::Id::new("run-task-initial-focus");
         if !self.show_run_task {
+            ctx.data_mut(|data| data.remove::<bool>(focus_key));
             return;
         }
         let t = self.colors();
         let mut open = true;
-        egui::Window::new("Run new task")
-            .open(&mut open)
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.set_width(440.0);
-                widgets::hover_label(
-                    ui,
-                    RichText::new("Launch a program or command")
-                        .size(17.0)
-                        .strong()
-                        .color(t.text),
-                );
-                widgets::hover_label(
-                    ui,
-                    RichText::new("The command is launched with your current Windows permissions.")
-                        .size(11.0)
-                        .color(t.text_muted),
-                );
-                ui.add_space(10.0);
-                let response = ui.add_sized(
-                    [ui.available_width(), 30.0],
-                    egui::TextEdit::singleline(&mut self.run_command)
-                        .hint_text("notepad.exe or C:\\path\\app.exe"),
-                );
-                if self.run_command.is_empty() {
-                    response.request_focus();
-                }
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
+        let closed = widgets::action_dialog(ctx, "Run new task", 440.0, t, |ui| {
+            widgets::hover_label(
+                ui,
+                RichText::new("Launch a program or command")
+                    .size(17.0)
+                    .strong()
+                    .color(t.text),
+            );
+            widgets::hover_label(
+                ui,
+                RichText::new("The command is launched with your current Windows permissions.")
+                    .size(11.0)
+                    .color(t.text_muted),
+            );
+            ui.add_space(10.0);
+            let response = ui.add_sized(
+                [ui.available_width(), 30.0],
+                egui::TextEdit::singleline(&mut self.run_command)
+                    .hint_text("notepad.exe or C:\\path\\app.exe"),
+            );
+            if !ctx
+                .data(|data| data.get_temp::<bool>(focus_key))
+                .unwrap_or(false)
+            {
+                response.request_focus();
+                ctx.data_mut(|data| data.insert_temp(focus_key, true));
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() {
                         self.show_run_task = false;
                     }
@@ -2986,7 +3018,10 @@ Counters: {state}."
                         }
                     }
                 });
-            });
+        });
+        if closed {
+            open = false;
+        }
         self.show_run_task &= open;
     }
 
@@ -3108,6 +3143,7 @@ impl eframe::App for TrontopApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.native_icon.sync(&ctx, self.theme);
         if let Some(outcome) = self.process_actions.poll() {
             self.message = Some(outcome.message());
         }

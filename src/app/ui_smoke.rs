@@ -17,9 +17,11 @@ mod first_paint;
 mod gauntlet;
 mod gpu_adapters;
 mod graphs;
+mod marketing;
 mod memory;
 mod offscreen;
 mod overview;
+mod polish;
 mod preferences;
 mod process_perf;
 mod process_sort;
@@ -28,6 +30,7 @@ mod service_retention;
 mod settle;
 mod system;
 mod table_layout;
+mod theme_controls;
 
 fn fixture() -> SystemSnapshot {
     let processes: Vec<_> = (0..64)

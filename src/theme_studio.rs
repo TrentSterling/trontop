@@ -58,10 +58,7 @@ impl Studio {
         let t = theme::tokens(*settings);
         let mut close = false;
         let width = 568.0_f32.min(ctx.content_rect().width() - 48.0);
-        egui::Window::new("Trontop Theme Studio")
-            .title_bar(false)
-            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(0))
-            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        widgets::dialog_window(ctx, "Trontop Theme Studio", width)
             .default_width(width)
             .resizable(false)
             .show(ctx, |ui| {
@@ -85,33 +82,30 @@ impl Studio {
                     if ui.add_enabled(!self.rolls.is_empty(), egui::Button::new("Undo roll")).on_hover_text("Restore the previous palette. Later layout edits are preserved. Remembers 12 rolls.").clicked() {
                         self.undo_roll(settings);
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if widgets::stable_tab(ui, !settings.dark, "Light").clicked() { settings.dark = false; }
+                        if widgets::stable_tab(ui, settings.dark, "Dark").clicked() { settings.dark = true; }
+                    });
                   });
                   ui.horizontal(|ui| {
                     // Fixed tab slots: the selected pill never shifts its neighbors.
-                    for (i, name) in ["Palette", "Appearance", "Presets", "My themes"].iter().enumerate() {
+                    for (i, name) in ["Palette", "Appearance", "Presets", "My themes", "Type"].iter().enumerate() {
                         if widgets::stable_tab(ui, self.tab == i, name).clicked() {
                             self.tab = i;
                         }
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if widgets::stable_tab(ui, !settings.dark, "Light").clicked() {
-                            settings.dark = false;
-                        }
-                        if widgets::stable_tab(ui, settings.dark, "Dark").clicked() {
-                            settings.dark = true;
-                        }
-                    });
                 });
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .id_salt(("theme_body", self.tab))
-                    .max_height((ctx.content_rect().height() - 290.0).clamp(160.0, 471.0))
+                    .max_height((ctx.content_rect().height() - 290.0).clamp(80.0, 471.0))
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.tab {
                         0 => self.palette(ui, settings, t),
                         1 => self.appearance(ui, settings, t),
                         2 => self.presets(ui, settings, t),
-                        _ => self.library(ui, settings, t),
+                        3 => self.library(ui, settings, t),
+                        _ => self.typography(ui, settings, t),
                     }).settled(ui, crate::widgets::VERTICAL);
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -195,6 +189,29 @@ impl Studio {
             });
         });
         ramp(ui, s, &mut self.selected, t);
+        wash_preview(ui, *s);
+        slider(
+            ui,
+            "Direction",
+            &mut s.gradient_angle,
+            0.0..=359.0,
+            " deg",
+            false,
+            t,
+        );
+        percent_slider(ui, "Intensity", &mut s.gradient_strength, true, t);
+        let frost_label = if s.dark {
+            "Frost (dark)"
+        } else {
+            "Frost (light)"
+        };
+        percent_slider(ui, frost_label, s.active_frost_mut(), false, t);
+        widgets::hover_label(
+            ui,
+            RichText::new("Frost: clear at 0%, solid at 100%. Each mode remembers its own value.")
+                .size(11.0)
+                .color(t.text_muted),
+        );
         widgets::hover_label(
             ui,
             RichText::new("Drag a peg, or edit its position below. Accent colors are independent.")
@@ -269,28 +286,17 @@ impl Studio {
                 });
             }
         });
-        slider(
-            ui,
-            "Direction",
-            &mut s.gradient_angle,
-            0.0..=359.0,
-            " deg",
-            false,
-            t,
-        );
-        slider(
-            ui,
-            "Intensity",
-            &mut s.gradient_strength,
-            0.0..=0.75,
-            "",
-            true,
-            t,
-        );
     }
 
     fn appearance(&mut self, ui: &mut egui::Ui, s: &mut ThemeSettings, t: Tokens) {
-        slider(ui, "Panel opacity", &mut s.frost, 0.45..=1.0, "", false, t);
+        let frost_label = if s.dark {
+            "Frost (dark)"
+        } else {
+            "Frost (light)"
+        };
+        percent_slider(ui, frost_label, s.active_frost_mut(), false, t);
+        percent_slider(ui, "Surface tint", &mut s.surface_tint, true, t);
+        percent_slider(ui, "Text contrast", &mut s.text_strength, false, t);
         slider(
             ui,
             "Roundness",
@@ -330,8 +336,54 @@ impl Studio {
         widgets::control_row(ui, "Readability", true, t, |ui| {
             ui.checkbox(&mut s.high_contrast, "Extra text contrast");
         });
-        widgets::hover_label(ui, RichText::new("Opacity mixes panels with the backdrop; it is not desktop blur. Background brightness is bounded to protect text contrast.").size(11.0).color(t.text_muted));
+        widgets::hover_label(ui, RichText::new("Frost controls panel opacity, not desktop blur. Tint colors solid surfaces; text contrast strengthens secondary labels. Menus stay solid and readable.").size(11.0).color(t.text_muted));
+        wash_preview(ui, *s);
         preview(ui, *s);
+    }
+
+    fn typography(&mut self, ui: &mut egui::Ui, s: &mut ThemeSettings, t: Tokens) {
+        widgets::control_row(ui, "Font", false, t, |ui| {
+            egui::ComboBox::from_id_salt("theme_font")
+                .selected_text(s.font.label())
+                .show_ui(ui, |ui| {
+                    for font in theme::typography::FontChoice::ALL {
+                        ui.selectable_value(&mut s.font, font, font.label());
+                    }
+                });
+        });
+        widgets::control_row(ui, "UI scale", true, t, |ui| {
+            let mut percent = ui.ctx().zoom_factor() * 100.0;
+            if ui
+                .add(
+                    egui::Slider::new(&mut percent, 75.0..=150.0)
+                        .suffix(" %")
+                        .step_by(5.0),
+                )
+                .changed()
+            {
+                ui.ctx().set_zoom_factor(percent / 100.0);
+            }
+            if ui.button("100%").clicked() {
+                ui.ctx().set_zoom_factor(1.0);
+            }
+        });
+        percent_slider(ui, "Text contrast", &mut s.text_strength, false, t);
+        ui.checkbox(&mut s.high_contrast, "Extra text contrast");
+        widgets::hover_label(ui, RichText::new("Rajdhani matches Boxel and TrontSnap. Numeric columns keep their monospace font. Interface size scales text and spacing together and is saved for this app, separately from shared palettes.").size(11.0).color(t.text_muted));
+        preview(ui, *s);
+        ui.label(
+            RichText::new("Aa Bb Cc  /  0123456789")
+                .size(22.0)
+                .color(t.text),
+        );
+        ui.label(
+            RichText::new("CPU 58.5%    4.82 GHz    12.8 MiB")
+                .monospace()
+                .color(t.text),
+        );
+        ui.collapsing("Font license", |ui| {
+            ui.label(theme::typography::LICENSE);
+        });
     }
 
     fn presets(&mut self, ui: &mut egui::Ui, s: &mut ThemeSettings, t: Tokens) {
@@ -592,6 +644,39 @@ fn slider(
     });
 }
 
+fn percent_slider(ui: &mut egui::Ui, label: &str, value: &mut f32, banded: bool, t: Tokens) {
+    let mut percent = *value * 100.0;
+    let before = percent;
+    slider(ui, label, &mut percent, 0.0..=100.0, " %", banded, t);
+    if before != percent {
+        *value = percent / 100.0;
+    }
+}
+
+fn wash_preview(ui: &mut egui::Ui, s: ThemeSettings) {
+    // Match production's four peg planes, including coincident/closely spaced pegs.
+    let t = theme::tokens(s);
+    for (label, composed) in [("Background", false), ("Through frost", true)] {
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                [94.0, 18.0],
+                egui::Label::new(RichText::new(label).size(11.0).color(t.text_muted)),
+            );
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
+            theme::paint_gradient(ui.painter(), rect, s.stops, 0.0, |c| {
+                if composed {
+                    theme::composed_panel(s, c)
+                } else if s.gradient_enabled {
+                    theme::backdrop(s, c)
+                } else {
+                    t.bg
+                }
+            });
+        });
+    }
+}
+
 fn ramp(
     ui: &mut egui::Ui,
     s: &mut ThemeSettings,
@@ -750,7 +835,7 @@ fn preview(ui: &mut egui::Ui, s: ThemeSettings) {
     widgets::hover_frame(ui, widgets::surface(ui, t, false), |ui| {
         ui.set_min_width(ui.available_width());
         ui.horizontal(|ui| {
-            widgets::tront_mark(ui, t.accent, t.secondary, 28.0);
+            widgets::tront_mark(ui, s, 28.0);
             widgets::hover_label(
                 ui,
                 RichText::new("Component preview").strong().color(t.text),

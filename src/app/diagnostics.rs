@@ -20,11 +20,8 @@ impl TrontopApp {
         // Everything fits at 1000x580 with the licenses folded; opening them
         // scrolls the body, never the header.
         let body_height = (screen.height() - 48.0 - widgets::DIALOG_HEADER).max(200.0);
-        egui::Window::new("About Trontop")
+        widgets::dialog_window(ctx, "About Trontop", width)
             .id(egui::Id::new(ABOUT_WINDOW))
-            .title_bar(false)
-            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(0))
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .default_width(width)
             .default_height(body_height + widgets::DIALOG_HEADER)
             .max_height(body_height + widgets::DIALOG_HEADER)
@@ -49,7 +46,7 @@ impl TrontopApp {
     fn about_body(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, t: Tokens) {
         ui.spacing_mut().item_spacing.y = theme::space::S;
         ui.horizontal(|ui| {
-            widgets::tront_mark(ui, t.accent, t.secondary, 30.0);
+            widgets::tront_mark(ui, self.theme, 30.0);
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 widgets::hover_label(
@@ -144,7 +141,18 @@ impl TrontopApp {
             });
         });
         ui.add_space(theme::space::XS);
+        egui::CollapsingHeader::new("Trontop license and attribution").show(ui, |ui| {
+            ui.label("Source available. Apache 2.0 + Commons Clause 1.0.");
+            ui.label("Free personal and workplace use. Redistribution must retain the notices; sales are restricted by the license.");
+            ui.hyperlink_to("Source and complete terms", "https://github.com/TrentSterling/trontop");
+            if ui.button("Copy Trontop license and credit").clicked() {
+                ctx.copy_text(format!("{}\n{}", include_str!("../../NOTICE"), include_str!("../../LICENSE")));
+            }
+        });
         egui::CollapsingHeader::new("Third-party licenses").show(ui, |ui| {
+            if ui.button("Copy all third-party notices").clicked() {
+                ctx.copy_text(include_str!("../../THIRD_PARTY_NOTICES.txt").into());
+            }
             widgets::hover_label(ui, RichText::new("Renderer: egui-wgpu (MIT)").strong());
             ui.label(include_str!("../../vendor/egui-wgpu/LICENSE-MIT"));
             ui.add_space(theme::space::M);

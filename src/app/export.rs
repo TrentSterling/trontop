@@ -18,10 +18,7 @@ impl TrontopApp {
         let width = 580.0_f32.min(ctx.content_rect().width() - 48.0);
         // One region for the whole body, not a nested scroll area: the window
         // sizes itself to its short content instead of scrolling it.
-        egui::Window::new("Export snapshot")
-            .title_bar(false)
-            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(0))
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+        widgets::dialog_window(ctx, "Export snapshot", width)
             .default_width(width).resizable(false)
             .show(ctx, |ui| {
                 ui.set_width(width);

@@ -21,7 +21,27 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
 - This ledger covers Trontop. The earlier Photochop/Boxel/project-naming conversation
   is context, not additional Trontop release work.
 
+## Public preview decision, 2026-09-24
+
+Trent explicitly requested a public source repository, Windows download, product
+page, blog post, themed screenshot automation and OG image. Licensing discussion
+settled on personal/workplace use, attribution retained and restrictions on
+selling Trontop or a lightly rebranded copy: Apache 2.0 + Commons Clause 1.0.
+Alpha.41 is an unsigned development preview. Native/clean-machine/extended-soak
+checks below remain open and are disclosed in `docs/RELEASE_ALPHA41.md`; this
+launch does not assert that the broader completion ledger is closed.
+
+- [ ] **A36: Public preview and launch materials. IN PROGRESS.** Build/test/package
+  locally, verify exact CI artifact, publish repository/release/site/blog, and
+  check anonymous URLs. Media: 16 real UI renders with demo data and 12 themes.
+
 ## Required: useful task manager
+
+- [x] **A35: Daily-use polish follow-up, alpha.40. ACCEPTED.** Trent, 2026-09-24:
+  brighter dialog X outlines, movable dialogs, easier Lines / Bars access,
+  End task higher in the inspector, and logo contrast under random themes.
+  Implemented and checked with 429 passing tests and 16 inspected offscreen
+  views; `docs/POLISH_2026-09-24.md`. Trent reviewed the running build and said it looks great.
 
 - [x] **A01: Trontop, a native Rust Windows app.** Short working name, standalone
   system monitor, no webview/installer required. Evidence: `Cargo.toml`, `src/main.rs`.
@@ -118,6 +138,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   app icon and tray. Current T mark exists, but Trent explicitly said the branding
   still needed work. Done after one cohesive final identity pass and Trent approval,
   not endless new concepts. References: `docs/inspiration/README.md`.
+  Alpha.39 integrates the September 24 generated mark using theme-colored alpha
+  masks in chrome/About/inspector/preview and the native window/taskbar icon.
+  The executable embeds the original-color mark; the live tray graph stays.
+  See `docs/THEME_CONTROLS_2026-09-24.md` for scope and verification.
 - [x] **A12: Save the supplied inspiration and use real icons, not emoji glyphs.**
   Four supplied boards plus a transparent generated icon candidate are saved.
   Navigation/action/window icons are code-drawn; process icons use a bounded native
@@ -140,6 +164,10 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
   palettes, six families plus Surprise me and 12-roll undo. Mode/layout stay
   intact; contrast and actual UI interaction checks pass. `docs/ALPHA33_REVIEW.md`
   records dark/light renders; native persistence and final review remain open.
+  Alpha.39 adds full-range intensity/frost, separate dark/light frost, composed
+  previews, surface tint, secondary-text contrast and bundled font selection.
+  Export v4 migrates older settings. Cross-app engine parity is explicitly deferred
+  by Trent. See `docs/THEME_CONTROLS_2026-09-24.md`.
 - [ ] **A14: Zebra rows AND columns throughout. PARTIAL / REVIEW.** Check every
   table, device list, inspector/detail list, History/Startup/Users/Services list,
   sensor group and dialog. Alternation must remain distinct beneath selection and

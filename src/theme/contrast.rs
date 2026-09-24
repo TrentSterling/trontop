@@ -20,6 +20,18 @@ fn luminance(color: Color32) -> f32 {
         + 0.0722 * LINEAR[color.b() as usize]
 }
 
+/// Same worst-case luminance as existing surface/ink helpers, without imposing
+/// their per-channel cap on colorful artwork beneath translucent panels.
+pub(super) fn in_envelope(color: Color32, dark: bool) -> bool {
+    if dark {
+        luminance(color) <= luminance(Color32::from_gray(64))
+    } else {
+        // A linear sRGB half-space is closed under interpolation. Checking only
+        // luminance here lets two safe light endpoints mix into an unsafe middle.
+        0.2126 * color.r() as f32 + 0.7152 * color.g() as f32 + 0.0722 * color.b() as f32 >= 205.0
+    }
+}
+
 /// Opaque sRGB colors, before glyph anti-aliasing.
 pub(crate) fn ratio(a: Color32, b: Color32) -> f32 {
     let (a, b) = (luminance(a), luminance(b));
@@ -53,23 +65,24 @@ pub fn readable_text(preferred: Color32, background: Color32) -> Color32 {
 }
 
 pub fn surface(color: Color32, dark: bool) -> Color32 {
-    if dark {
-        let max = color.r().max(color.g()).max(color.b()).max(1) as f32;
-        let scale = (64.0 / max).min(1.0);
-        Color32::from_rgb(
-            (color.r() as f32 * scale) as u8,
-            (color.g() as f32 * scale) as u8,
-            (color.b() as f32 * scale) as u8,
-        )
-    } else {
-        let min = color.r().min(color.g()).min(color.b()) as f32;
-        let lift = if min < 205.0 {
-            (205.0 - min) / (255.0 - min)
-        } else {
-            0.0
-        };
-        mix(color, Color32::WHITE, lift)
+    let color = color.to_opaque();
+    if in_envelope(color, dark) {
+        return color;
     }
+    let anchor = if dark { Color32::BLACK } else { Color32::WHITE };
+    let (mut low, mut high) = (0.0, 1.0);
+    let mut result = anchor;
+    for _ in 0..12 {
+        let amount = (low + high) * 0.5;
+        let candidate = mix(color, anchor, amount);
+        if in_envelope(candidate, dark) {
+            high = amount;
+            result = candidate;
+        } else {
+            low = amount;
+        }
+    }
+    result
 }
 
 /// Safe on every surface in the envelope, including hover and composed bands.

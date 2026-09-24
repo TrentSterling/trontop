@@ -14,6 +14,7 @@ mod table_interaction_tests;
 /// Scroll directions for [`settle_scroll_bars`]: `[horizontal, vertical]`.
 pub const VERTICAL: [bool; 2] = [false, true];
 pub const HORIZONTAL: [bool; 2] = [true, false];
+pub const CHART_BARS_KEY: &str = "trontop.charts.bars.v1";
 
 /// Trontop's solid scroll bars take layout width. egui decides a bar is
 /// needed only after laying the content out without one, stores that for the
@@ -184,33 +185,8 @@ pub fn action_button_enabled(
     response
 }
 
-pub fn tront_mark(ui: &mut egui::Ui, primary: Color32, secondary: Color32, size: f32) {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    let painter = ui.painter_at(rect);
-    let fill = if response.hovered() {
-        theme::mix(primary, secondary, 0.35)
-    } else {
-        theme::mix(primary, Color32::BLACK, 0.20)
-    };
-    painter.rect_filled(rect, size * 0.22, fill);
-    let inset = rect.shrink(size * 0.17);
-    painter.line_segment(
-        [inset.left_top(), inset.right_top()],
-        Stroke::new(
-            (size * 0.11).max(2.0),
-            theme::readable_text(secondary, fill),
-        ),
-    );
-    painter.line_segment(
-        [
-            egui::pos2(inset.center().x, inset.top()),
-            egui::pos2(inset.center().x, inset.bottom()),
-        ],
-        Stroke::new(
-            (size * 0.11).max(2.0),
-            theme::readable_text(Color32::WHITE, fill),
-        ),
-    );
+pub fn tront_mark(ui: &mut egui::Ui, settings: ThemeSettings, size: f32) {
+    crate::branding::show(ui, settings, size);
 }
 
 /// A selectable tab pill in a fixed slot sized for its framed (selected or
@@ -1370,6 +1346,36 @@ pub fn sparkline_range(
         return;
     }
     let span = (hi - lo).max(0.001);
+    if painter
+        .ctx()
+        .data_mut(|data| data.get_persisted::<bool>(egui::Id::new(CHART_BARS_KEY)))
+        .unwrap_or(false)
+    {
+        let step = rect.width() / values.len() as f32;
+        let gap = (step * 0.2).min(2.0);
+        let ink = t.ink(color);
+        for (index, value) in values.iter().enumerate() {
+            let Some(value) = value.filter(|value| value.is_finite()) else {
+                continue;
+            };
+            let height = (((value - lo).clamp(0.0, span) / span) * rect.height())
+                .max(1.0)
+                .min(rect.height());
+            let bar = egui::Rect::from_min_max(
+                egui::pos2(
+                    rect.left() + index as f32 * step + gap * 0.5,
+                    rect.bottom() - height,
+                ),
+                egui::pos2(
+                    rect.left() + (index + 1) as f32 * step - gap * 0.5,
+                    rect.bottom(),
+                ),
+            );
+            painter.rect_filled(bar, 0.0, ink.gamma_multiply(0.45));
+            painter.hline(bar.x_range(), bar.top(), Stroke::new(1.0, ink));
+        }
+        return;
+    }
     let denominator = (values.len() - 1).max(1) as f32;
     let points: Vec<Option<egui::Pos2>> = values
         .iter()
@@ -2157,12 +2163,45 @@ pub fn fill_last_row<T>(
 /// Height of the dialog header bar drawn by [`dialog_header`].
 pub const DIALOG_HEADER: f32 = 36.0;
 
+/// Center on first open, then let egui retain the user's position. An anchor
+/// would override movement every frame. Child controls keep their own gestures.
+pub fn dialog_window<'a>(ctx: &egui::Context, title: &'a str, width: f32) -> egui::Window<'a> {
+    egui::Window::new(title)
+        .title_bar(false)
+        .frame(egui::Frame::window(&ctx.global_style()).inner_margin(0))
+        .pivot(egui::Align2::CENTER_CENTER)
+        .default_pos(ctx.content_rect().center())
+        .constrain_to(ctx.content_rect().shrink(8.0))
+        .default_width(width)
+        .resizable(false)
+        .movable(true)
+}
+
+/// Shared chrome for the short action dialogs. Closing cancels the dialog;
+/// callers still own every confirmation and never submit from the header.
+pub fn action_dialog(
+    ctx: &egui::Context,
+    title: &str,
+    width: f32,
+    t: Tokens,
+    contents: impl FnOnce(&mut egui::Ui),
+) -> bool {
+    let width = (width + 28.0).min(ctx.content_rect().width() - 32.0);
+    let mut closed = false;
+    dialog_window(ctx, title, width).show(ctx, |ui| {
+        ui.set_width(width);
+        closed = dialog_header(ui, title, t);
+        dialog_body(ui, contents);
+    });
+    closed
+}
+
 /// Dialog chrome: a header bar with a 16 px left-aligned title and a close
 /// button. egui's own title bar centers a Heading-sized title, so dialogs use
 /// `Window::title_bar(false)` with a zero-margin frame, call this first, and
 /// pad their body with [`dialog_body`]. Returns true when close is clicked.
 pub fn dialog_header(ui: &mut egui::Ui, title: &str, t: Tokens) -> bool {
-    let (bar, _) = ui.allocate_exact_size(
+    let (bar, header) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), DIALOG_HEADER),
         Sense::hover(),
     );
@@ -2177,13 +2216,35 @@ pub fn dialog_header(ui: &mut egui::Ui, title: &str, t: Tokens) -> bool {
         },
         ui.visuals().widgets.open.weak_bg_fill,
     );
-    ui.painter()
-        .hline(bar.x_range(), bar.bottom(), Stroke::new(1.0, t.border));
+    // A quiet theme signature, with no animation or extra repaint deadline.
+    theme::paint_gradient(
+        ui.painter(),
+        egui::Rect::from_min_max(
+            egui::pos2(bar.left(), bar.bottom() - 2.0),
+            bar.right_bottom(),
+        ),
+        theme::Stop::palette([
+            [t.accent.r(), t.accent.g(), t.accent.b()],
+            [t.accent.r(), t.accent.g(), t.accent.b()],
+            [t.secondary.r(), t.secondary.g(), t.secondary.b()],
+            [t.secondary.r(), t.secondary.g(), t.secondary.b()],
+        ]),
+        0.0,
+        |color| t.ink(color),
+    );
     let close =
-        egui::Rect::from_center_size(bar.right_center() - Vec2::new(22.0, 0.0), Vec2::splat(26.0));
+        egui::Rect::from_center_size(bar.right_center() - Vec2::new(22.0, 0.0), Vec2::splat(28.0));
+    let grip_x = close.left() - 14.0;
+    for x in [grip_x - 4.0, grip_x] {
+        for y in [-4.0, 0.0, 4.0] {
+            ui.painter()
+                .circle_filled(egui::pos2(x, bar.center().y + y), 0.8, t.text_muted);
+        }
+    }
+    header.on_hover_cursor(egui::CursorIcon::Grab);
     let title_rect = egui::Rect::from_min_max(
         bar.min + Vec2::new(14.0, 0.0),
-        egui::pos2(close.left() - 8.0, bar.bottom()),
+        egui::pos2(grip_x - 14.0, bar.bottom()),
     );
     paint_text(
         ui,
@@ -2199,21 +2260,36 @@ pub fn dialog_header(ui: &mut egui::Ui, title: &str, t: Tokens) -> bool {
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), "Close")
     });
-    if response.hovered() {
-        ui.painter().rect_filled(
+    #[cfg(test)]
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(
+            egui::Id::new(("dialog-chrome", title)),
+            (bar, response.id, close),
+        );
+    });
+    let fill = paint_interactive_surface(ui, &response, false, t.panel_raised, t);
+    if response.hovered() || response.has_focus() || response.is_pointer_button_down_on() {
+        ui.painter().rect_stroke(
             close,
             ui.visuals().widgets.hovered.corner_radius,
-            ui.visuals().widgets.hovered.weak_bg_fill,
+            Stroke::new(
+                1.5,
+                theme::readable_text(
+                    if response.has_focus() || response.is_pointer_button_down_on() {
+                        t.accent
+                    } else {
+                        t.secondary
+                    },
+                    fill,
+                ),
+            ),
+            egui::StrokeKind::Inside,
         );
     }
     Icon::Close.paint(
         ui.painter(),
-        egui::Rect::from_center_size(close.center(), Vec2::splat(14.0)),
-        if response.hovered() {
-            t.text
-        } else {
-            t.text_muted
-        },
+        egui::Rect::from_center_size(close.center(), Vec2::splat(20.0)),
+        theme::readable_text(t.text, fill),
     );
     response.clicked()
 }

@@ -82,7 +82,7 @@ fn hex_import_and_saved_library_are_atomic_and_bounded() {
 fn studio_all_tabs_fit_and_emit_no_native_window_commands() {
     for dark in [true, false] {
         for size in [Vec2::new(1040.0, 640.0), Vec2::new(1280.0, 760.0)] {
-            for tab in 0..4 {
+            for tab in 0..5 {
                 let ctx = egui::Context::default();
                 let mut settings = ThemeSettings {
                     dark,
@@ -128,6 +128,7 @@ fn studio_all_tabs_fit_and_emit_no_native_window_commands() {
                     "Appearance",
                     "Presets",
                     "My themes",
+                    "Type",
                     "Done",
                 ] {
                     let (_, rect, clip) = texts
@@ -144,6 +145,85 @@ fn studio_all_tabs_fit_and_emit_no_native_window_commands() {
                     assert!(viewport.commands.is_empty());
                 }
                 assert!(open);
+            }
+        }
+    }
+}
+
+#[test]
+fn typography_controls_and_tabs_do_not_overlap_in_any_font_or_compact_zoom() {
+    fn texts(
+        shape: &egui::Shape,
+        clip: egui::Rect,
+        out: &mut Vec<(String, egui::Rect, egui::Rect)>,
+    ) {
+        match shape {
+            egui::Shape::Text(t) => {
+                out.push((t.galley.job.text.clone(), t.visual_bounding_rect(), clip))
+            }
+            egui::Shape::Vec(v) => {
+                for shape in v {
+                    texts(shape, clip, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    for font in theme::typography::FontChoice::ALL {
+        for size in [Vec2::new(1040.0, 640.0), Vec2::new(693.0, 427.0)] {
+            let ctx = egui::Context::default();
+            let mut s = ThemeSettings {
+                font,
+                ..Default::default()
+            };
+            theme::install(&ctx, s);
+            let mut studio = Studio {
+                tab: 4,
+                ..Default::default()
+            };
+            let mut output = egui::FullOutput::default();
+            for _ in 0..20 {
+                output = frame(&ctx, &mut studio, &mut s, &mut true, size, vec![]);
+            }
+            let mut labels = Vec::new();
+            for shape in &output.shapes {
+                texts(&shape.shape, shape.clip_rect, &mut labels);
+            }
+            let mut header_rects = Vec::new();
+            for label in [
+                "Randomize",
+                "Undo roll",
+                "Dark",
+                "Light",
+                "Palette",
+                "Appearance",
+                "Presets",
+                "My themes",
+                "Type",
+                "Done",
+            ] {
+                let (_, rect, clip) = labels
+                    .iter()
+                    .find(|(text, _, _)| text == label)
+                    .unwrap_or_else(|| panic!("missing {label}: {font:?}"));
+                assert!(
+                    clip.expand(1.0).contains_rect(*rect),
+                    "clipped {label}: {font:?}, {size:?}"
+                );
+                assert!(
+                    egui::Rect::from_min_size(egui::Pos2::ZERO, size).contains_rect(*rect),
+                    "outside window: {label}, {font:?}, {size:?}"
+                );
+                for prior in &header_rects {
+                    assert!(
+                        !rect.intersects(*prior),
+                        "overlapping {label}: {font:?}, {size:?}"
+                    );
+                }
+                header_rects.push(*rect);
+            }
+            for label in ["Font", "UI scale"] {
+                assert!(labels.iter().any(|(text, _, _)| text == label));
             }
         }
     }

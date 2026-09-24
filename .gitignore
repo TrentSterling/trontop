@@ -4,4 +4,6 @@
 *.ilk
 *.exp
 *.lib
+node_modules/
 
+__pycache__/

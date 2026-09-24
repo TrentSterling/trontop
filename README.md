@@ -1,5 +1,19 @@
 # Trontop
 
+**[Download for Windows](https://tront.xyz/trontop/#download)** | **[Theme gallery](https://tront.xyz/trontop/#themes)** | **[Launch post](https://tront.xyz/blog/posts/trontop/)**
+
+![Trontop Overview with demo data](https://tront.xyz/trontop/media/electric-overview.png)
+
+Source available under **Apache 2.0 + Commons Clause 1.0**. Free for personal
+and workplace use. Attribution and license notices must be retained, and sales
+are restricted as defined by [LICENSE](LICENSE). This is not an OSI open-source
+license. Third-party components retain their own terms in
+[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
+Current public preview: **0.3.0-alpha.41**, Windows 11 x64, unsigned. Read the
+[release notes and known limitations](docs/RELEASE_ALPHA41.md) and
+[privacy statement](PRIVACY.md). Screenshots use synthetic demo data.
+
 Trontop is a fast, native Windows process and performance manager. It is the tool I
 want open when Windows Task Manager has become part of the problem.
 
@@ -77,3 +91,8 @@ The next systems work includes recoverable suspend/resume,
 startup controls and isolated service-command validation. Trontop remains a development
 preview without full Task Manager parity. It should be a focused standalone app, not
 a general system-utility suite.
+
+## Public media automation
+
+The product screenshots, downloadable theme gallery and social preview image
+are reproducible. See [the media workflow](docs/MARKETING.md).

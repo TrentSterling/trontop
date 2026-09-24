@@ -32,10 +32,20 @@ jobs:
         run: cargo clippy -p egui-wgpu --all-targets -- -D warnings
       - name: Build portable release executable
         run: cargo build --release
+      - name: Package release with licenses and checksums
+        shell: pwsh
+        run: ./scripts/package-release.ps1
       - name: Upload portable executable
         uses: actions/upload-artifact@v4
         with:
           name: trontop-windows-${{ github.sha }}
-          path: target/release/trontop.exe
+          path: |
+            target/release-package/trontop.exe
+            target/release-package/*.zip
+            target/release-package/SHA256SUMS.txt
+            target/release-package/build-info.json
+            LICENSE
+            NOTICE
+            THIRD_PARTY_NOTICES.txt
           if-no-files-found: error
           retention-days: 14

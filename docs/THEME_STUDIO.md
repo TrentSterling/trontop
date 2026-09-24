@@ -1,5 +1,10 @@
 # Four-peg Theme Studio
 
+The [2026-09-24 update](THEME_CONTROLS_2026-09-24.md) adds full-range intensity and
+frost, per-mode opacity, surface tint, text contrast, fonts, composed previews and
+theme-aware branding. Exported themes now use version 4 with v3/legacy migration.
+The earlier implementation notes below are historical.
+
 Ask A13 in `../ASK_LEDGER.md`. This is a bounded theme-editor pass, not a claim
 that every application page has completed its final accessibility/visual audit.
 

@@ -85,66 +85,6 @@ impl CpuMeter {
     }
 }
 
-pub fn window_icon() -> std::sync::Arc<eframe::egui::IconData> {
-    std::sync::Arc::new(eframe::egui::IconData {
-        rgba: icon_pixels(36.0),
-        width: 32,
-        height: 32,
-    })
-}
-
-fn icon_pixels(cpu_percent: f32) -> Vec<u8> {
-    const SIZE: u32 = 32;
-    let mut rgba = vec![0_u8; (SIZE * SIZE * 4) as usize];
-    let cpu = cpu_percent.clamp(0.0, 100.0) / 100.0;
-    let meter = if cpu < 0.70 {
-        mix([168, 85, 247], [46, 230, 215], cpu / 0.70)
-    } else {
-        mix([46, 230, 215], [242, 79, 92], (cpu - 0.70) / 0.30)
-    };
-
-    for y in 2..30 {
-        for x in 2..30 {
-            let corner_x = 7_u32.saturating_sub(x).max(x.saturating_sub(24));
-            let corner_y = 7_u32.saturating_sub(y).max(y.saturating_sub(24));
-            if corner_x * corner_x + corner_y * corner_y <= 25 {
-                let signal = mix(
-                    [79, 35, 132],
-                    [14, 102, 99],
-                    (x + y).saturating_sub(4) as f32 / 56.0,
-                );
-                put(&mut rgba, x, y, [signal[0], signal[1], signal[2], 255]);
-            }
-        }
-    }
-    for x in 7..25 {
-        for y in 6..10 {
-            put(&mut rgba, x, y, [224, 220, 238, 255]);
-        }
-    }
-    let fill_top = 25_i32 - (15.0 * cpu).round() as i32;
-    for x in 14..18 {
-        for y in 10..25 {
-            let color = if y as i32 >= fill_top {
-                meter
-            } else {
-                [71, 63, 91]
-            };
-            put(&mut rgba, x, y, [color[0], color[1], color[2], 255]);
-        }
-    }
-    for x in 5..27 {
-        put(&mut rgba, x, 27, [55, 49, 69, 255]);
-    }
-    let meter_width = (22.0 * cpu).round() as u32;
-    for x in 5..(5 + meter_width) {
-        for y in 27..29 {
-            put(&mut rgba, x, y, [meter[0], meter[1], meter[2], 255]);
-        }
-    }
-    rgba
-}
-
 fn put(buffer: &mut [u8], x: u32, y: u32, color: [u8; 4]) {
     let index = ((y * 32 + x) * 4) as usize;
     buffer[index..index + 4].copy_from_slice(&color);

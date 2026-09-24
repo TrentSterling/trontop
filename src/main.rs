@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod branding;
 mod cpu_clock;
 mod diagnostics;
 mod disk_activity;
@@ -64,7 +65,7 @@ fn run(failures: std::sync::Arc<failure::Recorder>) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Trontop")
-            .with_icon(tray::window_icon())
+            .with_icon(branding::window_icon(theme::ThemeSettings::default()))
             .with_inner_size([1280.0, 760.0])
             .with_min_inner_size([1040.0, 640.0])
             .with_decorations(false),

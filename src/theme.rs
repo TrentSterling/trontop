@@ -8,6 +8,7 @@ mod contrast;
 mod gradient;
 pub(crate) mod magic;
 mod storage;
+pub mod typography;
 #[cfg(test)]
 pub(crate) use contrast::ratio as contrast_ratio;
 pub use contrast::{ink, readable_text, surface as text_surface};
@@ -41,6 +42,10 @@ pub struct ThemeSettings {
     pub gradient_angle: f32,
     pub gradient_strength: f32,
     pub frost: f32,
+    pub frost_light: f32,
+    pub surface_tint: f32,
+    pub text_strength: f32,
+    pub font: typography::FontChoice,
     pub roundness: f32,
     pub zebra_strength: f32,
     pub column_strength: f32,
@@ -70,6 +75,10 @@ impl ThemeSettings {
             gradient_angle: 132.0,
             gradient_strength: 0.34,
             frost: 0.80,
+            frost_light: 0.59,
+            surface_tint: 0.08,
+            text_strength: 0.0,
+            font: typography::FontChoice::Sans,
             roundness: 8.0,
             zebra_strength: 0.075,
             column_strength: 0.05,
@@ -138,6 +147,7 @@ impl ThemeSettings {
                     ]),
                     gradient_strength: 0.15,
                     frost: 0.94,
+                    frost_light: 0.94,
                     ..Self::default()
                 },
             ),
@@ -196,14 +206,37 @@ impl ThemeSettings {
         };
         self.gradient_angle =
             bounded(self.gradient_angle, 132.0, -36000.0, 36000.0).rem_euclid(360.0);
-        self.gradient_strength = bounded(self.gradient_strength, 0.34, 0.0, 0.75);
-        self.frost = bounded(self.frost, 0.80, 0.45, 1.0);
+        self.gradient_strength = bounded(self.gradient_strength, 0.34, 0.0, 1.0);
+        self.frost = bounded(self.frost, 0.80, 0.0, 1.0);
+        self.frost_light = bounded(self.frost_light, 0.59, 0.0, 1.0);
+        self.surface_tint = bounded(self.surface_tint, 0.08, 0.0, 1.0);
+        self.text_strength = bounded(self.text_strength, 0.0, 0.0, 1.0);
         self.roundness = bounded(self.roundness, 8.0, 0.0, 18.0);
         self.zebra_strength = bounded(self.zebra_strength, 0.075, 0.0, 0.18);
         self.column_strength = bounded(self.column_strength, 0.05, 0.0, 0.16);
         self.hover_strength = bounded(self.hover_strength, 0.18, 0.06, 0.30);
         gradient::normalize(&mut self.stops);
         self
+    }
+
+    pub fn active_frost(self) -> f32 {
+        if self.dark {
+            self.frost
+        } else {
+            self.frost_light
+        }
+    }
+
+    pub fn active_frost_mut(&mut self) -> &mut f32 {
+        if self.dark {
+            &mut self.frost
+        } else {
+            &mut self.frost_light
+        }
+    }
+
+    fn frost_alpha(self) -> f32 {
+        (self.active_frost().clamp(0.0, 1.0) * 255.0).round() / 255.0
     }
 }
 
@@ -280,10 +313,11 @@ pub fn tokens(settings: ThemeSettings) -> Tokens {
     // labels into raw-accent text or changing the brightness safety envelope.
     let ground = mix(accent, secondary, 0.30);
     let tinted = |color: Color32, amount| text_surface(mix(color, ground, amount), settings.dark);
-    result.bg = tinted(result.bg, 0.045);
-    result.panel = tinted(result.panel, 0.06);
-    result.panel_raised = tinted(result.panel_raised, 0.08);
-    result.graph_bg = tinted(result.graph_bg, 0.025);
+    result.bg = tinted(result.bg, settings.surface_tint * 0.5625);
+    result.panel = tinted(result.panel, settings.surface_tint * 0.75);
+    result.panel_raised = tinted(result.panel_raised, settings.surface_tint);
+    result.graph_bg = tinted(result.graph_bg, settings.surface_tint * 0.3125);
+    result.text_muted = mix(result.text_muted, result.text, settings.text_strength);
     if settings.high_contrast {
         result.text = if settings.dark {
             Color32::WHITE
@@ -300,6 +334,8 @@ pub fn tokens(settings: ThemeSettings) -> Tokens {
 
 pub fn install(ctx: &egui::Context, settings: ThemeSettings) {
     let settings = settings.normalized();
+    typography::install(ctx, settings.font);
+    crate::branding::install(ctx, settings);
     let t = tokens(settings);
     let theme = if settings.dark {
         Theme::Dark
@@ -401,23 +437,56 @@ pub fn paint_background(ctx: &egui::Context, settings: ThemeSettings) {
     );
 }
 
-/// Keep backdrop luminance bounded independently of the user's four raw colors.
-/// Text on transparent panels must remain readable even at maximum intensity.
+/// Preserve saturated colors until the *composed panel* exceeds the shared
+/// text-surface luminance envelope. Frost is accounted for once, not twice.
 pub fn backdrop(settings: ThemeSettings, color: Color32) -> Color32 {
     let t = tokens(settings);
     let raw = mix(t.bg, color, settings.gradient_strength);
-    t.surface(raw)
+    let frost = settings.frost_alpha();
+    let safe = |candidate| contrast::in_envelope(mix(candidate, t.panel, frost), settings.dark);
+    if safe(raw) {
+        return raw;
+    }
+    let anchor = if settings.dark {
+        Color32::BLACK
+    } else {
+        Color32::WHITE
+    };
+    let (mut low, mut high) = (0.0, 1.0);
+    let mut result = anchor;
+    for _ in 0..12 {
+        let amount = (low + high) * 0.5;
+        let candidate = mix(raw, anchor, amount);
+        if safe(candidate) {
+            high = amount;
+            result = candidate;
+        } else {
+            low = amount;
+        }
+    }
+    result
+}
+
+/// Opaque preview of the exact background plus one main-panel layer.
+pub fn composed_panel(settings: ThemeSettings, color: Color32) -> Color32 {
+    let t = tokens(settings);
+    let wash = if settings.gradient_enabled {
+        backdrop(settings, color)
+    } else {
+        t.bg
+    };
+    mix(wash, t.panel, settings.frost_alpha())
 }
 
 pub fn panel_color(settings: ThemeSettings) -> Color32 {
     let t = tokens(settings);
-    let alpha = (settings.frost.clamp(0.45, 1.0) * 255.0) as u8;
+    let alpha = (settings.active_frost().clamp(0.0, 1.0) * 255.0).round() as u8;
     Color32::from_rgba_unmultiplied(t.panel.r(), t.panel.g(), t.panel.b(), alpha)
 }
 
 pub fn raised_color(settings: ThemeSettings) -> Color32 {
     let t = tokens(settings);
-    let alpha = (settings.frost.clamp(0.45, 1.0) * 255.0) as u8;
+    let alpha = (settings.active_frost().clamp(0.0, 1.0) * 255.0).round() as u8;
     Color32::from_rgba_unmultiplied(
         t.panel_raised.r(),
         t.panel_raised.g(),
@@ -457,37 +526,60 @@ mod tests {
     }
 
     #[test]
-    fn arbitrary_gradient_colors_keep_backdrop_text_readable() {
-        fn luminance(c: Color32) -> f32 {
-            let linear = |v: u8| {
-                let v = v as f32 / 255.0;
-                if v <= 0.04045 {
-                    v / 12.92
-                } else {
-                    ((v + 0.055) / 1.055).powf(2.4)
-                }
-            };
-            0.2126 * linear(c.r()) + 0.7152 * linear(c.g()) + 0.0722 * linear(c.b())
-        }
+    fn arbitrary_gradients_keep_composed_panel_text_readable_at_every_frost() {
         for dark in [false, true] {
-            let s = ThemeSettings {
-                dark,
-                gradient_strength: 0.75,
-                frost: 0.45,
-                ..Default::default()
-            };
-            let t = tokens(s);
-            for red in [0, 64, 128, 192, 255] {
-                for green in [0, 64, 128, 192, 255] {
-                    for blue in [0, 64, 128, 192, 255] {
-                        let bg = backdrop(s, Color32::from_rgb(red, green, blue));
-                        for fg in [t.text, t.text_muted] {
-                            let (a, b) = (luminance(fg), luminance(bg));
-                            assert!((a.max(b) + 0.05) / (a.min(b) + 0.05) >= 4.5);
+            for frost in [0.0, 0.10, 0.45, 0.8, 1.0] {
+                let s = ThemeSettings {
+                    dark,
+                    gradient_strength: 1.0,
+                    frost,
+                    frost_light: frost,
+                    surface_tint: 1.0,
+                    ..Default::default()
+                };
+                let t = tokens(s);
+                for red in [0, 64, 128, 192, 255] {
+                    for green in [0, 64, 128, 192, 255] {
+                        for blue in [0, 64, 128, 192, 255] {
+                            let bg = composed_panel(s, Color32::from_rgb(red, green, blue));
+                            for fg in [t.text, t.text_muted, t.ink(t.accent), t.ink(t.secondary)] {
+                                assert!(
+                                    contrast_ratio(fg, bg) >= 4.5,
+                                    "{dark} {frost} {fg:?} on {bg:?}"
+                                );
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    #[test]
+    fn full_range_controls_preserve_vivid_colors_and_frost_modes() {
+        let mut s = ThemeSettings {
+            gradient_strength: 1.0,
+            frost: 0.0,
+            frost_light: 1.0,
+            ..Default::default()
+        }
+        .normalized();
+        assert_eq!(s.gradient_strength, 1.0);
+        assert_eq!(s.active_frost(), 0.0);
+        assert_eq!(panel_color(s).a(), 0);
+        let blue = backdrop(s, Color32::BLUE);
+        assert!(
+            blue.b() > 200,
+            "blue was crushed by the old per-channel cap: {blue:?}"
+        );
+        s.dark = false;
+        assert_eq!(s.active_frost(), 1.0);
+        assert_eq!(panel_color(s).a(), 255);
+        *s.active_frost_mut() = 0.3;
+        s.dark = true;
+        assert_eq!(s.active_frost(), 0.0);
+        s.frost = 1.0;
+        assert_eq!(backdrop(s, Color32::RED), Color32::RED);
+        assert_eq!(composed_panel(s, Color32::RED), tokens(s).panel);
     }
 }
