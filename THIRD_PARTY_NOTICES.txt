@@ -11,6 +11,12 @@ This inventory includes Windows build and test dependencies.
 accesskit 0.24.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The AccessKit contributors
+Source copyright notices:
+Copyright 2018 The Chromium Authors. All rights reserved.
+Copyright 2018 The kurbo Authors.
+Copyright 2021 The AccessKit Authors. All rights reserved.
+Copyright 2023 The AccessKit Authors. All rights reserved.
 
 --- accesskit.txt ---
 Permission is hereby granted, free of charge, to any
@@ -42,6 +48,7 @@ DEALINGS IN THE SOFTWARE.
 adler2 2.0.1
 Upstream license: 0BSD OR MIT OR Apache-2.0
 
+Package authors: Jonas Schievink <jonasschievink@gmail.com>; oyvindln <oyvindln@users.noreply.github.com>
 
 --- LICENSE-0BSD ---
 Copyright (C) Jonas Schievink <jonasschievink@gmail.com>
@@ -292,6 +299,7 @@ DEALINGS IN THE SOFTWARE.
 ahash 0.8.12
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Tom Kaitchuck <Tom.Kaitchuck@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -529,6 +537,7 @@ DEALINGS IN THE SOFTWARE.
 allocator-api2 0.2.21
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Zakarum <zaq.dev@icloud.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -739,6 +748,8 @@ DEALINGS IN THE SOFTWARE.
 arboard 3.6.1
 Upstream license: MIT OR Apache-2.0
 
+Source copyright notices:
+Copyright 2022 The Arboard contributors
 
 --- LICENSE-APACHE.txt ---
 
@@ -948,6 +959,9 @@ SOFTWARE.
 arrayvec 0.7.8
 Upstream license: MIT OR Apache-2.0
 
+Package authors: bluss
+Source copyright notices:
+Copyright 2012-2016 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -1185,6 +1199,7 @@ DEALINGS IN THE SOFTWARE.
 ash 0.38.0+1.3.281
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Maik Klein <maikklein@googlemail.com>; Benjamin Saunders <ben.e.saunders@gmail.com>; Marijn Suijten <marijn@traverseresearch.nl>
 
 --- LICENSE-APACHE ---
 Apache License
@@ -1288,6 +1303,7 @@ DEALINGS IN THE SOFTWARE.
 autocfg 1.5.1
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: Josh Stone <cuviper@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -1525,6 +1541,10 @@ DEALINGS IN THE SOFTWARE.
 bit-set 0.9.1
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: Alexis Beingessner <a.beingessner@gmail.com>
+Source copyright notices:
+Copyright 2012-2014 The Rust Project Developers. See the COPYRIGHT
+Copyright 2012-2024 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -1762,6 +1782,10 @@ DEALINGS IN THE SOFTWARE.
 bit-vec 0.9.1
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: Alexis Beingessner <a.beingessner@gmail.com>
+Source copyright notices:
+Copyright 2012-2014 The Rust Project Developers. See the COPYRIGHT
+Copyright 2012-2023 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -1999,6 +2023,9 @@ DEALINGS IN THE SOFTWARE.
 bitflags 2.13.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The Rust Project Developers
+Source copyright notices:
+Copyright 2014 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -2236,6 +2263,7 @@ DEALINGS IN THE SOFTWARE.
 bytemuck 1.25.2
 Upstream license: Zlib OR Apache-2.0 OR MIT
 
+Package authors: Lokathor <zefria@gmail.com>
 
 --- LICENSE-APACHE ---
 Apache License
@@ -2331,6 +2359,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 bytemuck_derive 1.12.0
 Upstream license: Zlib OR Apache-2.0 OR MIT
 
+Package authors: Lokathor <zefria@gmail.com>
 
 --- LICENSE-APACHE ---
 Apache License
@@ -2455,6 +2484,7 @@ THE SOFTWARE.
 cfg-if 1.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Alex Crichton <alex@alexcrichton.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -2692,6 +2722,7 @@ DEALINGS IN THE SOFTWARE.
 cfg_aliases 0.2.2
 Upstream license: MIT
 
+Package authors: Zicklag <zicklag@katharostech.com>
 
 --- LICENSE ---
 MIT License
@@ -2738,6 +2769,7 @@ The `cfg_aliases!` macro uses a lot of the code from [`tectonic_cfg_support::tar
 clipboard-win 5.4.1
 Upstream license: BSL-1.0
 
+Package authors: Douman <douman@gmx.se>
 
 --- clipboard-win.txt ---
 Boost Software License - Version 1.0 - August 17th, 2003
@@ -2769,6 +2801,7 @@ DEALINGS IN THE SOFTWARE.
 codespan-reporting 0.13.1
 Upstream license: Apache-2.0
 
+Package authors: Brendan Zabarauskas <bjzaba@yahoo.com.au>
 
 --- LICENSE ---
                                  Apache License
@@ -2978,6 +3011,8 @@ Upstream license: Apache-2.0
 color 0.3.3
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2024 the Color Authors
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -3184,6 +3219,7 @@ SOFTWARE.
 crc32fast 1.5.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Sam Rijs <srijs@airpost.net>; Alex Crichton <alex@alexcrichton.com>
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -4492,6 +4528,11 @@ DEALINGS IN THE SOFTWARE.
 cursor-icon 1.2.0
 Upstream license: MIT OR Apache-2.0 OR Zlib
 
+Package authors: Kirill Chibisov <contact@kchibisov.com>
+Source copyright notices:
+Copyright © 2018 W3C® (MIT, ERCIM, Keio, Beihang)
+Copyright © 2023 World Wide Web Consortium, (Massachusetts Institute of
+Copyright © [YEAR] W3C® (MIT, ERCIM, Keio, Beihang)."
 
 --- LICENSE-APACHE ---
 
@@ -4738,6 +4779,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 displaydoc 0.2.7
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Jane Lusby <jlusby@yaah.dev>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -4973,6 +5015,9 @@ DEALINGS IN THE SOFTWARE.
 document-features 0.2.12
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Slint Developers <info@slint.dev>
+Source copyright notices:
+Copyright © SixtyFPS GmbH <info@sixtyfps.io>
 
 --- LICENSE-APACHE ---
 Apache License
@@ -5076,6 +5121,15 @@ SOFTWARE.
 dpi 0.1.2
 Upstream license: Apache-2.0 AND MIT
 
+Source copyright notices:
+Copyright (c) 2018 Jorge Aparicio
+Copyright © 1993,2004 Sun Microsystems or
+Copyright © 2003-2009 Bruce D. Evans or
+Copyright © 2003-2009 Steven G. Kargl or
+Copyright © 2003-2011 David Schultz or
+Copyright © 2005-2020 Rich Felker, et al.
+Copyright © 2008 Stephen L. Moshier or
+Copyright © 2017-2018 Arm Limited
 
 --- LICENSE ---
 Apache License
@@ -5338,6 +5392,7 @@ have been licensed under extremely permissive terms.
 ecolor 0.35.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>; Andreas Reich <reichandreas@gmx.de>
 
 --- egui.txt ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -5371,6 +5426,7 @@ DEALINGS IN THE SOFTWARE.
 eframe 0.35.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 --- egui.txt ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -5404,6 +5460,7 @@ DEALINGS IN THE SOFTWARE.
 egui 0.35.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 --- egui.txt ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -5437,6 +5494,7 @@ DEALINGS IN THE SOFTWARE.
 egui-wgpu 0.35.0
 Upstream license: MIT
 
+Package authors: Nils Hasenbanck <nils@hasenbanck.de>; embotech <opensource@embotech.com>; Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 --- LICENSE-MIT ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -5470,6 +5528,7 @@ DEALINGS IN THE SOFTWARE.
 egui-winit 0.35.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 --- egui.txt ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -5503,6 +5562,7 @@ DEALINGS IN THE SOFTWARE.
 egui_extras 0.35.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Dominik Rössler <dominik@freshx.de>; Emil Ernerfeldt <emil.ernerfeldt@gmail.com>; René Rössler <rene@freshx.de>
 
 --- egui.txt ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -5773,6 +5833,7 @@ DEALINGS IN THE SOFTWARE.
 emath 0.35.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 --- egui.txt ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -5806,6 +5867,23 @@ DEALINGS IN THE SOFTWARE.
 enum-map 2.7.3
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Kamila Borowska <kamila@borowska.pw>
+Source copyright notices:
+SPDX-FileCopyrightText: 2017 - 2021 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2017 - 2022 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2017 - 2023 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2018 - 2022 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2018 - 2023 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2019 Riey <creeper844@gmail.com>
+SPDX-FileCopyrightText: 2020 Amanieu d'Antras <amanieu@gmail.com>
+SPDX-FileCopyrightText: 2021 Alex Sayers <alex@asayers.com>
+SPDX-FileCopyrightText: 2021 Bruno Corrêa Zimmermann <brunoczim@gmail.com>
+SPDX-FileCopyrightText: 2021 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2021 micycle
+SPDX-FileCopyrightText: 2022 Cass Fridkin <cass@cloudflare.com>
+SPDX-FileCopyrightText: 2022 Mateusz Kowalczyk <fuuzetsu@fuuzetsu.co.uk>
+SPDX-FileCopyrightText: 2022 philipp <descpl@yahoo.de>
+SPDX-FileCopyrightText: 2023 Nicolas Carranza <nicarran@yandex.com>
 
 --- LICENSES/Apache-2.0.txt ---
 Apache License
@@ -6023,6 +6101,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 enum-map-derive 0.17.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Kamila Borowska <kamila@borowska.pw>
+Source copyright notices:
+SPDX-FileCopyrightText: 2017 - 2022 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2018 hcpl <hcpl.prog@gmail.com>
+SPDX-FileCopyrightText: 2019 mara <vmedea@protonmail.com>
+SPDX-FileCopyrightText: 2021 - 2022 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2021 - 2023 Kamila Borowska <kamila@borowska.pw>
+SPDX-FileCopyrightText: 2021 Bruno Corrêa Zimmermann <brunoczim@gmail.com>
+SPDX-FileCopyrightText: 2021 Dietrich <dietrich@teilgedanken.de>
+SPDX-FileCopyrightText: 2022 Kamila Borowska <kamila@borowska.pw>
 
 --- LICENSES/Apache-2.0.txt ---
 Apache License
@@ -6240,6 +6328,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 enumn 0.1.14
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -6450,6 +6539,7 @@ DEALINGS IN THE SOFTWARE.
 epaint 0.35.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 --- egui.txt ---
 Copyright (c) 2018-2021 Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
@@ -6483,6 +6573,7 @@ DEALINGS IN THE SOFTWARE.
 epaint_default_fonts 0.35.0
 Upstream license: (MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0
 
+Package authors: Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
 
 --- fonts/emoji-icon-font-mit-license.txt ---
 MIT License
@@ -6965,6 +7056,7 @@ DEALINGS IN THE SOFTWARE.
 error-code 3.4.0
 Upstream license: BSL-1.0
 
+Package authors: Douman <douman@gmx.se>
 
 --- LICENSE ---
 Boost Software License - Version 1.0 - August 17th, 2003
@@ -6996,6 +7088,11 @@ DEALINGS IN THE SOFTWARE.
 euclid 0.22.14
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The Servo Project Developers
+Source copyright notices:
+Copyright 2013 The Servo Project Developers. See the COPYRIGHT
+Copyright 2014 The Servo Project Developers. See the COPYRIGHT
+Copyright 2018 The Servo Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -7233,6 +7330,7 @@ DEALINGS IN THE SOFTWARE.
 fax 0.2.7
 Upstream license: MIT
 
+Package authors: Sebastian K <s3bk@protonmail.com>
 
 --- LICENSE ---
 Copyright © 2021 The pdf-rs contributers.
@@ -7248,6 +7346,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 fdeflate 0.3.7
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The image-rs Developers
 
 --- LICENSE-APACHE ---
 
@@ -7461,6 +7560,10 @@ DEALINGS IN THE SOFTWARE.
 fearless_simd 0.4.1
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: Raph Levien <raph.levien@gmail.com>
+Source copyright notices:
+Copyright 2024 the Fearless_SIMD Authors
+Copyright 2025 the Fearless_SIMD Authors
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -7673,6 +7776,9 @@ DEALINGS IN THE SOFTWARE.
 flate2 1.1.10
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Alex Crichton <alex@alexcrichton.com>; Josh Triplett <josh@joshtriplett.org>
+Source copyright notices:
+Copyright 2013 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -7910,6 +8016,7 @@ DEALINGS IN THE SOFTWARE.
 foldhash 0.1.5
 Upstream license: Zlib
 
+Package authors: Orson Peters <orsonpeters@gmail.com>
 
 --- LICENSE ---
 Copyright (c) 2024 Orson Peters
@@ -7936,6 +8043,7 @@ the following restrictions:
 foldhash 0.2.0
 Upstream license: Zlib
 
+Package authors: Orson Peters <orsonpeters@gmail.com>
 
 --- LICENSE ---
 Copyright (c) 2024 Orson Peters
@@ -8065,6 +8173,9 @@ DEALINGS IN THE SOFTWARE.
 form_urlencoded 1.2.2
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The rust-url developers
+Source copyright notices:
+Copyright 2013-2016 The rust-url developers.
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -8302,6 +8413,10 @@ DEALINGS IN THE SOFTWARE.
 gl_generator 0.14.0
 Upstream license: Apache-2.0
 
+Package authors: Brendan Zabarauskas <bjzaba@yahoo.com.au>; Corey Richardson; Arseny Kapoulkine
+Source copyright notices:
+Copyright 2015 Brendan Zabarauskas and the gl-rs developers
+Copyright 2015-2016 Brendan Zabarauskas and the gl-rs developers
 
 --- gl-rs.txt ---
 
@@ -8512,6 +8627,10 @@ Upstream license: Apache-2.0
 glifo 0.1.1
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2025 the Vello Authors and the Parley Authors
+Copyright 2026 the Vello Authors
+Copyright 2026 the Vello Authors and the Parley Authors
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -8724,6 +8843,7 @@ DEALINGS IN THE SOFTWARE.
 glow 0.17.0
 Upstream license: MIT OR Apache-2.0 OR Zlib
 
+Package authors: Joshua Groves <josh@joshgroves.com>; Dzmitry Malyshau <kvarkus@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -8975,6 +9095,7 @@ freely, subject to the following restrictions:
 glutin_wgl_sys 0.6.1
 Upstream license: Apache-2.0
 
+Package authors: Kirill Chibisov <contact@kchibisov.com>
 
 --- LICENSE ---
 Apache License
@@ -9184,6 +9305,7 @@ Apache License
 gpu-allocator 0.28.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Traverse Research <opensource@traverseresearch.nl>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -9402,6 +9524,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 gpu-descriptor 0.3.2
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Zakarum <zakarumych@ya.ru>
 
 --- gpu-descriptor.txt ---
 Copyright (c) 2020 The gpu-descriptor project developers
@@ -9434,6 +9557,7 @@ DEALINGS IN THE SOFTWARE.
 gpu-descriptor-types 0.2.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Zakarum <zakarumych@ya.ru>
 
 --- gpu-descriptor.txt ---
 Copyright (c) 2020 The gpu-descriptor project developers
@@ -9466,6 +9590,7 @@ DEALINGS IN THE SOFTWARE.
 guillotiere 0.7.0
 Upstream license: MIT/Apache-2.0
 
+Package authors: Nicolas Silva <nical@fastmail.com>
 
 --- LICENSE-APACHE ---
 Copyright 2019 Nicolas Silva
@@ -9510,6 +9635,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 half 2.7.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Kathryn Long <squeeself@gmail.com>
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -9724,6 +9850,7 @@ Upstream license: MIT
 hashbrown 0.15.5
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Amanieu d'Antras <amanieu@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -9961,6 +10088,7 @@ DEALINGS IN THE SOFTWARE.
 hashbrown 0.16.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Amanieu d'Antras <amanieu@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -10435,6 +10563,7 @@ DEALINGS IN THE SOFTWARE.
 hexf-parse 0.2.1
 Upstream license: CC0-1.0
 
+Package authors: Kang Seonghoon <public+rust@mearie.org>
 
 --- hexf.txt ---
 Creative Commons Legal Code
@@ -10564,6 +10693,9 @@ express Statement of Purpose.
 icu_collections 2.3.0
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
+Source copyright notices:
+Copyright (C) 2021 and later: Unicode, Inc. and others.
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -10618,6 +10750,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 icu_locale_core 2.3.0
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -10672,6 +10805,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 icu_normalizer 2.3.0
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -10726,6 +10860,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 icu_normalizer_data 2.3.0
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -10780,6 +10915,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 icu_properties 2.3.0
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -10834,6 +10970,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 icu_properties_data 2.3.0
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -10888,6 +11025,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 icu_provider 2.3.1
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -10942,6 +11080,11 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 idna 1.1.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The rust-url developers
+Source copyright notices:
+Copyright 2013 The rust-url developers.
+Copyright 2013-2014 The rust-url developers.
+Copyright 2016 The rust-url developers.
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -11179,6 +11322,7 @@ DEALINGS IN THE SOFTWARE.
 idna_adapter 1.2.2
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: The rust-url developers
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -11416,6 +11560,7 @@ DEALINGS IN THE SOFTWARE.
 image 0.25.10
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The image-rs Developers
 
 --- LICENSE-APACHE ---
 
@@ -11866,6 +12011,7 @@ DEALINGS IN THE SOFTWARE.
 itertools 0.14.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: bluss
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -12103,6 +12249,7 @@ DEALINGS IN THE SOFTWARE.
 itoa 1.0.18
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -12313,6 +12460,7 @@ DEALINGS IN THE SOFTWARE.
 keyboard-types 0.7.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Pyfisch <pyfisch@posteo.org>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -12542,6 +12690,7 @@ THE SOFTWARE.
 khronos-egl 6.0.0
 Upstream license: MIT/Apache-2.0
 
+Package authors: Timothée Haudebourg <author@haudebourg.net>; Sean Kerr <sean@metatomic.io>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -12777,6 +12926,9 @@ DEALINGS IN THE SOFTWARE.
 khronos_api 3.1.0
 Upstream license: Apache-2.0
 
+Package authors: Brendan Zabarauskas <bjzaba@yahoo.com.au>; Corey Richardson; Arseny Kapoulkine; Pierre Krieger <pierre.krieger1708@gmail.com>
+Source copyright notices:
+Copyright 2015 Brendan Zabarauskas and the gl-rs developers
 
 --- gl-rs.txt ---
 
@@ -12987,6 +13139,16 @@ Upstream license: Apache-2.0
 kurbo 0.13.1
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2018 the Kurbo Authors
+Copyright 2019 the Kurbo Authors
+Copyright 2020 the Kurbo Authors
+Copyright 2021 the Kurbo Authors
+Copyright 2022 the Kurbo Authors
+Copyright 2023 the Kurbo Authors
+Copyright 2024 the Kurbo Authors
+Copyright 2025 the Kurbo Authors
+Copyright 2026 the Kurbo Authors
 
 --- LICENSE-APACHE ---
 
@@ -13437,6 +13599,7 @@ DEALINGS IN THE SOFTWARE.
 libloading 0.8.9
 Upstream license: ISC
 
+Package authors: Simonas Kazlauskas <libloading@kazlauskas.me>
 
 --- LICENSE ---
 Copyright © 2015, Simonas Kazlauskas
@@ -13457,6 +13620,13 @@ THIS SOFTWARE.
 libm 0.2.16
 Upstream license: MIT
 
+Package authors: Alex Crichton <alex@alexcrichton.com>; Amanieu d'Antras <amanieu@gmail.com>; Jorge Aparicio <japaricious@gmail.com>; Trevor Gross <tg@trevorgross.com>
+Source copyright notices:
+Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+Copyright (C) 2004 by Sun Microsystems, Inc. All rights reserved.
+Copyright (c) 2005 David Schultz <das@FreeBSD.ORG>
+Copyright (c) 2021-2022 Alexei Sibidanov.
+Copyright 2004 Sun Microsystems, Inc.  All Rights Reserved.
 
 --- LICENSE.txt ---
 rust-lang/libm as a whole is available for use under the MIT license:
@@ -13723,6 +13893,9 @@ Copyright notices are retained in src/* files where relevant.
 linebender_resource_handle 0.1.1
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2022 the Raw Resource Handle Authors
+Copyright 2024 the Raw Resource Handle Authors
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -13929,6 +14102,7 @@ SOFTWARE.
 litemap 0.8.3
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -13983,6 +14157,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 litrs 1.0.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Lukas Kalbertodt <lukas.kalbertodt@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -14195,6 +14370,10 @@ DEALINGS IN THE SOFTWARE.
 lock_api 0.4.14
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Amanieu d'Antras <amanieu@gmail.com>
+Source copyright notices:
+Copyright 2016 Amanieu d'Antras
+Copyright 2018 Amanieu d'Antras
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -14432,6 +14611,10 @@ DEALINGS IN THE SOFTWARE.
 log 0.4.34
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The Rust Project Developers
+Source copyright notices:
+Copyright 2014-2015 The Rust Project Developers. See the COPYRIGHT
+Copyright 2015 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -14669,6 +14852,7 @@ DEALINGS IN THE SOFTWARE.
 memchr 2.8.3
 Upstream license: Unlicense OR MIT
 
+Package authors: Andrew Gallant <jamslam@gmail.com>; bluss
 
 --- COPYING ---
 This project is dual-licensed under the Unlicense and MIT licenses.
@@ -14704,6 +14888,7 @@ THE SOFTWARE.
 mime 0.3.17
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Sean McArthur <sean@seanmonstar.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -14936,6 +15121,7 @@ THE SOFTWARE.
 mime_guess2 2.3.1
 Upstream license: MIT
 
+Package authors: Austin Bonander <austin.bonander@gmail.com>
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -14966,6 +15152,13 @@ SOFTWARE.
 miniz_oxide 0.8.9
 Upstream license: MIT OR Zlib OR Apache-2.0
 
+Package authors: Frommi <daniil.liferenko@gmail.com>; oyvindln <oyvindln@users.noreply.github.com>; Rich Geldreich richgel99@gmail.com
+Source copyright notices:
+Copyright (c) 2017 Frommi
+Copyright (c) 2017-2024 oyvindln
+Copyright (c) 2020 Frommi
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright 2013-2014 RAD Game Tools and Valve Software
 
 --- LICENSE ---
 MIT License
@@ -15223,6 +15416,13 @@ Permission is granted to anyone to use this software for any purpose, including 
 miniz_oxide 0.9.1
 Upstream license: MIT OR Zlib OR Apache-2.0
 
+Package authors: Frommi <daniil.liferenko@gmail.com>; oyvindln <oyvindln@users.noreply.github.com>; Rich Geldreich richgel99@gmail.com
+Source copyright notices:
+Copyright (c) 2017 Frommi
+Copyright (c) 2017-2024 oyvindln
+Copyright (c) 2020 Frommi
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright 2013-2014 RAD Game Tools and Valve Software
 
 --- LICENSE ---
 MIT License
@@ -15480,6 +15680,9 @@ Permission is granted to anyone to use this software for any purpose, including 
 moxcms 0.8.1
 Upstream license: BSD-3-Clause OR Apache-2.0
 
+Package authors: Radzivon Bartoshyk
+Source copyright notices:
+Copyright (c) Radzivon Bartoshyk. All rights reserved.
 
 --- LICENSE-APACHE.md ---
                                  Apache License
@@ -15717,6 +15920,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 muda 0.17.1
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2014-2021 The winit contributors
+Copyright 2021-2022 Tauri Programme within The Commons Conservancy
+Copyright 2022-2022 Tauri Programme within The Commons Conservancy
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -15971,6 +16178,7 @@ Creator: Person: Daniel Thompson-Yvetot
 naga 29.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: gfx-rs developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -16179,6 +16387,9 @@ SOFTWARE.
 nohash-hasher 0.2.0
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: Parity Technologies <admin@parity.io>
+Source copyright notices:
+Copyright 2018-2020 Parity Technologies (UK) Ltd.
 
 --- LICENSE-APACHE ---
 
@@ -16410,6 +16621,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ntapi 0.4.3
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: MSxDOS <melcodos@gmail.com>
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -16639,6 +16851,9 @@ SOFTWARE.
 num-traits 0.2.19
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The Rust Project Developers
+Source copyright notices:
+Copyright 2013-2014 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -16876,6 +17091,7 @@ DEALINGS IN THE SOFTWARE.
 once_cell 1.21.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Aleksey Kladov <aleksey.kladov@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -17111,6 +17327,7 @@ DEALINGS IN THE SOFTWARE.
 ordered-float 5.5.0
 Upstream license: MIT
 
+Package authors: Jonathan Reem <jonathan.reem@gmail.com>; Matt Brubeck <mbrubeck@limpet.net>
 
 --- LICENSE-MIT ---
 Copyright (c) 2015 Jonathan Reem
@@ -17144,6 +17361,9 @@ DEALINGS IN THE SOFTWARE.
 parking_lot 0.12.5
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Amanieu d'Antras <amanieu@gmail.com>
+Source copyright notices:
+Copyright 2016 Amanieu d'Antras
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -17381,6 +17601,9 @@ DEALINGS IN THE SOFTWARE.
 parking_lot_core 0.9.12
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Amanieu d'Antras <amanieu@gmail.com>
+Source copyright notices:
+Copyright 2016 Amanieu d'Antras
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -17618,6 +17841,9 @@ DEALINGS IN THE SOFTWARE.
 peniko 0.6.1
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2022 the Peniko Authors
+Copyright 2024 the Peniko Authors
 
 --- LICENSE-APACHE ---
 
@@ -17856,6 +18082,9 @@ DEALINGS IN THE SOFTWARE.
 percent-encoding 2.3.2
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The rust-url developers
+Source copyright notices:
+Copyright 2013-2016 The rust-url developers.
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -18093,6 +18322,7 @@ DEALINGS IN THE SOFTWARE.
 phf 0.11.3
 Upstream license: MIT
 
+Package authors: Steven Fackler <sfackler@gmail.com>
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -18121,6 +18351,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 phf_generator 0.11.3
 Upstream license: MIT
 
+Package authors: Steven Fackler <sfackler@gmail.com>
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -18149,6 +18380,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 phf_macros 0.11.3
 Upstream license: MIT
 
+Package authors: Steven Fackler <sfackler@gmail.com>
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -18177,6 +18409,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 phf_shared 0.11.3
 Upstream license: MIT
 
+Package authors: Steven Fackler <sfackler@gmail.com>
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -18416,6 +18649,7 @@ DEALINGS IN THE SOFTWARE.
 pkg-config 0.3.34
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Alex Crichton <alex@alexcrichton.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -18653,6 +18887,7 @@ DEALINGS IN THE SOFTWARE.
 png 0.18.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The image-rs Developers
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -18890,6 +19125,7 @@ DEALINGS IN THE SOFTWARE.
 pollster 0.4.0
 Upstream license: Apache-2.0/MIT
 
+Package authors: Joshua Barretto <joshua.s.barretto@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -19127,6 +19363,8 @@ DEALINGS IN THE SOFTWARE.
 polycool 0.4.0
 Upstream license: MIT OR Apache-2.0
 
+Source copyright notices:
+Copyright 2025 the Kurbo Authors
 
 --- LICENSE-APACHE ---
 
@@ -19365,6 +19603,7 @@ DEALINGS IN THE SOFTWARE.
 potential_utf 0.1.6
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -19419,6 +19658,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 presser 0.3.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Embark <opensource@embark-studios.com>; Gray Olson <gray@grayolson.com
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -19656,6 +19896,7 @@ DEALINGS IN THE SOFTWARE.
 proc-macro2 1.0.107
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>; Alex Crichton <alex@alexcrichton.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -19866,6 +20107,7 @@ DEALINGS IN THE SOFTWARE.
 profiling 1.0.18
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Philip Degarmo <aclysma@gmail.com>
 
 --- profiling.txt ---
 MIT License
@@ -19894,6 +20136,9 @@ SOFTWARE.
 pxfm 0.1.30
 Upstream license: BSD-3-Clause OR Apache-2.0
 
+Package authors: Radzivon Bartoshyk
+Source copyright notices:
+Copyright (c) Radzivon Bartoshyk. All rights reserved.
 
 --- LICENSE-APACHE.md ---
                                  Apache License
@@ -20131,6 +20376,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 quick-error 2.0.1
 Upstream license: MIT/Apache-2.0
 
+Package authors: Paul Colomiets <paul@colomiets.name>; Colin Kiegel <kiegel@gmx.de>
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -20363,6 +20609,7 @@ SOFTWARE.
 quote 1.0.47
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -20573,6 +20820,14 @@ DEALINGS IN THE SOFTWARE.
 rand 0.8.8
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The Rand Project Developers; The Rust Project Developers
+Source copyright notices:
+Copyright 2013 The Rust Project Developers.
+Copyright 2013-2017 The Rust Project Developers.
+Copyright 2017 The Rust Project Developers.
+Copyright 2018 Developers of the Rand project.
+Copyright 2018-2020 Developers of the Rand project.
+Copyright 2021 Developers of the Rand project.
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -20786,6 +21041,11 @@ DEALINGS IN THE SOFTWARE.
 rand_core 0.6.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The Rand Project Developers; The Rust Project Developers
+Source copyright notices:
+Copyright 2017-2018 The Rust Project Developers.
+Copyright 2018 Developers of the Rand project.
+Copyright 2019 Developers of the Rand project.
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -21010,6 +21270,7 @@ DEALINGS IN THE SOFTWARE.
 range-alloc 0.1.5
 Upstream license: MIT OR Apache-2.0
 
+Package authors: the gfx-rs Developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -21218,6 +21479,10 @@ SOFTWARE.
 raw-window-handle 0.6.2
 Upstream license: MIT OR Apache-2.0 OR Zlib
 
+Package authors: Osspial <osspial@gmail.com>
+Source copyright notices:
+Copyright (c) 2019 Osspial
+Copyright (c) 2020 Osspial
 
 --- LICENSE-APACHE.md ---
 
@@ -21544,6 +21809,7 @@ DEALINGS IN THE SOFTWARE.
 renderdoc-sys 1.1.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Eyal Kalderon <ebkalderon@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -21781,6 +22047,7 @@ DEALINGS IN THE SOFTWARE.
 ron 0.12.2
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Christopher Durham <cad97@cad97.com>; Dzmitry Malyshau <kvarkus@gmail.com>; Thomas Schaller <torkleyy@gmail.com>; Juniper Tyree <juniper.tyree@helsinki.fi>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -22018,6 +22285,9 @@ DEALINGS IN THE SOFTWARE.
 rustc-hash 1.1.0
 Upstream license: Apache-2.0/MIT
 
+Package authors: The Rust Project Developers
+Source copyright notices:
+Copyright 2015 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -22253,6 +22523,7 @@ DEALINGS IN THE SOFTWARE.
 rustc-hash 2.1.3
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: The Rust Project Developers
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -22461,6 +22732,7 @@ DEALINGS IN THE SOFTWARE.
 scopeguard 1.2.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: bluss
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -22698,6 +22970,7 @@ DEALINGS IN THE SOFTWARE.
 self_cell 1.3.0
 Upstream license: Apache-2.0 OR GPL-2.0-only
 
+Package authors: Lukas Bergdoll <lukas.bergdoll@gmail.com>
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -22907,6 +23180,7 @@ Upstream license: Apache-2.0 OR GPL-2.0-only
 serde 1.0.229
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Erick Tryzelaar <erick.tryzelaar@gmail.com>; David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -23117,6 +23391,7 @@ DEALINGS IN THE SOFTWARE.
 serde_core 1.0.229
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Erick Tryzelaar <erick.tryzelaar@gmail.com>; David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -23327,6 +23602,7 @@ DEALINGS IN THE SOFTWARE.
 serde_derive 1.0.229
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Erick Tryzelaar <erick.tryzelaar@gmail.com>; David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -23537,6 +23813,7 @@ DEALINGS IN THE SOFTWARE.
 serde_json 1.0.150
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Erick Tryzelaar <erick.tryzelaar@gmail.com>; David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -23979,6 +24256,9 @@ SOFTWARE.
 simd-adler32 0.3.10
 Upstream license: MIT
 
+Package authors: Marvin Countryman <me@maar.vin>
+Source copyright notices:
+Copyright (c) [2021] [Marvin Countryman]
 
 --- LICENSE.md ---
 MIT License
@@ -24008,6 +24288,10 @@ SOFTWARE.
 siphasher 1.0.3
 Upstream license: MIT/Apache-2.0
 
+Package authors: Frank Denis <github@pureftpd.org>
+Source copyright notices:
+Copyright 2012-2015 The Rust Project Developers. See the COPYRIGHT
+Copyright 2014 The Rust Project Developers. See the COPYRIGHT
 
 --- COPYING ---
 Copyright 2012-2016 The Rust Project Developers.
@@ -24126,6 +24410,7 @@ DEALINGS IN THE SOFTWARE.
 smallvec 1.16.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The Servo Project Developers
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -24363,6 +24648,7 @@ DEALINGS IN THE SOFTWARE.
 smol_str 0.2.2
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Aleksey Kladov <aleksey.kladov@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -24598,6 +24884,7 @@ DEALINGS IN THE SOFTWARE.
 spirv 0.4.0+sdk-1.4.341.0
 Upstream license: Apache-2.0
 
+Package authors: Lei Zhang <antiagainst@gmail.com>
 
 --- rspirv.txt ---
 
@@ -24808,6 +25095,9 @@ Upstream license: Apache-2.0
 stable_deref_trait 1.2.1
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Robert Grosse <n210241048576@gmail.com>
+Source copyright notices:
+Copyright 2017 Robert Grosse
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -25044,6 +25334,7 @@ DEALINGS IN THE SOFTWARE.
 static_assertions 1.1.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Nikolai Vazquez
 
 --- LICENSE-APACHE ---
 
@@ -25278,6 +25569,7 @@ SOFTWARE.
 syn 2.0.119
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -25488,6 +25780,7 @@ DEALINGS IN THE SOFTWARE.
 syn 3.0.5
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -25698,6 +25991,7 @@ DEALINGS IN THE SOFTWARE.
 synstructure 0.13.2
 Upstream license: MIT
 
+Package authors: Nika Layzell <nika@thelayzells.com>
 
 --- LICENSE ---
 Copyright 2016 Nika Layzell
@@ -25713,6 +26007,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 sysinfo 0.38.4
 Upstream license: MIT
 
+Package authors: Guillaume Gomez <guillaume1.gomez@gmail.com>
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -25743,6 +26038,7 @@ SOFTWARE.
 termcolor 1.4.1
 Upstream license: Unlicense OR MIT
 
+Package authors: Andrew Gallant <jamslam@gmail.com>
 
 --- COPYING ---
 This project is dual-licensed under the Unlicense and MIT licenses.
@@ -25778,6 +26074,7 @@ THE SOFTWARE.
 thiserror 2.0.20
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -25988,6 +26285,7 @@ DEALINGS IN THE SOFTWARE.
 thiserror-impl 2.0.20
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -26198,6 +26496,7 @@ DEALINGS IN THE SOFTWARE.
 tiff 0.11.3
 Upstream license: MIT
 
+Package authors: The image-rs Developers
 
 --- LICENSE ---
 MIT License
@@ -26227,6 +26526,7 @@ SOFTWARE.
 tinystr 0.8.4
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -26281,6 +26581,8 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 toml 1.1.4+spec-1.1.0
 Upstream license: MIT OR Apache-2.0
 
+Source copyright notices:
+Copyright 2017 Serde Developers
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -27209,6 +27511,7 @@ SOFTWARE.
 tracing 0.1.44
 Upstream license: MIT
 
+Package authors: Eliza Weisman <eliza@buoyant.io>; Tokio Contributors <team@tokio.rs>
 
 --- LICENSE ---
 Copyright (c) 2019 Tokio Contributors
@@ -27242,6 +27545,7 @@ DEALINGS IN THE SOFTWARE.
 tracing-core 0.1.36
 Upstream license: MIT
 
+Package authors: Tokio Contributors <team@tokio.rs>
 
 --- LICENSE ---
 Copyright (c) 2019 Tokio Contributors
@@ -27299,6 +27603,8 @@ SOFTWARE.
 tray-icon 0.21.3
 Upstream license: MIT OR Apache-2.0
 
+Source copyright notices:
+Copyright 2022-2022 Tauri Programme within The Commons Conservancy
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -27553,6 +27859,7 @@ Creator: Person: Daniel Thompson-Yvetot
 type-map 0.5.1
 Upstream license: MIT/Apache-2.0
 
+Package authors: Jacob Brown <kardeiz@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -28046,6 +28353,7 @@ DEALINGS IN THE SOFTWARE.
 typeid 1.0.3
 Upstream license: MIT OR Apache-2.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -28256,6 +28564,7 @@ DEALINGS IN THE SOFTWARE.
 unicase 2.9.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Sean McArthur <sean@seanmonstar.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -28488,6 +28797,7 @@ THE SOFTWARE.
 unicode-general-category 1.1.0
 Upstream license: Apache-2.0
 
+Package authors: YesLogic Pty. Ltd. <info@yeslogic.com>
 
 --- LICENSE ---
                                  Apache License
@@ -28697,6 +29007,7 @@ Upstream license: Apache-2.0
 unicode-ident 1.0.24
 Upstream license: (MIT OR Apache-2.0) AND Unicode-3.0
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -28949,6 +29260,11 @@ authorization of the copyright holder.
 unicode-segmentation 1.13.3
 Upstream license: MIT OR Apache-2.0
 
+Package authors: kwantam <kwantam@gmail.com>; Manish Goregaokar <manishsmail@gmail.com>
+Source copyright notices:
+Copyright 2012-2014 The Rust Project Developers. See the COPYRIGHT
+Copyright 2012-2015 The Rust Project Developers. See the COPYRIGHT
+Copyright 2012-2018 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -29186,6 +29502,9 @@ DEALINGS IN THE SOFTWARE.
 unicode-width 0.2.2
 Upstream license: MIT OR Apache-2.0
 
+Package authors: kwantam <kwantam@gmail.com>; Manish Goregaokar <manishsmail@gmail.com>
+Source copyright notices:
+Copyright 2012-2025 The Rust Project Developers. See the COPYRIGHT
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -29423,6 +29742,12 @@ DEALINGS IN THE SOFTWARE.
 url 2.5.8
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The rust-url developers
+Source copyright notices:
+Copyright 2013-2014 The rust-url developers.
+Copyright 2013-2015 The rust-url developers.
+Copyright 2013-2016 The rust-url developers.
+Copyright 2016 The rust-url developers.
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -29660,6 +29985,7 @@ DEALINGS IN THE SOFTWARE.
 utf8_iter 1.0.4
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: Henri Sivonen <hsivonen@hsivonen.fi>
 
 --- LICENSE-APACHE ---
 
@@ -29898,6 +30224,10 @@ DEALINGS IN THE SOFTWARE.
 uuid 1.26.0
 Upstream license: Apache-2.0 OR MIT
 
+Package authors: Ashley Mannix<ashleymannix@live.com.au>; Dylan DPC<dylan.dpc@gmail.com>; Hunar Roop Kahlon<hunar.roop@gmail.com>
+Source copyright notices:
+Copyright 2013-2014 The Rust Project Developers.
+Copyright 2018 The Uuid Project Developers.
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -30136,6 +30466,10 @@ DEALINGS IN THE SOFTWARE.
 vello_common 0.0.9
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2024 the Vello Authors
+Copyright 2025 the Vello Authors
+Copyright 2026 the Vello Authors
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -30348,6 +30682,10 @@ DEALINGS IN THE SOFTWARE.
 vello_cpu 0.0.9
 Upstream license: Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2025 the Vello Authors
+Copyright 2025 the Vello Authors and the Parley Authors
+Copyright 2026 the Vello Authors
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -30560,6 +30898,7 @@ DEALINGS IN THE SOFTWARE.
 version_check 0.9.5
 Upstream license: MIT/Apache-2.0
 
+Package authors: Sergio Benitez <sb@sergio.bz>
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -31024,6 +31363,7 @@ SOFTWARE.
 webbrowser 1.2.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Amod Malviya @amodm
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -31252,6 +31592,7 @@ DEALINGS IN THE SOFTWARE.
 weezl 0.1.12
 Upstream license: MIT OR Apache-2.0
 
+Package authors: The image-rs Developers
 
 --- LICENSE-APACHE ---
                               Apache License
@@ -31485,6 +31826,7 @@ SOFTWARE.
 wgpu 29.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: gfx-rs developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -31693,6 +32035,7 @@ SOFTWARE.
 wgpu-core 29.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: gfx-rs developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -31901,6 +32244,7 @@ SOFTWARE.
 wgpu-core-deps-windows-linux-android 29.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: gfx-rs developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -32109,6 +32453,7 @@ SOFTWARE.
 wgpu-hal 29.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: gfx-rs developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -32317,6 +32662,7 @@ SOFTWARE.
 wgpu-naga-bridge 29.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: gfx-rs developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -32525,6 +32871,7 @@ SOFTWARE.
 wgpu-types 29.0.4
 Upstream license: MIT OR Apache-2.0
 
+Package authors: gfx-rs developers
 
 --- LICENSE.APACHE ---
                                  Apache License
@@ -32733,6 +33080,7 @@ SOFTWARE.
 winapi 0.3.9
 Upstream license: MIT/Apache-2.0
 
+Package authors: Peter Atashian <retep998@gmail.com>
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -32964,6 +33312,7 @@ SOFTWARE.
 winapi-util 0.1.11
 Upstream license: Unlicense OR MIT
 
+Package authors: Andrew Gallant <jamslam@gmail.com>
 
 --- COPYING ---
 This project is dual-licensed under the Unlicense and MIT licenses.
@@ -35329,6 +35678,7 @@ Upstream license: MIT OR Apache-2.0
 windows-sys 0.52.0
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Microsoft
 
 --- license-apache-2.0 ---
                                  Apache License
@@ -35562,6 +35912,7 @@ Upstream license: MIT OR Apache-2.0
 windows-sys 0.60.2
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Microsoft
 
 --- license-apache-2.0 ---
                                  Apache License
@@ -36028,6 +36379,7 @@ Upstream license: MIT OR Apache-2.0
 windows-targets 0.52.6
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Microsoft
 
 --- license-apache-2.0 ---
                                  Apache License
@@ -36727,6 +37079,7 @@ Upstream license: MIT OR Apache-2.0
 windows_x86_64_msvc 0.52.6
 Upstream license: MIT OR Apache-2.0
 
+Package authors: Microsoft
 
 --- license-apache-2.0 ---
                                  Apache License
@@ -37193,6 +37546,10 @@ Upstream license: MIT OR Apache-2.0
 winit 0.30.13
 Upstream license: Apache-2.0
 
+Package authors: The winit contributors; Pierre Krieger <pierre.krieger1708@gmail.com>
+Source copyright notices:
+Copyright © 2017 W3C® (MIT, ERCIM, Keio, Beihang).
+Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European
 
 --- LICENSE ---
 Apache License
@@ -37427,6 +37784,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 winresource 0.1.31
 Upstream license: MIT
 
+Package authors: Max Resch <resch.max@gmail.com>
 
 --- LICENSE ---
 Copyright 2016 Max Resch
@@ -37460,6 +37818,7 @@ DEALINGS IN THE SOFTWARE.
 writeable 0.6.4
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -37514,6 +37873,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 xml-rs 0.8.29
 Upstream license: MIT
 
+Package authors: Vladimir Matveev <vmatveev@citrine.cc>
 
 --- LICENSE ---
 The MIT License (MIT)
@@ -37543,6 +37903,7 @@ SOFTWARE.
 yoke 0.8.3
 Upstream license: Unicode-3.0
 
+Package authors: Manish Goregaokar <manishsmail@gmail.com>
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -37597,6 +37958,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 yoke-derive 0.8.2
 Upstream license: Unicode-3.0
 
+Package authors: Manish Goregaokar <manishsmail@gmail.com>
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -37651,6 +38013,17 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 zerocopy 0.8.56
 Upstream license: BSD-2-Clause OR Apache-2.0 OR MIT
 
+Source copyright notices:
+<!-- Copyright 2023 The Fuchsia Authors
+<!-- Copyright 2024 The Fuchsia Authors
+<!-- Copyright 2025 The Fuchsia Authors
+Copyright 2018 The Fuchsia Authors
+Copyright 2019 The Fuchsia Authors
+Copyright 2022 The Fuchsia Authors
+Copyright 2023 The Fuchsia Authors
+Copyright 2024 The Fuchsia Authors
+Copyright 2025 The Fuchsia Authors
+Copyright 2026 The Fuchsia Authors
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -37917,6 +38290,12 @@ DEALINGS IN THE SOFTWARE.
 zerocopy-derive 0.8.56
 Upstream license: BSD-2-Clause OR Apache-2.0 OR MIT
 
+Source copyright notices:
+Copyright 2019 The Fuchsia Authors
+Copyright 2023 The Fuchsia Authors
+Copyright 2024 The Fuchsia Authors
+Copyright 2025 The Fuchsia Authors
+Copyright 2026 The Fuchsia Authors
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -38183,6 +38562,7 @@ DEALINGS IN THE SOFTWARE.
 zerofrom 0.1.8
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -38237,6 +38617,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 zerofrom-derive 0.1.7
 Upstream license: Unicode-3.0
 
+Package authors: Manish Goregaokar <manishsmail@gmail.com>
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -38291,6 +38672,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 zerotrie 0.2.5
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -38345,6 +38727,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 zerovec 0.11.8
 Upstream license: Unicode-3.0
 
+Package authors: The ICU4X Project Developers
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -38399,6 +38782,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 zerovec-derive 0.11.6
 Upstream license: Unicode-3.0
 
+Package authors: Manish Goregaokar <manishsmail@gmail.com>
 
 --- LICENSE ---
 UNICODE LICENSE V3
@@ -38480,6 +38864,7 @@ freely, subject to the following restrictions:
 zmij 1.0.23
 Upstream license: MIT
 
+Package authors: David Tolnay <dtolnay@gmail.com>
 
 --- LICENSE-MIT ---
 Permission is hereby granted, free of charge, to any
@@ -38511,6 +38896,8 @@ DEALINGS IN THE SOFTWARE.
 zune-core 0.5.3
 Upstream license: MIT OR Apache-2.0 OR Zlib
 
+Source copyright notices:
+Copyright (c) 2023.
 
 --- LICENSE-APACHE ---
                                  Apache License
@@ -38766,6 +39153,10 @@ freely, subject to the following restrictions:
 zune-jpeg 0.5.15
 Upstream license: MIT OR Apache-2.0 OR Zlib
 
+Package authors: caleb <etemesicaleb@gmail.com>
+Source copyright notices:
+Copyright (c) 2023.
+Copyright (c) 2025.
 
 --- LICENSE-APACHE ---
                                  Apache License

@@ -6,6 +6,7 @@ No network access, credentials, or machine-specific paths enter the output.
 import json
 from pathlib import Path
 import subprocess
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 metadata = json.loads(subprocess.check_output([
@@ -42,6 +43,20 @@ for package in sorted(metadata["packages"], key=lambda p: (p["name"], p["version
         missing.append(package["name"])
     header = f"\n{'=' * 72}\n{package['name']} {package['version']}\nUpstream license: {package.get('license', 'See notices')}\n"
     sections.append(header)
+    if package.get("authors"):
+        sections.append("Package authors: " + "; ".join(package["authors"]))
+    # REUSE projects may put only a template in LICENSES/MIT.txt and keep the
+    # actual copyright owners in per-file SPDX headers. Preserve those too.
+    copyright_lines = set()
+    for source in root.rglob("*"):
+        if not source.is_file() or source.suffix.lower() not in (".rs", ".c", ".h", ".cpp", ".md", ".license", ".toml"):
+            continue
+        with source.open(encoding="utf-8", errors="replace") as stream:
+            for _, line in zip(range(100), stream):
+                if re.match(r"\s*(?://|#|/\*|\*|<!--)?\s*(SPDX-FileCopyrightText:|Copyright\s+(?:\(c\)|©|[12][0-9]{3}))", line, re.I):
+                    copyright_lines.add(line.strip().lstrip("/*# ").rstrip("*/ "))
+    if copyright_lines:
+        sections.append("Source copyright notices:\n" + "\n".join(sorted(copyright_lines)))
     for path in files:
         if "gpl" in path.name.lower() and "Apache-2.0 OR GPL" in (package.get("license") or ""):
             continue
