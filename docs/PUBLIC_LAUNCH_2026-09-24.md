@@ -1,5 +1,9 @@
 # Alpha.41 public preview
 
+The original synthetic screenshot gallery described below was replaced with real
+telemetry at Trent's request later the same day. See `LIVE_MEDIA_2026-09-24.md`.
+The exact released executable and its validation remain as recorded here.
+
 Published on 2026-09-24 at Trent's request, including source, Windows download,
 product page, blog post, themed screenshot automation and social preview image.
 

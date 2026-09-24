@@ -39,6 +39,14 @@ launch does not assert that the broader completion ledger is closed.
 
 ## Required: useful task manager
 
+- [x] **A37: Real launch telemetry and author story. PUBLISHED.** Trent rejected
+  the synthetic sine-wave screenshots and requested his real CPU/GPU workload.
+  Replace gallery/blog/OG captures using the sampler without desktop interaction.
+  Lead the article with his Windows 11 Task Manager stale-reading/lag experience,
+  credit Discord's theme system, and identify Speccy-level detail as the goal.
+  Done: 137 real samples, 16 replaced screenshots and regenerated OG image;
+  revised article and live image hashes verified. `docs/LIVE_MEDIA_2026-09-24.md`.
+
 - [x] **A35: Daily-use polish follow-up, alpha.40. ACCEPTED.** Trent, 2026-09-24:
   brighter dialog X outlines, movable dialogs, easier Lines / Bars access,
   End task higher in the inspector, and logo contrast under random themes.

@@ -3,6 +3,14 @@
 Trontop is Trent's native Windows process and performance manager, implemented in
 Rust with eframe/egui.
 
+## Product origin
+
+Trent built Trontop because Windows 11 Task Manager was lagging on his powerful
+PC and showing stale readings, including 100% CPU that disappeared after reopening
+it. He wanted a functional, responsive, pretty replacement with Speccy-level
+hardware detail as the goal. Theme Studio is inspired by Discord's theme system.
+Public screenshots should use real captured telemetry, not synthetic sine waves.
+
 ## Product constraints
 
 - Keep telemetry collection off the UI thread.

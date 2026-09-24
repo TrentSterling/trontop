@@ -1,12 +1,16 @@
 # Rebuild public media
 
-Screenshots use the production egui UI and explicitly synthetic demo telemetry.
-The renderer starts no sampler, opens no native window, and sends no OS input.
-Every screenshot says DEMO DATA; public captions also identify the example data.
-Never substitute captures of a developer's desktop or real process/command list.
+Screenshots use the production egui UI and real telemetry from Trent's PC.
+Trent explicitly requested this after the launch's synthetic sine waves made the
+app look fake. The opt-in renderer runs the normal read-only sampler for 125
+seconds, then captures all themes and views with the resulting histories. It
+opens no native window, sends no OS input and generates no stress workload.
+CPU/GPU, memory, disk, network and sensor readings are not invented or smoothed.
+Personal account/path/command strings are omitted; process and hardware names
+and measured values are retained. Review images before publishing.
 
 ```powershell
-./scripts/export-marketing.ps1 -SitePath C:/path/to/website/trontop
+./scripts/export-marketing.ps1 -SitePath C:/path/to/website/trontop -LiveCapture
 cd scripts/marketing
 npm ci
 npx playwright install chromium
@@ -14,7 +18,10 @@ node render-og.cjs C:/path/to/website/trontop
 node check-site.cjs C:/path/to/website/trontop C:/path/to/review-output
 ```
 
-`target/marketing/gallery.json` is the screenshot/theme manifest. The export
+`target/marketing/gallery.json` records each shot's live-data provenance and
+sample sequence. `capture-metrics.json` is a local numeric-only capture receipt;
+it is not copied to the website. Each capture observes the current workload,
+so the visual pipeline is repeatable but the telemetry changes. The export
 updates the marked gallery block in the existing product page, copies the 16
 screenshots, 12 theme JSON files, logo and font notices. It does not publish.
 `render-og.cjs` makes a 1200 x 630 card from the real screenshots.

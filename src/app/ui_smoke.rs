@@ -1,5 +1,6 @@
 //! Exercises the production UI without a sampler, tray, native window, or OS input.
 //! All telemetry below is deliberately synthetic TEST DATA, never a runtime fallback.
+//! Exception: `marketing` is an ignored, explicitly opted-in real sampler capture.
 use super::*;
 use crate::model::{
     CpuInfo, DiskRow, GpuSnapshot, NetworkRow, ServiceRow, StartupRow, UserSummary,

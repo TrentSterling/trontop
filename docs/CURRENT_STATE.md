@@ -1,3 +1,13 @@
+# Real screenshot and origin-story follow-up, 2026-09-24
+
+A37 is published. The public gallery, blog images and OG card now use 137 real
+telemetry samples from Trent's PC instead of synthetic sine waves. The article
+records his Task Manager stale-reading/lag motivation, Discord theme inspiration,
+and Speccy-level hardware-detail goal. All 16 live images and the OG image match
+the checked captures; updated article verified. Local 429 tests, fmt, strict
+Clippy and release build pass, plus three-width light/dark browser checks.
+See `LIVE_MEDIA_2026-09-24.md`. No new executable release was required.
+
 # Public preview published, 2026-09-24
 
 Alpha.41 includes the accepted alpha.39/40 theme and polish slices plus

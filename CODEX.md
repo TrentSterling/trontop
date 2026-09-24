@@ -5,6 +5,13 @@ must not modify this repository.
 
 ## Current checkpoint: public preview published
 
+Follow-up, 2026-09-24: A37 is published. Trent rejected the synthetic screenshot
+graphs; all 16 public images and the OG card now use real sampled telemetry from
+his PC. Marketing capture is explicitly opt-in, read-only and offscreen. The
+article now leads with his Task Manager stale-reading/lag experience, credits
+Discord's theme system and describes Speccy-level detail as a goal. See
+`docs/LIVE_MEDIA_2026-09-24.md`. The alpha.41 release tag/download is unchanged.
+
 2026-09-24: Trent approved source publication and distribution, including the
 product page/blog/gallery/OG image. License: Apache 2.0 + Commons Clause 1.0,
 retained attribution, free personal/workplace use. Alpha.41 adds packaging and
