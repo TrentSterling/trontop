@@ -17,6 +17,9 @@ Current public preview: **0.3.0-alpha.41**, Windows 11 x64, unsigned. Read the
 Trontop is a fast, native Windows process and performance manager. It is the tool I
 want open when Windows Task Manager has become part of the problem.
 
+Local development is paused at verified **alpha.51**: 589 passing ordinary
+tests and 93.34% production line coverage. [Resume anchor and remaining work](docs/RESUME_ANCHOR.md).
+
 Version 0.3 alpha provides:
 
 - live process CPU, GPU, memory, state, user, command, path, and disk I/O telemetry
@@ -27,6 +30,30 @@ Version 0.3 alpha provides:
 - a persistent process inspector
 - current Windows priority and CPU affinity telemetry, plus confirmed scheduling controls
 - guarded process termination with explicit confirmation
+- local alpha.43: confirmed End process tree with a reviewed all-instances option,
+  plus recoverable Suspend/Resume; [behavior and evidence](docs/PROCESS_CONTROLS.md)
+- local alpha.44: Startup approval states, confirmed Enable/Disable, exact session
+  Undo and background Refresh; [behavior and evidence](docs/STARTUP_CONTROLS.md)
+- local alpha.45: verified suspension state and STATE sorting, readable compact
+  status, and reliable gradient keyboard editing; twenty new interaction checks
+  cover daily actions, Theme Studio and System [with evidence](docs/DAILY_CONTROLS_2026-09-30.md)
+- local alpha.46: CPU core freshness/recovery, invalid-temperature gaps and guarded
+  shared-memory reads; twelve new native/UI checks
+  [with evidence](docs/SENSOR_GUARDS_2026-09-30.md)
+- local alpha.47: truthful Overview sensor/VRAM states and graph tooltips across
+  missing intervals; eleven new Overview/plot regressions
+  [with evidence](docs/OVERVIEW_GRAPHS_2026-09-30.md)
+- local alpha.48: System clock/commit/GPU freshness and complete private-summary
+  masking across the page, Copy and JSON; nine new cross-consumer checks
+  [with evidence](docs/SYSTEM_LIVE_2026-09-30.md)
+- local alpha.49: CPU group-aware nominal references and truthful missing hardware
+  facts, PCI fallback and validated BIOS values;
+  [sixteen new checks and evidence](docs/HARDWARE_FALLBACKS_2026-09-30.md)
+- local alpha.50: close to the live tray, Show/explicit Quit and failure recovery,
+  plus truthful partial RAM/storage reports;
+  [behavior and checks](docs/SMART_TRAY_2026-09-30.md)
+- local alpha.51: identity-safe physical media/volume joins and explicit unknown
+  partition fields; [twelve fixtures and checkpoint evidence](docs/STORAGE_PROVIDER_JOINS_2026-09-30.md)
 - native creation-time validation on the same action handle for termination, priority,
   and affinity; reused PIDs and Windows-critical processes are refused
 - CPU, memory, disk, network, and GPU performance drill-downs
@@ -87,8 +114,8 @@ MSVC C runtime is statically linked by `.cargo/config.toml`.
 
 Product completion is tracked in [ASK_LEDGER.md](ASK_LEDGER.md); historical engineering
 detail is in `TASK_BOARD.md`, and publishing procedures in `RELEASE_PLAN.md`.
-The next systems work includes recoverable suspend/resume,
-startup controls and isolated service-command validation. Trontop remains a development
+The next systems work includes reversible startup controls and isolated
+service-command validation. Trontop remains a development
 preview without full Task Manager parity. It should be a focused standalone app, not
 a general system-utility suite.
 

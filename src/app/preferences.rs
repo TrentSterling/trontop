@@ -8,6 +8,9 @@ impl TrontopApp {
                 ctx.memory_mut(|current| *current = memory);
             }
             self.theme = loaded.theme;
+            if loaded.hotkey != self.hotkey_choice {
+                self.apply_hotkey(loaded.hotkey);
+            }
             if let Some(library) = loaded.library {
                 self.theme_studio.load_library(&library);
             }
@@ -24,6 +27,7 @@ impl TrontopApp {
         self.preferences.update(crate::preferences::Snapshot {
             theme: self.theme.encode(),
             library: self.theme_studio.encode_library(),
+            hotkey: self.hotkey_choice.encode().to_owned(),
             memory: ctx.memory(Clone::clone),
         });
         self.preferences_theme = self.theme;
@@ -31,7 +35,7 @@ impl TrontopApp {
         self.next_memory_save = Instant::now() + Duration::from_secs(30);
     }
 
-    pub(super) fn request_close(&mut self, ctx: &egui::Context) {
+    pub(super) fn request_quit(&mut self, ctx: &egui::Context) {
         if self.close_authorized {
             return;
         }
@@ -41,6 +45,10 @@ impl TrontopApp {
         }
         self.preferences.dispatch(true);
         self.finish_preferences_close(ctx);
+        // A tray Quit with slow/failed storage must expose its recovery controls.
+        if !self.close_authorized && self.hidden_to_tray {
+            self.show_window(ctx, false);
+        }
         ctx.request_repaint();
     }
 
@@ -56,9 +64,8 @@ impl TrontopApp {
 
     pub(super) fn preferences_logic(&mut self, ctx: &egui::Context) {
         if ctx.input(|input| input.viewport().close_requested()) && !self.close_authorized {
-            self.request_close(ctx);
-            // Defer this OS close even if request_close just queued an authorized
-            // programmatic close. eframe handles that Close on the next event.
+            self.request_window_close(ctx);
+            // Cancel the OS exit. Window close hides; explicit Quit authorizes exit.
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
         if self.preferences.enabled()

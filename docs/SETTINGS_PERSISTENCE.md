@@ -1,5 +1,11 @@
 # Non-blocking settings (alpha.28)
 
+Alpha.50 separates window close from exit (A39). X/OS close hide to the live
+tray and dispatch settings without waiting on storage. Explicit Quit retains
+the durable-save gate described below. Quit from a hidden window restores its
+pending/error controls; tray hide never sets exit authorization. See
+`TRAY_LIFECYCLE.md` for behavior and final evidence.
+
 ## Focused slow-close follow-up (alpha.28, A21/A22)
 
 The continuing responsiveness objective and Trent's slow-close report led to two

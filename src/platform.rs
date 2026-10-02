@@ -1,6 +1,13 @@
 use crate::model::{PriorityClass, ProcessControlInfo, ProcessIdentity};
 use std::path::Path;
 
+mod suspension;
+pub use suspension::Suspensions;
+#[cfg(all(test, windows))]
+pub(crate) use suspension::tests::HeartbeatChild;
+mod tree;
+pub use tree::terminate_tree;
+
 pub fn can_terminate(pid: u32) -> Result<(), String> {
     if pid <= 4 {
         return Err("Trontop will not terminate Windows kernel processes.".into());
@@ -70,7 +77,15 @@ impl ProcessHandle {
             return Err("Process identity is unavailable. No action was taken.".into());
         }
         let handle = Self::open(identity.pid, access)?;
-        if handle.created_at()? != identity.created_at_100ns {
+        handle.validate_identity(identity)?;
+        Ok(handle)
+    }
+
+    fn validate_identity(&self, identity: ProcessIdentity) -> Result<(), String> {
+        if identity.created_at_100ns == 0 {
+            return Err("Process identity is unavailable. No action was taken.".into());
+        }
+        if self.created_at()? != identity.created_at_100ns {
             return Err(
                 "The selected PID now belongs to a different process. No action was taken.".into(),
             );
@@ -78,13 +93,26 @@ impl ProcessHandle {
         let mut critical = windows::core::BOOL::default();
         // SAFETY: same query-capable native handle and writable BOOL. Fail closed
         // if protection status cannot be established, including when elevated.
-        unsafe { windows::Win32::System::Threading::IsProcessCritical(handle.0, &mut critical) }
+        unsafe { windows::Win32::System::Threading::IsProcessCritical(self.0, &mut critical) }
             .map_err(|error| {
                 format!("Could not verify process protection status. No action was taken: {error}")
             })?;
         reject_critical(critical.as_bool())?;
         // The caller acts on THIS handle. Never reopen by PID after verification.
-        Ok(handle)
+        Ok(())
+    }
+
+    fn has_exited(&self) -> bool {
+        use windows::Win32::Foundation::FILETIME;
+        use windows::Win32::System::Threading::GetProcessTimes;
+        let (mut creation, mut exit, mut kernel, mut user) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
+        unsafe { GetProcessTimes(self.0, &mut creation, &mut exit, &mut kernel, &mut user) }.is_ok()
+            && (exit.dwHighDateTime != 0 || exit.dwLowDateTime != 0)
     }
 }
 

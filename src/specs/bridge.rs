@@ -86,7 +86,7 @@ fn keys(raw: &Raw, core_index: &mut BTreeMap<String, u32>) -> Vec<LiveKey> {
 /// Readings for every key, first provider wins for the shared keys.
 fn readings(provider: &str, raws: &[Raw], out: &mut Vec<BridgeReading>) {
     let mut cores = BTreeMap::new();
-    for raw in raws.iter().filter(|r| r.value.is_finite()) {
+    for raw in raws.iter().filter(|r| r.unit.value_is_finite(r.value)) {
         for key in keys(raw, &mut cores) {
             if out.iter().any(|r| r.key == key) {
                 continue;
@@ -183,6 +183,9 @@ fn parse_hwinfo(bytes: &[u8]) -> Result<Vec<Raw>, String> {
             user
         };
         let value = f64::from_le_bytes(element[284..292].try_into().unwrap_or([0; 8]));
+        if !unit.value_is_finite(value) {
+            continue;
+        }
         let lower = sensor.name.to_ascii_lowercase();
         raws.push(Raw {
             id: format!(
@@ -219,6 +222,9 @@ fn from_wmi(rows: &[(String, String, String, String, f64)]) -> Vec<Raw> {
                 "Load" => LiveUnit::Percent,
                 _ => return None,
             };
+            if !unit.value_is_finite(*value) {
+                return None;
+            }
             let id = identifier.to_ascii_lowercase();
             Some(Raw {
                 id: format!("wmi{identifier}"),
@@ -407,7 +413,7 @@ pub fn read_live(ctx: &Context) -> BridgeReadings {
 mod tests {
     use super::*;
 
-    fn hwinfo_fixture() -> Vec<u8> {
+    pub(super) fn hwinfo_fixture() -> Vec<u8> {
         let mut bytes = vec![0u8; 48];
         bytes[0..4].copy_from_slice(&0x5369_5748u32.to_le_bytes());
         let sensor_at = 48usize;

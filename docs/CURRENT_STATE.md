@@ -1,3 +1,435 @@
+# Paused alpha.51 storage provider checkpoint, 2026-09-30
+
+Trent requested a good stopping point with future resume coverage notes.
+Goal is **PAUSED at his request**. Start with [RESUME_ANCHOR.md](RESUME_ANCHOR.md);
+the complete source gap inventory is [COVERAGE_REMAINING_2026-09-30.md](COVERAGE_REMAINING_2026-09-30.md).
+No new feature work is queued automatically. A39 remains done under the explicit
+no-mouse-testing instruction. The wider ledger and native release gates stay open.
+
+Alpha.51 finishes twelve storage provider/report fixtures and ten reproduced
+regressions: correct physical-media identity, independent OS capacity, checked
+identifiers, optional partition size/number, volume failures/ambiguity and valid
+free-space reporting. Details: [STORAGE_PROVIDER_JOINS_2026-09-30.md](STORAGE_PROVIDER_JOINS_2026-09-30.md).
+
+- **589 passed, 0 failed, 58 ignored**; fmt, strict all-target Clippy, release PASS.
+- Instrumented ordinary suite, 24 exact read-only probes, ten analyzer checks PASS.
+- Coverage: **24,354/26,093 (93.34%)**, 1,739 missed, zero mixed, 25,318 test-only
+  lines, 40 raw profiles; `target/coverage/runs/20260930-103155-387/`.
+- All 195 source/build inputs independently verified. Release/review EXE:
+  `target/review/alpha51-provider-joins/trontop.exe`, **17,837,568 bytes**, embedded
+  version `0.3.0-alpha.51`, SHA-256
+  `59930255969997BD93B34E36DD34808D46A5358B4396689B3BF29B9CC91FEEC0`.
+- Native read-only probe preserves Healthy NVMe/SATA, GPT/volume facts and NVMe
+  health (45 C, 4% used); empty USB media stays unavailable. One local observation.
+- Native launch confirmed: PID **126156**, title **Trontop**, handle **75901536**.
+  Trent explicitly authorized stopping old versions and opening the latest.
+  Alpha.50 PID 209092 was stopped; alpha.49 PID 165360 had been stopped at the
+  alpha.50 launch. No desktop input/focus automation. Leave alpha.51 running.
+- Zero test children and private Startup fixture leaves. No live check handle.
+  Branch `feat/system-specs`, base `c8ed88f5ec57f79be717151ab44c43826b4a4e5a`,
+  local uncommitted work preserved. Source snapshot/patch are beside the candidate.
+  Alpha.42-50 hashes verified unchanged; no commit/upload/install/publication.
+
+Historical reports below are retained. Their ACTIVE/launch observations applied
+at those checkpoints; this paused alpha.51 record is current.
+
+# Previous alpha.50 smart tray and hardware report review candidate, 2026-09-30
+
+Trent requested a smart system tray and close to tray (A39). X/OS close now
+hide with a Ready tray while the CPU icon/history and telemetry continue.
+Show restores the retained view; explicit Quit saves and exits. Quit is in the
+tray, About and the X context menu. Starting/missing/failed trays keep window
+access, and a hidden Quit exposes blocked/error save controls. Hidden sampling
+retains one latest snapshot without normal sample repaint wakes. The prior
+RAM/storage fixture work is also complete. Scope: SMART_TRAY_2026-09-30.md.
+End process tree, End all instances and Startup controls remain included.
+
+- **577 ordinary tests pass, 0 fail, 58 ignored**; formatting, strict all-target
+  Clippy and optimized release PASS. Final instrumented suite passes all 577
+  ordinary tests, the exact 24 read-only probes and ten analyzer checks.
+- Coverage run: `target/coverage/runs/20260930-095122-382/`.
+  **24,267/26,000 production lines (93.33%)**, 1,733 uncovered, zero mixed,
+  25,020 test-only lines, 40 raw profiles. Raw LLVM lines/regions/functions
+  (includes tests): 90.62% / 91.01% / 91.10%. No exclusions or report merging.
+- All 193 application/build inputs, copied instrumented object, tools and
+  exact ordinary/probe logs independently verified by the review verifier.
+  Seventeen before-fix hardware failure logs are preserved in the separate
+  alpha50-memory-storage folder. An About layout regression at 1000x580 was
+  caught and corrected during development; its original assertion remains.
+- Two offscreen fixture-only About views inspected, 1040x640 dark/light.
+  Quit, Copy controls and license headings fit. No native input/commands.
+- Final read-only storage probe retains NVMe health, no critical warnings,
+  4% used, 45 C. RAM reports 64 GiB DDR5 at 6400 MT/s, 2 of 4 slots. These
+  are one local provider observation, not field parity or native UI acceptance.
+- Post-run audit: zero test processes and zero private Startup fixture leaves.
+
+Portable review EXE: `target/review/alpha50-smart-tray/trontop.exe`.
+File/Product version `0.3.0-alpha.50`, **17,838,592 bytes**, SHA-256
+`1179784C3B92DFD822BF1F9DB26BC8BB9829DA9613843285F88330329F3CAF1F`.
+Release/review hashes match. Alpha.42 through alpha.49 copies are preserved
+and their hashes verified. Receipt, gates and verifier are beside the candidate.
+Local uncommitted source remains on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Alpha.50 was not launched, installed
+or published; the prior alpha.49 desktop instance was left untouched. Public
+alpha.41 is unchanged. Launch/replace only at Trent's explicit request.
+
+Trent explicitly requested no mouse testing and to call the tray change done.
+A39 is completed on the implementation/headless evidence; no native desktop
+automation occurred. The complete goal remains ACTIVE. Source coverage does not close native tray
+interaction/hidden CPU/teardown, provider decisions, field parity, soak,
+clean-machine or exact-build user acceptance. Earlier candidates are historical.
+
+# Previous alpha.49 CPU and motherboard fallback review candidate, 2026-09-30
+
+Continued complete coverage advances A06/A07/A25/A33. Nominal CPU references now
+retain processor group/number identity, partial readings and explicit missing
+values. Missing CPUID/package data and unknown vendors/model suffixes no longer
+invent facts. SMBIOS failure preserves readable PCI bridges; BIOS revision
+markers, binary ROM units and date validation follow the firmware specification.
+Sixteen new ordinary checks cover those cases; nine failures reproduced before
+fixes. Scope and primary references: `HARDWARE_FALLBACKS_2026-09-30.md`.
+End process tree, End all instances and Startup controls remain included.
+
+- **544 ordinary tests pass, 0 fail, 57 ignored**. Formatting, strict all-target
+  Clippy and optimized release PASS. Final instrumented suite also passes all
+  544 tests, the exact 24 read-only probes and 10 analyzer checks.
+- Exact-source coverage: `target/coverage/runs/20260930-081614-796/`.
+  **23,947/25,782 production lines (92.88%)**, 1,835 uncovered, zero mixed,
+  24,062 test-only lines, 40 raw profiles. Raw LLVM lines/regions/functions
+  (includes tests): 90.25% / 90.68% / 90.84%. No exclusions or report merging.
+- All 189 application/build inputs, copied instrumented object, measurement tools
+  and exact ordinary/probe logs independently verified by the review verifier.
+  Nine before-fix failure logs remain beside the candidate.
+- Final-source CPU inventory probe: 24 cores (8P + 16E), 24 threads, nominal
+  P 3700 MHz / E 3200 MHz, 2.162 ms. This is one provider observation, not UI
+  performance, field parity or cross-hardware acceptance. UI layout is unchanged;
+  ordinary UI checks pass. No new alpha.49 offscreen image review was performed.
+- Post-run audit: zero test processes and zero owned Startup registry leaves.
+  Real Startup entries, service commands and desktop input were untouched.
+
+Portable review EXE: `target/review/alpha49-hardware-fallbacks/trontop.exe`.
+File/Product version `0.3.0-alpha.49`, **17,815,552 bytes**, SHA-256
+`AE57293D520090869FE27DDF9B432B8726F9AB03B071B727658240F7A1D8F67A`.
+Release/review hashes match. Alpha.42/43/44/45/46/47/48 copies are preserved and
+their hashes verified. Receipt, gates and verifier are beside the candidate.
+Local uncommitted source is on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Trent received the verified EXE link,
+then explicitly asked to open it. The first sandboxed launch (PID 165360) had
+a window handle but was not visible to Trent. At his repeated request, the exact
+review copy was relaunched outside the execution sandbox with a normal window:
+PID 164012, title `Trontop`, native window handle 68824502. No injected input,
+focus or window manipulation occurred. No installation or publication;
+public alpha.41 is unchanged. Opening it does not close native acceptance gates.
+
+The completion goal remains ACTIVE. The 1,835 source gaps and broader native,
+provider-decision, field-parity, soak, clean-machine and exact-build release
+acceptance remain open. Earlier candidates below are historical.
+
+# Previous alpha.48 System live values and privacy review candidate, 2026-09-30
+
+Continued complete coverage advances A07/A16/A18/A25/A33. System marks retained
+GPU sensors using their age as well as the cached flag. CPU clocks and commit
+charge follow provider health. Cached readings are explicit in text, hover and
+JSON; retained temperatures have no fresh color band. Private summary lines
+suppress their entire live payload and CPU headline override until revealed.
+Nine new ordinary regressions verify resolver/report/UI consistency, device
+identity, missing counters, units, privacy, failure and recovery. Five targeted
+failures reproduced before fixes. Scope: `SYSTEM_LIVE_2026-09-30.md`.
+The requested End process tree/all-instances and Startup controls remain included.
+
+- **528 ordinary tests pass, 0 fail, 57 ignored**. Formatting, strict all-target
+  Clippy and optimized release build PASS. The final instrumented suite also
+  passes all 528 tests, the exact 24 read-only probes and 10 analyzer checks.
+- Exact-source coverage: `target/coverage/runs/20260930-071924-165/`.
+  **23,743/25,663 production lines (92.52%)**, 1,920 uncovered, zero mixed,
+  23,536 test-only lines, 40 raw profiles. Raw LLVM lines/regions/functions
+  (includes tests): 89.96% / 90.42% / 90.65%. No production exclusions or merging.
+- All 187 application/build inputs, copied instrumented object, measurement
+  tools and exact ordinary/probe logs independently verified by the candidate's
+  `verify-receipt.py`. Five before-fix failure logs remain beside the candidate.
+- Three final fixture-only 1280x900 views inspected in
+  `target/ui-smoke/system-live-alpha48/`: cached Summary dark, Graphics light
+  and RAM dark. CPU/GPU/commit labels fit and retained temperatures stay uncolored.
+- The initial full suite/measurement caught an overbroad test assertion matching
+  the public CPU meter outside its private summary. The assertion now checks the
+  target row; all final checks were repeated on corrected source. The failed run
+  has no passing coverage receipt and contributes nothing to this measurement.
+- Post-run audit: zero Trontop test processes and zero owned Startup registry
+  leaves. Real Startup entries, service commands and desktop input were untouched.
+
+Portable review EXE: `target/review/alpha48-system-live/trontop.exe`.
+File/Product version `0.3.0-alpha.48`, **17,792,512 bytes**, SHA-256
+`F95288E2FFE46A2C3B8A8AD6A9A19303750F8B907F9B9A9A4E99D75F1D01D83F`.
+Release/review hashes match. Alpha.42/43/44/45/46/47 review hashes remain verified
+and preserved. Receipt and verifier are beside the candidate. Local uncommitted
+source is on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Not launched or installed; the public
+alpha.41 and running copy are unchanged. Trent was given the review EXE link
+when the ordinary suite, strict Clippy and release gates passed.
+
+The completion goal remains ACTIVE. The 1,920 source gaps and broader field
+parity, provider decisions, isolated native acceptance, clean-machine and
+exact-build release checks remain open. Earlier candidates below are historical.
+
+# Previous alpha.47 Overview and graph review candidate, 2026-09-30
+
+Continued complete coverage advances A07/A16/A25/A32. Overview and System refuse
+retained readings from unavailable bridges; Overview also rejects temperature
+overflow. The shared CPU gap stays explicit, cached native VRAM is marked `~`,
+and NVML fallback requires fresh data. Graph tooltips preserve gaps and lower
+bounds, reject remote/future/expired samples and respect each series' cadence.
+Eleven new ordinary regressions cover those contracts and Overview navigation,
+heaviest-instance selection, core hover, partial totals and multi-GPU states.
+Six display failures reproduced before their fixes. Behavior and commands:
+`OVERVIEW_GRAPHS_2026-09-30.md`. End process tree/all-instances and Startup controls
+remain included.
+
+- **519 ordinary tests pass, 0 fail, 56 ignored**. Formatting, strict all-target
+  Clippy and optimized release build PASS. Final instrumented suite also passes
+  all 519 tests, the exact 24 read-only probes and 10 analyzer checks.
+- Exact-source coverage: `target/coverage/runs/20260930-064051-633/`.
+  **23,650/25,621 production source lines (92.31%)**, 1,971 uncovered, zero mixed,
+  22,831 test-only lines. Raw LLVM lines/regions/functions (includes tests):
+  89.84% / 90.29% / 90.51%. No production exclusions or merged reports.
+- All 186 application/build inputs, copied instrumented object, measurement tools,
+  ordinary-suite log and each exact read-only probe log independently verified by
+  the review candidate's `verify-receipt.py`.
+- Three final fixture-only 1200x900 views inspected in
+  `target/ui-smoke/overview-state-alpha47/`: fresh dark, retained dark and retained
+  light. The first capture exposed a suppressed CPU gap. Its new assertion failed
+  before the fix; the final capture and full validation were repeated afterward.
+- Production plot checks verify tooltip text in Lines/Bars, explicit/time gaps in
+  line and mesh geometry, and hollow partial points. They emit no native commands.
+- Post-run audit: zero Trontop test processes and zero owned Startup registry
+  leaves. Native suite fixtures need scoped registry access; real Startup entries,
+  service commands and desktop input were not changed.
+
+Portable review EXE: `target/review/alpha47-overview-graphs/trontop.exe`.
+File/Product version `0.3.0-alpha.47`, **17,791,488 bytes**, SHA-256
+`F954B803347829E860520C76F05FB40BBCE7D1F314286C206EBEA9D89EC33C89`.
+Release/review hashes match; alpha.42/43/44/45/46 review hashes remain verified and
+preserved. Receipt and verifier are beside the candidate. Local uncommitted source
+is on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Not launched or installed; public
+alpha.41 and the running copy are unchanged.
+
+The goal remains ACTIVE. The 1,971 source gaps and broader field parity, real
+provider decisions, isolated native acceptance, clean-machine and exact-build
+release checks remain open. Earlier candidates below are historical.
+
+# Previous alpha.46 sensor guard review candidate, 2026-09-30
+
+Continued complete coverage advances A07/A10/A16/A25. CPU core chips now expire
+with the provider and recover through the common live resolver. Invalid values
+are removed before provider counts; temperatures that overflow their f32 display
+representation stay unavailable. The native shared-memory reader rejects
+uncommitted/protected regions before copying and stays within the first readable
+region. Scope and commands: `SENSOR_GUARDS_2026-09-30.md`.
+The requested End process tree/all-instances and Startup controls remain included.
+
+- **508 ordinary tests pass, 0 fail, 55 ignored**. Formatting, strict all-target
+  Clippy and optimized release build PASS. The instrumented suite also passes all
+  508 tests, the exact 24 read-only probes and 10 analyzer checks.
+- Final exact-source coverage: `target/coverage/runs/20260930-060006-932/`.
+  **23,567/25,596 production source lines (92.07%)**, 2,029 uncovered, zero mixed,
+  22,242 test-only lines. Raw LLVM lines/regions/functions (includes tests):
+  89.72% / 90.18% / 90.31%. No production exclusions or merged reports.
+- Eight new ordinary native bridge checks use exclusively owned Local mapping
+  fixtures; four production-UI checks cover sensor expiry/recovery, invalid
+  temperatures and cached multi-adapter GPU data/history. The stale-core and
+  overflow regressions failed before their fixes. No real provider was installed.
+- All 185 application/build inputs, copied instrumented object, measurement tools,
+  ordinary-suite log and each read-only probe log independently verified by the
+  candidate's `verify-receipt.py`.
+- Three final fixture-only sensor images inspected under
+  `target/ui-smoke/sensor-state-alpha46/`: fresh dark, stopped dark and stopped
+  light. Stopped core readings show gaps with an explicit provider status.
+- Post-run audit: zero Trontop test processes and zero owned Startup registry
+  leaves. Owned shared-memory tests verify handle/view release. The ordinary
+  native fixtures needed a scoped sandbox exception for private registry writes;
+  real Startup records, service commands and desktop input were not changed.
+
+Portable review EXE: `target/review/alpha46-sensor-guards/trontop.exe`.
+File/Product version `0.3.0-alpha.46`, **17,790,464 bytes**, SHA-256
+`F17472411104195BC53F56716005AA9D685BAFD073E1DB7969105E18A17FD832`.
+Release/review hashes match; alpha.42/43/44/45 review hashes remain verified and
+preserved. Receipt and verifier are beside the candidate. Local uncommitted source
+is on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Not launched or installed; public
+alpha.41 and the running copy are unchanged.
+
+The goal remains ACTIVE. The 2,029 source gaps and broader field parity, real
+provider decisions, isolated native acceptance, clean-machine and exact-build
+release checks remain open. Alpha.45 evidence below is historical.
+
+# Previous alpha.45 daily-use regression review candidate, 2026-09-30
+
+Trent requested continued complete coverage. This pass advances A04/A07/A16/A25:
+the inspector and Details follow verified owned-suspension state, STATE sorting
+updates on action completion, compact status reads in full, and gradient keyboard
+editing retains focus while Tab/Escape remain available. The regression suite
+reproduced the suspension and keyboard failures before their fixes. Twenty new
+ordinary checks cover daily actions, Theme Studio and System interactions.
+Behavior and commands: `DAILY_CONTROLS_2026-09-30.md`.
+The requested End process tree/all-instances and Startup controls remain included.
+
+- **496 ordinary tests pass, 0 fail, 54 ignored**. Format, strict all-target
+  Clippy and optimized release build PASS. The instrumented suite also passes
+  all 496 tests, plus the exact 24 read-only probes and 10 analyzer checks.
+- Final exact-source coverage: `target/coverage/runs/20260930-051951-393/`.
+  **23,434/25,560 production source lines (91.68%)**, 2,126 uncovered, zero mixed
+  lines, 21,812 test-only lines. Raw LLVM lines/regions/functions (includes tests):
+  89.48% / 89.94% / 90.05%. No production exclusions or merged reports.
+- All 183 application/build inputs, the copied instrumented object, measurement
+  tools, ordinary-suite log and each read-only probe log independently verified
+  by the review candidate's `verify-receipt.py`.
+- Three final compact fixture images inspected under
+  `target/ui-smoke/process-state-alpha45/`; Details `Suspended` is checked for
+  actual elision, not merely presence in the underlying text.
+- Post-run audit: no Trontop test executable running, zero owned Startup registry
+  leaves. The ordinary native tests use owned hidden children and exclusively
+  created private registry/file fixtures; registry access needed a scoped sandbox
+  exception. Real Startup records, service commands and desktop input are outside
+  this measurement.
+
+Portable review EXE: `target/review/alpha45-daily-controls/trontop.exe`.
+File/Product version `0.3.0-alpha.45`, **17,788,928 bytes**, SHA-256
+`7557959B73D2E65E8331F7DD8399B2F0018C787EB5774E580E9E61D9F898401F`.
+Release/review hashes match; alpha.42/43/44 review hashes remain verified and
+preserved. Receipt and verifier are beside the candidate. Source is local and
+uncommitted on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Not launched or installed; the running
+copy and public alpha.41 preview remain unchanged.
+
+The completion goal remains ACTIVE. Coverage is not 100%: UI/native failure and
+optional-provider paths, export picker, app/tray initialization and service
+commands still have source gaps. Broader native/release acceptance, real
+Startup/sign-in behavior, sensor decisions and field parity remain open.
+
+# Previous alpha.44 Startup controls review candidate, 2026-09-29
+
+A04 now includes Startup approval state, confirmed Enable/Disable, exact session
+Undo and background Refresh. Commands and shortcuts are preserved. Native guards
+compare the captured registration/approval, prevent concurrent replacement through
+commit, and require a new read after uncertainty. Source-specific selection and
+command observations survive older inventory. Behavior, format compatibility and
+the remaining real Task Manager/sign-in acceptance gate: `STARTUP_CONTROLS.md`.
+The requested End process tree/all-instances controls remain included.
+
+- Final source: **476 ordinary tests pass, 0 fail, 53 ignored**. All 24 exact
+  read-only probes and 10 scope-analyzer checks pass. Format, strict all-target
+  Clippy and optimized release build PASS.
+- Eight native Startup tests use exclusively owned private registry/file fixtures:
+  byte-preserving enable/disable, exact Undo, rollback, stale identity/approval,
+  edits before/after guard acquisition, file replacement/missing/path refusal and
+  retained file sharing. Sandbox fixture writes needed a scoped exception.
+- Four Startup UI tests cover frozen source identity, Undo, refusal, cancellation,
+  compact dark/light geometry and graphics recovery. Three corrected offscreen
+  PNGs inspected below `target/ui-smoke/startup-controls-alpha44/`. The first
+  confirmation capture lost a font texture delta; only its test capture was fixed.
+- Final exact-source coverage: `target/coverage/runs/20260930-043043-870/`.
+  **23,223/25,522 production source lines (90.99%)**, 2,299 uncovered, zero mixed.
+  Raw LLVM lines/regions/functions (includes tests): 88.99% / 89.47% / 89.77%.
+  All 181 source/build inputs, the copied instrumented object and passing logs
+  independently verified. The earlier pre-capture-fix run is historical.
+- Post-run direct process-name audit finds no test executable running. Read-only
+  audit of the private Startup fixture namespace finds zero owned leaves.
+
+Portable review EXE: `target/review/alpha44-startup-controls/trontop.exe`.
+File/Product version `0.3.0-alpha.44`, **17,780,736 bytes**, SHA-256
+`FBB1EE8178CA042463004EDD0B73A323D1F0B40DBB71F5B165A1AD168177B0B9`.
+Final release/review hashes match; prior alpha.42/alpha.43 review hashes are
+preserved. The candidate has `receipt.json` and `verify-receipt.py` beside it.
+Local uncommitted source remains on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Not launched, installed, committed or
+uploaded. Public preview stays alpha.41; the running copy and desktop are untouched.
+The completion goal remains ACTIVE: 100% coverage, real Startup/service acceptance,
+sensor decisions, field parity and exact-build release acceptance stay open.
+
+# Previous alpha.43 process controls review candidate, 2026-09-29
+
+Trent explicitly requested End process tree and an option to end all Chrome or
+Firefox instances. The inspector pins the new action below End task. Its dialog
+reviews and freezes the selected subtree, or all instances of the same executable
+and their descendants. Membership changes require refreshed review. The native
+worker checks exact identities, critical status, parent links and all-instance
+root paths on retained handles before the first request. A04 also gains confirmed
+Suspend/Resume using worker-owned Windows 11 state handles. Implementation and
+limits: `PROCESS_CONTROLS.md`. A38 and A04 remain REVIEW/PARTIAL in the ledger.
+
+- **455 ordinary tests pass, 0 fail, 52 ignored**. Five process-control UI checks
+  pass after the final layout fix. Format/strict all-target Clippy/release PASS.
+- Real owned-child checks: root/child/grandchild exit, two reviewed independent
+  instances from a selected child, unlisted-instance preservation, stale/path/
+  parent preflight refusal, heartbeat stop/resume and release on worker shutdown.
+  Direct read-only process-name audit finds no Trontop test executable left
+  running; the initial WMI query was denied and is not counted as evidence.
+- Three final offscreen images inspected: compact dark tree, compact light
+  all-instances and compact dark inspector. Full dialog button rows are visible.
+- Final instrumented run `target/coverage/runs/20260930-022413-980/` passes all
+  455 ordinary tests, 24 exact read-only probes and 10 scope-analyzer checks.
+  Production source lines: **22,165/24,569 (90.22%)**, 2,404 uncovered, zero mixed.
+  Raw LLVM lines/regions/functions (includes tests): 88.34% / 88.78% / 88.92%.
+  Exact object, all 171 application/build inputs and every passing log independently
+  verified. Source/object receipt and scope: `COVERAGE.md`.
+
+Portable review EXE: `target/review/alpha43-process-controls/trontop.exe`.
+File/Product version `0.3.0-alpha.43`, **17,694,720 bytes**, SHA-256
+`56503FF0D04DCD12F8AB360431DA8E3B93E38D35980AD713230E25BB1A18949F`.
+Review copy and optimized build hashes match; alpha.42's earlier review hash is
+unchanged. A separate `receipt.json` and verifier live beside the new copy.
+Local uncommitted source on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Not launched, installed, committed or
+uploaded; no input/focus/tray/current-preview/personal-settings changes. The
+public release remains alpha.41. The completion goal stays ACTIVE: Startup
+controls, source coverage gaps, sensor decisions and native/release acceptance
+remain open. Proceed within the ledger; never infer desktop-testing permission.
+
+# Previous completion goal coverage checkpoint, 2026-09-29
+
+The goal remains active. Application source and the verified alpha.42 review EXE
+below are unchanged. Added reproducible coverage instrumentation, a parsed Rust
+test-scope analyzer and a manual CI workflow. Local measurement passes:
+**437 ordinary tests + 24 exact read-only native probes + 10 analyzer tests**.
+Production unique source lines: **21,661/24,014 (90.20%)**, zero ambiguous lines;
+ordinary-only baseline: 18,955/24,014 (78.93%). No production exclusions.
+
+Report: `target/coverage/runs/20260930-012709-677/`. Exact instrumented object,
+all 163 source/build input hashes and every passing log independently verified.
+See `COVERAGE.md` for units, raw LLVM summary, source/binary identity and remaining
+2,353 source-line gaps. Format/strict analyzer Clippy/PowerShell AST/YAML/diff pass.
+The remote workflow was not run; no GUI/native tray/input/service command was
+used by the coverage pass. Ordinary action tests retain their owned hidden child
+fixtures. Product acceptance and the 100% goal remain open; next implementation
+work is A04's remaining daily-use controls.
+
+# Alpha.42 review candidate, 2026-09-29
+
+Trent requested iteration across responsiveness, UI polish and hardware/graphs.
+Finite freshness deadlines now repaint stalled Live/cached states without input
+and stop after expiry. CPU Performance exposes average clock, core/thread count
+and uptime; its key fields fit 1000x580. Network Performance shows matched adapter
+model/type/link/status/MTU with a System details link and cached/missing states.
+Interface/volume selection follows identity through reorder and reports removal.
+See `ITERATION_2026-09-29.md` for implementation and exact verification scope.
+
+- Format and strict all-target Clippy PASS; **437 passed, 0 failed, 49 ignored**.
+- Final offline optimized release PASS; review copy hash and PE versions verified.
+- Real-data gauntlet: 157 PNGs, 21 samples in the 20-second warmup, 11/11 specs
+  sections ready, 1.12 s worst accepted-sample gap. Selected compact/normal
+  CPU/Network, All cores and light Overview inspected. Eight network and four
+  CPU fixture views also inspected in light/dark/live/cached/missing states.
+- Read-only sampler baseline: 60 samples/60 s, 490 processes, 1.001 s p95 worker
+  interval. The sampler code is unchanged; this is not a native interaction/soak gate.
+
+Review EXE: `C:/trontstack/trontop/target/review/alpha42-iteration/trontop.exe`.
+ProductVersion/FileVersion `0.3.0-alpha.42`, 17,635,840 bytes, SHA-256
+`12580232E9109B400C764349B3F9696EB452CB0E6F6709B68AD33208EAFEF7CC`.
+Local uncommitted source on `feat/system-specs`, based on
+`c8ed88f5ec57f79be717151ab44c43826b4a4e5a`. Not launched, installed, committed or
+uploaded; working desktop and personal settings were untouched. The public
+release remains alpha.41. Broader native and release acceptance stays open.
+
 # Real screenshot and origin-story follow-up, 2026-09-24
 
 A37 is published. The public gallery, blog images and OG card now use 137 real

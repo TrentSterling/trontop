@@ -89,6 +89,7 @@ pub struct Sampler {
     latest: Arc<SnapshotMailbox>,
     stop: Arc<AtomicBool>,
     service_refresh: Arc<AtomicBool>,
+    startup_refresh: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -98,9 +99,17 @@ pub struct Sampler {
 struct SnapshotMailbox {
     pending: Mutex<Option<SystemSnapshot>>,
     generation: AtomicU64,
+    ui_hidden: AtomicBool,
 }
 
 impl SnapshotMailbox {
+    fn publish_to_ui(&self, snapshot: SystemSnapshot, ctx: &egui::Context) {
+        self.publish(snapshot);
+        if !self.ui_hidden.load(Ordering::Acquire) {
+            ctx.request_repaint();
+        }
+    }
+
     fn publish(&self, snapshot: SystemSnapshot) {
         let sequence = snapshot.sequence;
         let retired = if let Ok(mut slot) = self.pending.lock() {
@@ -135,6 +144,8 @@ impl Sampler {
         let stop = Arc::new(AtomicBool::new(false));
         let service_refresh = Arc::new(AtomicBool::new(false));
         let worker_service_refresh = Arc::clone(&service_refresh);
+        let startup_refresh = Arc::new(AtomicBool::new(false));
+        let worker_startup_refresh = Arc::clone(&startup_refresh);
 
         let worker_latest = Arc::clone(&latest);
         let worker_stop = Arc::clone(&stop);
@@ -145,6 +156,7 @@ impl Sampler {
                     worker_latest,
                     worker_stop,
                     worker_service_refresh,
+                    worker_startup_refresh,
                     ctx,
                     tray,
                 )
@@ -155,6 +167,7 @@ impl Sampler {
             latest,
             stop,
             service_refresh,
+            startup_refresh,
             worker: Some(worker),
         }
     }
@@ -163,8 +176,15 @@ impl Sampler {
         self.latest.take_after(seen_generation)
     }
 
+    pub fn set_ui_visible(&self, visible: bool) {
+        self.latest.ui_hidden.store(!visible, Ordering::Release);
+    }
+
     pub fn request_service_refresh(&self) {
         self.service_refresh.store(true, Ordering::Release);
+    }
+    pub fn request_startup_refresh(&self) {
+        self.startup_refresh.store(true, Ordering::Release);
     }
 }
 
@@ -181,6 +201,7 @@ fn sample_loop(
     latest: Arc<SnapshotMailbox>,
     stop: Arc<AtomicBool>,
     service_refresh: Arc<AtomicBool>,
+    startup_refresh: Arc<AtomicBool>,
     ctx: egui::Context,
     tray: Option<TraySink>,
 ) {
@@ -320,6 +341,9 @@ fn sample_loop(
         );
         if service_refresh.swap(false, Ordering::AcqRel) {
             inventories.request_services();
+        }
+        if startup_refresh.swap(false, Ordering::AcqRel) {
+            inventories.request_startup();
         }
         let (startup, startup_health) = inventories.startup();
         let (services, service_health) = inventories.services();
@@ -499,8 +523,7 @@ fn sample_loop(
                 process_count: snapshot.process_count,
             });
         }
-        latest.publish(snapshot);
-        ctx.request_repaint();
+        latest.publish_to_ui(snapshot, &ctx);
 
         let remaining = SAMPLE_INTERVAL.saturating_sub(cycle_started.elapsed());
         if wait_for_stop(&stop, remaining) {
@@ -802,6 +825,40 @@ mod tests {
         }
         thread.join().unwrap();
         assert_eq!(seen, 2000);
+    }
+
+    #[test]
+    fn hidden_ui_keeps_only_latest_sample_without_sample_repaint_wakes() {
+        let mailbox = SnapshotMailbox::default();
+        let ctx = egui::Context::default();
+        let repaints = Arc::new(AtomicU64::new(0));
+        let count = Arc::clone(&repaints);
+        ctx.set_request_repaint_callback(move |_| {
+            count.fetch_add(1, Ordering::Relaxed);
+        });
+        mailbox.ui_hidden.store(true, Ordering::Release);
+        for sequence in 1..=10_000 {
+            mailbox.publish_to_ui(
+                SystemSnapshot {
+                    sequence,
+                    ..Default::default()
+                },
+                &ctx,
+            );
+        }
+        assert_eq!(repaints.load(Ordering::Relaxed), 0);
+        assert_eq!(mailbox.take_after(0).unwrap().sequence, 10_000);
+        assert!(mailbox.take_after(10_000).is_none());
+        mailbox.ui_hidden.store(false, Ordering::Release);
+        mailbox.publish_to_ui(
+            SystemSnapshot {
+                sequence: 10_001,
+                ..Default::default()
+            },
+            &ctx,
+        );
+        assert!(repaints.load(Ordering::Relaxed) > 0);
+        assert_eq!(mailbox.take_after(10_000).unwrap().sequence, 10_001);
     }
 
     #[test]

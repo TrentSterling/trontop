@@ -98,19 +98,7 @@ fn nvme_health(handle: &Handle) -> Result<NvmeHealth, NativeError> {
         query[8 + index * 4..12 + index * 4].copy_from_slice(&value.to_le_bytes());
     }
     let reply = ioctl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, query.len())?;
-    let dword = |at: usize| {
-        reply
-            .get(at..at + 4)
-            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
-    };
-    // STORAGE_PROTOCOL_DATA_DESCRIPTOR: Version, Size, then the protocol data header.
-    let offset = dword(8 + 16).ok_or(NativeError::Malformed("NVMe log reply"))?;
-    let length = dword(8 + 20).ok_or(NativeError::Malformed("NVMe log reply"))?;
-    let start = 8usize.saturating_add(offset);
-    let log = reply
-        .get(start..start.saturating_add(length.min(LOG)))
-        .ok_or(NativeError::Malformed("NVMe log reply bounds"))?;
-    parse_nvme_health(log).ok_or(NativeError::Malformed("NVMe health log is short"))
+    parse_nvme_reply(&reply).ok_or(NativeError::Malformed("NVMe protocol health reply"))
 }
 
 fn read_disk(interface: &str, disk: &mut Disk) -> Result<(), NativeError> {
@@ -213,93 +201,11 @@ fn storage_wmi(ctx: &Context, disks: &mut [Disk], issues: &mut Vec<String>) -> V
             return Value::unavailable(error.to_string());
         }
     };
-    let query = |wql: &str| connection.query(wql, ctx.timeout(WMI_TIMEOUT));
-    let number_of = |row: &wmi::WmiRow, name: &str| row.u64(name).map(|n| n as u32);
-    match query(
-        "SELECT DeviceId, MediaType, SpindleSpeed, HealthStatus, Size FROM MSFT_PhysicalDisk",
-    ) {
-        Ok(rows) => {
-            for row in rows {
-                let id = row.text("DeviceId").and_then(|d| d.parse::<u32>().ok());
-                if let Some(disk) = disks
-                    .iter_mut()
-                    .find(|d| d.number.is_some() && d.number == id)
-                {
-                    disk.media = row.u64("MediaType");
-                    disk.spindle = row.u64("SpindleSpeed");
-                    disk.health = row.u64("HealthStatus");
-                    disk.bytes = row.u64("Size").filter(|s| *s > 0);
-                }
-            }
-        }
-        Err(error) => issues.push(format!("MSFT_PhysicalDisk: {error}")),
-    }
-    match query("SELECT Number, PartitionStyle FROM MSFT_Disk") {
-        Ok(rows) => {
-            for row in rows {
-                let number = number_of(&row, "Number");
-                if let Some(disk) = disks
-                    .iter_mut()
-                    .find(|d| d.number.is_some() && d.number == number)
-                {
-                    disk.partition_style = row.u64("PartitionStyle");
-                }
-            }
-        }
-        Err(error) => issues.push(format!("MSFT_Disk: {error}")),
-    }
-    let volumes = query("SELECT Path, FileSystem, FileSystemLabel, SizeRemaining FROM MSFT_Volume")
-        .unwrap_or_default();
-    match query(
-        "SELECT DiskNumber, PartitionNumber, DriveLetter, Size, GptType, MbrType, AccessPaths FROM MSFT_Partition",
-    ) {
-        Ok(rows) => {
-            for row in rows {
-                let number = number_of(&row, "DiskNumber");
-                let Some(disk) = disks
-                    .iter_mut()
-                    .find(|d| d.number.is_some() && d.number == number)
-                else {
-                    continue;
-                };
-                let paths = row.texts("AccessPaths");
-                let volume = volumes.iter().find(|v| {
-                    v.text("Path")
-                        .is_some_and(|p| paths.iter().any(|a| a.eq_ignore_ascii_case(&p)))
-                });
-                let kind = row
-                    .text("GptType")
-                    .map(|g| gpt_type(&g).map_or_else(|| format!("GPT type {g}"), str::to_string))
-                    .or_else(|| {
-                        row.u64("MbrType")
-                            .filter(|t| *t != 0)
-                            .map(|t| format!("MBR type {t:02X}h"))
-                    });
-                disk.partitions.push(Partition {
-                    number: number_of(&row, "PartitionNumber").unwrap_or(0),
-                    letter: row
-                        .u64("DriveLetter")
-                        .and_then(|c| char::from_u32(c as u32))
-                        .filter(char::is_ascii_alphabetic),
-                    bytes: row.u64("Size").unwrap_or(0),
-                    kind,
-                    file_system: volume.and_then(|v| v.text("FileSystem")),
-                    label: volume.and_then(|v| v.text("FileSystemLabel")),
-                    free: volume.and_then(|v| v.u64("SizeRemaining")),
-                });
-            }
-            for disk in disks.iter_mut() {
-                disk.partitions.sort_by_key(|p| p.number);
-            }
-        }
-        Err(error) => issues.push(format!("MSFT_Partition: {error}")),
-    }
-    match query("SELECT DeviceId FROM MSFT_StorageReliabilityCounter") {
-        Ok(_) => Value::unavailable(
-            "ATA SMART attribute tables need a pass-through command, which Trontop does not send",
-        ),
-        Err(error) => Value::unavailable(error.to_string()),
-    }
+    super::management::collect(disks, issues, |wql| {
+        connection
+            .query(wql, ctx.timeout(WMI_TIMEOUT))
+            .map_err(|e| e.to_string())
+    })
 }
 
 pub(super) fn optical(ctx: &Context) -> Result<Vec<(String, Vec<Row>)>, String> {

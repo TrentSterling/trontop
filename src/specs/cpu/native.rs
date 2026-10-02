@@ -2,11 +2,11 @@
 //! topology, power information, one registry value and the SMBIOS copy.
 use super::*;
 use crate::specs::native::{NativeError, registry, smbios};
-use windows::Win32::System::Power::{CallNtPowerInformation, ProcessorInformation};
-use windows::Win32::System::SystemInformation::{
-    GetLogicalProcessorInformationEx, GetSystemInfo, RelationAll, SYSTEM_INFO,
+use windows::Win32::System::SystemInformation::{GetLogicalProcessorInformationEx, RelationAll};
+use windows::Win32::System::Threading::{
+    GetActiveProcessorCount, GetActiveProcessorGroupCount, IsProcessorFeaturePresent,
+    PROCESSOR_FEATURE_ID,
 };
-use windows::Win32::System::Threading::{IsProcessorFeaturePresent, PROCESSOR_FEATURE_ID};
 
 /// PF_SECOND_LEVEL_ADDRESS_TRANSLATION and PF_VIRT_FIRMWARE_ENABLED (winnt.h).
 const PF_SLAT: u32 = 20;
@@ -16,9 +16,11 @@ pub(super) fn collect(ctx: &Context) -> Section {
     let mut facts = Facts {
         cpuid: cpuid(),
         topology: topology().map_err(|e| e.to_string()),
-        nominal_mhz: nominal_mhz().map_err(|e| e.to_string()),
         ..Default::default()
     };
+    let (nominal, issues) = nominal_mhz(ctx);
+    facts.nominal_mhz = nominal;
+    facts.issues.extend(issues);
     // SAFETY: plain feature queries with documented constants.
     unsafe {
         facts.firmware_flag =
@@ -150,28 +152,35 @@ fn topology() -> Result<Topology, NativeError> {
     parse_topology(&bytes).ok_or(NativeError::Malformed("processor topology records"))
 }
 
-fn nominal_mhz() -> Result<Vec<u32>, NativeError> {
-    let mut info = SYSTEM_INFO::default();
-    // SAFETY: writable output structure.
-    unsafe { GetSystemInfo(&mut info) };
-    let count = info.dwNumberOfProcessors.clamp(1, 1024) as usize;
-    // PROCESSOR_POWER_INFORMATION: six ULONGs; MaxMhz is the second.
-    let mut buffer = vec![0u32; count * 6];
-    // SAFETY: output size matches the buffer.
-    let status = unsafe {
-        CallNtPowerInformation(
-            ProcessorInformation,
-            None,
-            0,
-            Some(buffer.as_mut_ptr().cast()),
-            (buffer.len() * 4) as u32,
-        )
-    };
-    if status.0 != 0 {
-        return Err(NativeError::Windows {
-            api: "CallNtPowerInformation",
-            code: status.0 as u32,
-        });
+fn nominal_mhz(ctx: &Context) -> (Result<NominalClocks, String>, Vec<String>) {
+    // SAFETY: read-only inventory of Windows processor groups.
+    let groups = unsafe { GetActiveProcessorGroupCount() };
+    if !(1..=64).contains(&groups) {
+        return (
+            Err("Windows processor group inventory is unavailable".into()),
+            Vec::new(),
+        );
     }
-    Ok(buffer.chunks_exact(6).map(|p| p[1]).collect())
+    let mut processors = Vec::new();
+    let mut issues = Vec::new();
+    for group in 0..groups {
+        // SAFETY: a group from the active inventory, no affinity changes.
+        let count = unsafe { GetActiveProcessorCount(group) };
+        if !(1..=64).contains(&count) {
+            issues.push(format!(
+                "Processor group {group} has no usable logical-processor inventory."
+            ));
+            continue;
+        }
+        processors.extend((0..count).map(|number| (group, number)));
+    }
+    let (values, read_issues) = collect_nominal_mhz(
+        processors,
+        || ctx.should_stop(),
+        |group, number| {
+            crate::cpu_clock::nominal_mhz(group, number).map_err(|error| format!("{error:?}"))
+        },
+    );
+    issues.extend(read_issues);
+    (values, issues)
 }

@@ -28,6 +28,24 @@ fn actions_dispatch_exact_arguments_off_the_calling_thread() {
     });
     for action in [
         Action::End(identity()),
+        Action::EndTree(
+            tree::Plan::build(
+                &[crate::model::ProcessRow {
+                    pid: identity().pid,
+                    name: "Fixture.exe".into(),
+                    control: crate::model::ProcessControlInfo {
+                        created_at_100ns: Some(identity().created_at_100ns),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }],
+                identity(),
+                tree::Scope::SelectedTree,
+            )
+            .unwrap(),
+        ),
+        Action::Suspend(identity()),
+        Action::Resume(identity()),
         Action::Priority(identity(), PriorityClass::BelowNormal),
         Action::Affinity(identity(), 3),
         Action::Reveal(PathBuf::from("C:/Fixture/应用.exe")),
@@ -178,6 +196,68 @@ fn failed_action_can_be_followed_by_a_new_explicit_request() {
     }
 }
 
+#[test]
+fn suspension_state_tracks_success_and_failed_resume_keeps_the_hold() {
+    let mut controller = Controller::with_backend(Context::default(), |action| {
+        if matches!(action, Action::Resume(_)) {
+            Err("injected resume failure".into())
+        } else {
+            Ok(())
+        }
+    });
+    controller
+        .submit(Request::new(Action::Suspend(identity()), "Fixture".into()))
+        .unwrap();
+    assert!(wait(&mut controller).result.is_ok());
+    assert!(controller.holds_suspension(identity()));
+    assert!(
+        controller
+            .submit(Request::new(
+                Action::Suspend(identity()),
+                "Duplicate".into()
+            ))
+            .unwrap_err()
+            .contains("already holds")
+    );
+    controller
+        .submit(Request::new(Action::Resume(identity()), "Fixture".into()))
+        .unwrap();
+    assert!(wait(&mut controller).result.is_err());
+    assert!(controller.holds_suspension(identity()));
+    controller
+        .submit(Request::new(Action::End(identity()), "Fixture".into()))
+        .unwrap();
+    assert!(wait(&mut controller).result.is_ok());
+    assert!(!controller.holds_suspension(identity()));
+}
+
+#[cfg(windows)]
+#[test]
+fn native_worker_owns_suspensions_and_drop_releases_its_hold() {
+    let child = platform::HeartbeatChild::spawn();
+    let mut controller = Controller::spawn(Context::default());
+    for action in [
+        Action::Suspend(child.identity),
+        Action::Resume(child.identity),
+        Action::Suspend(child.identity),
+    ] {
+        let held = matches!(action, Action::Suspend(_));
+        controller
+            .submit(Request::new(action, "Owned heartbeat fixture".into()))
+            .unwrap();
+        assert!(wait(&mut controller).result.is_ok());
+        assert_eq!(controller.holds_suspension(child.identity), held);
+        if held {
+            child.assert_paused();
+        } else {
+            child.assert_running();
+        }
+    }
+    drop(controller);
+    child.assert_running();
+    println!("OWNED_WORKER_SUSPENSION: native suspend/resume, worker shutdown releases hold PASS");
+}
+
 #[cfg(windows)]
 #[test]
 fn native_action_worker_rechecks_identity_on_its_owned_hidden_child() {
@@ -210,6 +290,8 @@ fn native_action_worker_rechecks_identity_on_its_owned_hidden_child() {
     let mut controller = Controller::spawn(Context::default());
     for action in [
         Action::End(wrong),
+        Action::Suspend(wrong),
+        Action::Resume(wrong),
         Action::Priority(wrong, PriorityClass::BelowNormal),
         Action::Affinity(wrong, 1),
     ] {

@@ -6,6 +6,7 @@ fn row(source: Source, key: &str, command: &str) -> StartupRow {
         name: key.into(),
         command: command.into(),
         source,
+        control: None,
     }
 }
 fn read(source: Source, state: ReadState, rows: Vec<StartupRow>) -> Read {

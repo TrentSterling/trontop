@@ -115,6 +115,7 @@ fn timed_out_startup_preserves_rows_reuses_failed_view_and_recovers() {
                         name: format!("value{count}"),
                         source,
                         command: "not executed".into(),
+                        control: None,
                     }],
                 })
                 .collect();

@@ -12,7 +12,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     PM_REMOVE, PeekMessageW, QS_ALLINPUT, TranslateMessage, WM_QUIT,
 };
 
-pub(super) trait Backend {
+pub(crate) trait Backend {
     fn update(&mut self, sample: TraySample) -> Result<(), ()>;
 }
 
@@ -66,6 +66,19 @@ pub struct TrayController {
 }
 
 impl TrayController {
+    #[cfg(test)]
+    pub(crate) fn with_backend<B: Backend + 'static>(
+        ctx: egui::Context,
+        create: impl FnOnce(egui::Context, Arc<AtomicU8>) -> Option<B> + Send + 'static,
+    ) -> Option<Self> {
+        Self::spawn(ctx, create)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queue_action(&self, action: TrayAction) {
+        super::super::queue_action(&self.sink.0.pending, action);
+    }
+
     pub fn new(ctx: egui::Context) -> Option<Self> {
         Self::spawn(ctx, |ctx, pending| {
             super::create_native_tray(ctx, pending).map(|tray| super::NativeTray {

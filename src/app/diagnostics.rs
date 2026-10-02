@@ -61,6 +61,12 @@ impl TrontopApp {
                 );
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui.button("Quit Trontop")
+                    .on_hover_text("Close keeps monitoring in the tray. Quit saves settings and exits Trontop, including its tray icon.")
+                    .clicked()
+                {
+                    self.request_quit(ctx);
+                }
                 if ui.button("Copy support report")
                     .on_hover_text("Build and provider status only. No process names, commands, paths, account or host names, GPU IDs or addresses. Nothing is uploaded.")
                     .clicked()
@@ -101,13 +107,26 @@ impl TrontopApp {
                 None,
                 t,
             );
-            about_row(
-                ui,
-                "System tray",
-                tray.unwrap_or(crate::tray::TrayState::Unavailable).label(),
-                Some(tray_reason),
-                t,
-            );
+            // The tray and the global hotkey share one row at normal widths so
+            // About keeps its height; they stack in a narrow dialog.
+            let tray_label = tray.unwrap_or(crate::tray::TrayState::Unavailable).label();
+            if ui.available_width() >= 440.0 {
+                let gap = theme::space::M;
+                let cell = (ui.available_width() - gap) / 2.0;
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = gap;
+                    ui.allocate_ui(Vec2::new(cell, ABOUT_ROW - 2.0), |ui| {
+                        about_row(ui, "System tray", tray_label, Some(tray_reason), t);
+                    });
+                    ui.allocate_ui(Vec2::new(cell, ABOUT_ROW - 2.0), |ui| {
+                        self.hotkey_cell(ui, ctx, t);
+                    });
+                });
+            } else {
+                about_row(ui, "System tray", tray_label, Some(tray_reason), t);
+                self.hotkey_cell(ui, ctx, t);
+            }
+            self.hotkey_notice_line(ui, t);
         });
         ui.add_space(theme::space::S);
         widgets::section_label(ui, "Provider health", t);

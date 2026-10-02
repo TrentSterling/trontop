@@ -598,14 +598,20 @@ impl TrontopApp {
             .and_then(|adapter| {
                 let total = adapter.description.as_ref()?.dedicated_video;
                 let used = adapter.memory[0].value?;
-                (total > 0).then_some((used, total))
+                (total > 0).then_some((used, total, adapter.memory[0].state(now) != "Live"))
             })
             .or_else(|| {
                 s.gpu_sensors
                     .adapters
                     .iter()
-                    .filter(|_| !s.gpu_sensors.using_cached)
-                    .find_map(|adapter| adapter.memory)
+                    .filter(|_| {
+                        !s.gpu_sensors.using_cached
+                            && s.gpu_sensors.last_success.is_some_and(|at| {
+                                now.saturating_duration_since(at)
+                                    <= std::time::Duration::from_secs(3)
+                            })
+                    })
+                    .find_map(|adapter| adapter.memory.map(|(used, total)| (used, total, false)))
             });
         let gpu = Tile {
             label: "GPU".into(),
@@ -613,15 +619,29 @@ impl TrontopApp {
                 || MISSING.into(),
                 |v| format!("{}{}", pct1(v), if partial { "+" } else { "" }),
             ),
-            sub: vram.map_or_else(String::new, |(used, total)| {
-                format!("VRAM {} of {}", format::bytes(used), format::bytes(total))
+            sub: vram.map_or_else(String::new, |(used, total, retained)| {
+                format!(
+                    "VRAM {}{} of {}",
+                    if retained { "~" } else { "" },
+                    format::bytes(used),
+                    format::bytes(total)
+                )
             }),
-            sub_short: vram.map_or_else(String::new, |(used, _)| {
-                format!("VRAM {}", format::bytes(used))
+            sub_short: vram.map_or_else(String::new, |(used, _, retained)| {
+                format!(
+                    "VRAM {}{}",
+                    if retained { "~" } else { "" },
+                    format::bytes(used)
+                )
             }),
             hover: format!(
-                "{}\nWindows PDH GPU Engine counters, busiest engine across adapters.",
-                reading.explanation()
+                "{}\nWindows PDH GPU Engine counters, busiest engine across adapters.{}",
+                reading.explanation(),
+                if vram.is_some_and(|(_, _, retained)| retained) {
+                    "\n~ VRAM is retained from the last successful memory read."
+                } else {
+                    ""
+                }
             ),
             series: activity
                 .as_ref()
@@ -714,16 +734,17 @@ impl TrontopApp {
 
         // CPU package temperature and power come only from the sensor bridge.
         let bridge = &self.specs_view.bridge;
-        let fresh = bridge.collected_at.is_some_and(|at| {
-            now.saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
-        });
+        let fresh = bridge.status.is_known()
+            && bridge.collected_at.is_some_and(|at| {
+                now.saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
+            });
         let bridge_reading = |key: &crate::specs::LiveKey| {
             fresh
                 .then(|| {
                     bridge
                         .readings
                         .iter()
-                        .find(|r| &r.key == key && r.value.is_finite())
+                        .find(|r| &r.key == key && r.unit.value_is_finite(r.value))
                 })
                 .flatten()
         };

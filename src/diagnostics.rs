@@ -136,6 +136,22 @@ pub struct Health {
 }
 
 impl Health {
+    fn max_age(provider: Provider) -> Duration {
+        provider.cadence().mul_f32(2.5).max(Duration::from_secs(3))
+    }
+
+    /// One deadline per reading, rather than a polling timer. Once expired the
+    /// retained state needs no more repaints until a worker publishes new data.
+    fn next_state_change(&self, provider: Provider, now: Instant) -> Option<Instant> {
+        if !matches!(self.state, State::Live | State::Partial | State::Starting) {
+            return None;
+        }
+        self.last_attempt?
+            .checked_add(Self::max_age(provider))?
+            .checked_add(Duration::from_millis(1))
+            .filter(|deadline| *deadline > now)
+    }
+
     pub fn record(
         &mut self,
         at: Instant,
@@ -157,7 +173,7 @@ impl Health {
     }
 
     pub fn state(&self, provider: Provider, now: Instant) -> State {
-        let max_age = provider.cadence().mul_f32(2.5).max(Duration::from_secs(3));
+        let max_age = Self::max_age(provider);
         if matches!(self.state, State::Live | State::Partial | State::Starting)
             && self
                 .last_attempt
@@ -180,6 +196,13 @@ pub struct Diagnostics {
 }
 
 impl Diagnostics {
+    pub fn next_state_change(&self, now: Instant) -> Option<Instant> {
+        Provider::ALL
+            .into_iter()
+            .filter_map(|provider| self.get(provider).next_state_change(provider, now))
+            .min()
+    }
+
     pub fn get(&self, provider: Provider) -> &Health {
         &self.entries[provider as usize]
     }
@@ -250,6 +273,62 @@ pub fn support_report(diagnostics: &Diagnostics, now: Instant) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn freshness_deadlines_expire_independently_and_stop_after_the_last_transition() {
+        let at = Instant::now();
+        let mut diagnostics = Diagnostics::default();
+        assert_eq!(diagnostics.next_state_change(at), None);
+        for provider in Provider::ALL {
+            diagnostics
+                .get_mut(provider)
+                .record(at, Duration::ZERO, State::Live, None, None);
+        }
+        let first = diagnostics.next_state_change(at).unwrap();
+        assert_eq!(first - at, Duration::from_millis(3001));
+        assert_eq!(
+            diagnostics
+                .get(Provider::System)
+                .state(Provider::System, first),
+            State::Stale
+        );
+        assert_eq!(
+            diagnostics
+                .get(Provider::Services)
+                .state(Provider::Services, first),
+            State::Live
+        );
+        let next = diagnostics.next_state_change(first).unwrap();
+        assert_eq!(next - at, Duration::from_millis(12501));
+        let last = diagnostics.next_state_change(next).unwrap();
+        assert_eq!(last - at, Duration::from_millis(75001));
+        assert_eq!(diagnostics.next_state_change(last), None);
+        diagnostics.get_mut(Provider::System).record(
+            last,
+            Duration::ZERO,
+            State::Partial,
+            None,
+            None,
+        );
+        assert_eq!(
+            diagnostics.next_state_change(last).unwrap() - last,
+            Duration::from_millis(3001)
+        );
+    }
+
+    #[test]
+    fn first_attempt_timeout_expires_without_polling_unavailable_or_cached_values() {
+        let at = Instant::now();
+        let mut health = Health::default();
+        health.record(at, Duration::ZERO, State::Starting, None, None);
+        let expiry = health.next_state_change(Provider::System, at).unwrap();
+        assert_eq!(health.state(Provider::System, expiry), State::Unavailable);
+        assert_eq!(health.next_state_change(Provider::System, expiry), None);
+        for state in [State::Unavailable, State::Stale] {
+            health.record(at, Duration::ZERO, state, None, None);
+            assert_eq!(health.next_state_change(Provider::System, at), None);
+        }
+    }
 
     #[test]
     fn health_tracks_failure_recovery_partial_and_independent_freshness() {

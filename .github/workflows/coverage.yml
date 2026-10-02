@@ -1,0 +1,45 @@
+name: coverage
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install matching Rust and LLVM tools
+        shell: pwsh
+        run: rustup toolchain install 1.93.0 --profile minimal --component llvm-tools-preview,rustfmt,clippy
+      - name: Select pinned toolchain
+        shell: pwsh
+        run: rustup override set 1.93.0
+      - name: Fetch locked dependencies for the offline measurement
+        shell: pwsh
+        run: |
+          cargo fetch --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fetch --locked --manifest-path scripts/coverage-scope/Cargo.toml
+          exit $LASTEXITCODE
+      - name: Check coverage analyzer
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path scripts/coverage-scope/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --offline --locked --manifest-path scripts/coverage-scope/Cargo.toml --target-dir target/coverage/scope --all-targets -- -D warnings
+          exit $LASTEXITCODE
+      - name: Measure ordinary Windows coverage
+        shell: pwsh
+        run: ./scripts/measure-coverage.ps1
+      - name: Preserve exact object, reports and source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trontop-coverage-windows-${{ github.sha }}
+          path: target/coverage/runs/
+          if-no-files-found: warn
+          retention-days: 7

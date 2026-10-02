@@ -336,6 +336,17 @@ fn json_preserves_sensor_inventory_states_without_leaking_private_fields_or_raw_
                 key: "PRIVATE-KEY".into(),
                 command: "PRIVATE-STARTUP-COMMAND".into(),
                 source: startup::Source::UserRun,
+                control: Some(startup::control::Control {
+                    registration: Some(startup::control::Registration::Run(
+                        startup::control::RawValue {
+                            kind: 1,
+                            bytes: b"PRIVATE-REGISTRATION-BYTES".to_vec(),
+                        },
+                    )),
+                    approval: startup::control::Approval::Missing
+                        .changed(false, 42)
+                        .unwrap(),
+                }),
             }],
         }],
         c.at - Duration::from_secs(60),
@@ -359,6 +370,7 @@ fn json_preserves_sensor_inventory_states_without_leaking_private_fields_or_raw_
     assert_eq!(doc["drive_sensors"][0]["sensors"][0]["celsius"], 0);
     assert!(doc["drive_sensors"][0]["sensors"][1]["celsius"].is_null());
     assert_eq!(doc["startup"][0]["state"], "Cached");
+    assert_eq!(doc["startup"][0]["approval_state"], "Disabled");
     assert!(
         doc["services"][0]["source"]
             .as_str()

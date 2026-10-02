@@ -34,6 +34,17 @@ service, elevation prompt, affinity change or power-policy write is performed.
 These are native/private interfaces, not a promise of support on every Windows
 version or CPU. Unsupported calls and unknown layouts fail closed.
 
+Alpha.49 factors the nominal reference call into a shared query used by both this
+sampler and System's static CPU inventory. The inventory uses active processor
+group/number identities, validates native status/version/frequency, deduplicates
+references and preserves successes across failed queries or budget expiry. Rows
+mark partial data and retain source/count notes; no group-zero vector assumption
+remains. This does not change the dynamic-clock formula or turn a nominal reference
+into a measured dynamic frequency. Sixteen new hardware checks include the query
+decoder and inventory's multi-group/partial cases. The final read-only CPU inventory
+probe returned 24 cores, P 3700 MHz / E 3200 MHz in 2.162 ms on this machine.
+Evidence and scope: `HARDWARE_FALLBACKS_2026-09-30.md`.
+
 For each processor and state bucket, calculate the difference in cumulative hits
 between two valid samples. Multiply each delta by that bucket's percent frequency
 and **that processor's nominal MHz**, then divide the sum by total hits and 100.

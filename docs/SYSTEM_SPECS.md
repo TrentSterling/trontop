@@ -14,6 +14,14 @@ Windows does not expose is an explicit Unavailable value with the reason.
 
 ## Using the page
 
+Alpha.50 adds twelve RAM and ten storage fixture checks. Unknown module sizes
+retain readable facts; partial capacities/speeds and array slot contradictions
+are explicit. Descriptor/protocol reply bounds reject malformed readings,
+wide counters retain their original quantity and failed storage sections keep
+their collection issues. Scope, format references and final receipts:
+`SMART_TRAY_2026-09-30.md`. Native storage joins and field-parity acceptance
+remain open.
+
 - **Sub-navigation** with a section icon and a status dot per section (green
   complete, amber partial or slow, red unavailable or stopped, grey waiting).
 - **Summary**: one Speccy-style headline block per section, live values right
@@ -36,6 +44,22 @@ Windows does not expose is an explicit Unavailable value with the reason.
 - **Refresh** re-reads every section; reads also repeat every 5 minutes.
 - Sections are never blank: Waiting, Reading, Slow (previous data kept),
   Stopped, Partial (issues listed) and Unavailable (reason) all render text.
+
+Alpha.48 applies the native GPU timestamp and CPU-clock/commit provider health to
+live resolution. Retained values show `(cached)` with `Cached:` hover text; their
+JSON live payloads add `cached: true`. Cached temperatures have no fresh band
+color. Private summary headlines suppress their attached live key/value/source
+and the CPU headline override until explicitly revealed. Copy/Save use their
+respective privacy gate. Evidence: `SYSTEM_LIVE_2026-09-30.md`.
+
+Alpha.49 keeps independently readable PCI bridge rows when SMBIOS fails and
+preserves all collection issues. BIOS revision markers, binary ROM units and
+date normalization have byte-fixture checks against DMTF DSP0134 3.8.0. CPU
+nominal clocks share the sampler's bounded per-processor group/number query and
+mark partial or missing references. Missing CPUID/package records and unknown
+vendor/model suffixes no longer invent facts; Windows flags and bus-clock fallback
+remain independent. Sixteen new ordinary checks and all 24 read-only probes pass.
+Scope, source references and receipts: `HARDWARE_FALLBACKS_2026-09-30.md`.
 
 ## Beating Speccy's bugs on the reference PC
 
@@ -65,9 +89,13 @@ the section.
 
 **CPU** (3 ms). CPUID (brand, family/model/stepping, instruction sets, leaf 16h,
 hypervisor leaves), GetLogicalProcessorInformationEx (packages, cores per
-efficiency class, caches per core type), CallNtPowerInformation (nominal clock
-per core type: P 3700 MHz, E 3200 MHz), microcode from the registry, SMBIOS
-type 4. Codename and desktop socket come only from a documented model table.
+efficiency class, caches per core type), microcode from the registry and SMBIOS
+type 4. Alpha.49 reads nominal references using the shared `NtPowerInformation`
+level 87 / internal selector 43 / version 1 query, keyed by processor group and
+number; missing/partial readings stay explicit. The final local probe reports
+P 3700 MHz / E 3200 MHz. This private native API is described in `CPU_CLOCK.md`;
+unsupported calls fail explicitly. Codename and desktop socket come only from a
+documented model table and a recognized model suffix.
 Live: usage, average and fastest clock, one clock row per logical processor.
 Unavailable: package temperature, package power and core voltage unless a sensor
 provider runs (see Sensor Sources); TDP ("not exposed by Windows without a kernel
@@ -178,3 +206,13 @@ Probe output masks private values and prints live values as keys (drive keys
 without their interface path). The real-data visual pass collects every section
 once on the test thread plus one short-lived sampler (read-only), renders ten
 offscreen PNGs and never opens a window.
+
+## Alpha.51 storage identity and report boundary checks
+
+Physical media joins require a unique UniqueId/format match rather than treating
+PhysicalDisk DeviceId as the OS disk number. OS capacity remains independent;
+overflowing numbers/letters, ambiguous volume joins and impossible free space
+are rejected. Missing partition number/size stays unavailable; zero known free
+space survives. Twelve fixtures, ten before-fix regressions and final native
+read-only storage evidence are [documented here](STORAGE_PROVIDER_JOINS_2026-09-30.md).
+Current development is paused; [resume anchor](RESUME_ANCHOR.md).

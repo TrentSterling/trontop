@@ -143,6 +143,7 @@ impl Backend for Store {
             "egui".into(),
             ron::to_string(&snapshot.memory).map_err(|_| "Cannot encode UI settings.")?,
         );
+        values.insert(crate::hotkey::STORAGE_KEY.into(), snapshot.hotkey.clone());
         values_to_loaded(&values)?;
         let bytes = serde_json::to_vec(
             &serde_json::json!({"format":"trontop-settings", "version":1, "values":values}),

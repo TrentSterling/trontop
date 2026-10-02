@@ -475,3 +475,529 @@ fn complete_sections_show_no_state_chip_and_a_short_read_line() {
         }
     }
 }
+
+#[test]
+fn expand_and_collapse_all_reach_nested_core_groups_and_survive_navigation() {
+    let ctx = egui::Context::default();
+    let mut app = populated(ThemeSettings::default());
+    theme::install(&ctx, app.theme);
+    let size = Vec2::new(1600.0, 1200.0);
+    app.system_section = SectionId::Cpu;
+    click_local_text(&ctx, &mut app, size, "Expand all");
+    for _ in 0..20 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = render(&ctx, &mut app, size);
+    assert_eq!(
+        text_shapes(&output)
+            .iter()
+            .filter(|(text, _)| text.galley.job.text == "Core type")
+            .count(),
+        4
+    );
+    click_local_text(&ctx, &mut app, size, "Collapse all");
+    for _ in 0..20 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = render(&ctx, &mut app, size);
+    assert!(!present(&output, "Core type"));
+    assert!(!present(&output, "Average clock"));
+    click_local_text(&ctx, &mut app, size, "Motherboard");
+    click_local_text(&ctx, &mut app, size, "CPU");
+    let output = render(&ctx, &mut app, size);
+    assert!(!present(&output, "Average clock"));
+    click_local_text(&ctx, &mut app, size, "Expand all");
+    for _ in 0..20 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = render(&ctx, &mut app, size);
+    assert_eq!(
+        text_shapes(&output)
+            .iter()
+            .filter(|(text, _)| text.galley.job.text == "Core type")
+            .count(),
+        4
+    );
+    assert!(app.specs.is_none());
+}
+
+fn pointer_label(
+    ctx: &egui::Context,
+    app: &mut TrontopApp,
+    size: Vec2,
+    label: &str,
+    button: egui::PointerButton,
+) -> egui::FullOutput {
+    let output = render(ctx, app, size);
+    let position = visible(&output, label)
+        .unwrap_or_else(|| panic!("missing {label}"))
+        .visual_bounding_rect()
+        .center();
+    let mut output = egui::FullOutput::default();
+    for pressed in [true, false] {
+        output.append(checked_frame(
+            ctx,
+            app,
+            size,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            true,
+        ));
+    }
+    output
+}
+
+#[test]
+fn row_context_copy_refuses_hidden_values_and_preserves_unavailable_reason() {
+    let ctx = egui::Context::default();
+    let mut app = populated(ThemeSettings::default());
+    theme::install(&ctx, app.theme);
+    let size = Vec2::new(1280.0, 900.0);
+    app.system_section = SectionId::Motherboard;
+    pointer_label(
+        &ctx,
+        &mut app,
+        size,
+        "Serial number",
+        egui::PointerButton::Secondary,
+    );
+    let output = render(&ctx, &mut app, size);
+    assert!(visible(&output, "Private value hidden").is_some());
+    assert!(!present(&output, "Copy value"));
+    assert!(!present(&output, "Copy row"));
+    // An explicit local Escape closes the context menu before opening another.
+    frame(
+        &ctx,
+        &mut app,
+        size,
+        vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    pointer_label(
+        &ctx,
+        &mut app,
+        size,
+        "FX-900",
+        egui::PointerButton::Secondary,
+    );
+    let output = pointer_label(
+        &ctx,
+        &mut app,
+        size,
+        "Copy row",
+        egui::PointerButton::Primary,
+    );
+    let [egui::OutputCommand::CopyText(text)] = output.platform_output.commands.as_slice() else {
+        panic!("expected row copy");
+    };
+    assert_eq!(text, "Model: FX-900");
+    app.system_section = SectionId::Cpu;
+    pointer_label(
+        &ctx,
+        &mut app,
+        size,
+        "Package power",
+        egui::PointerButton::Secondary,
+    );
+    let output = pointer_label(
+        &ctx,
+        &mut app,
+        size,
+        "Copy value",
+        egui::PointerButton::Primary,
+    );
+    let [egui::OutputCommand::CopyText(text)] = output.platform_output.commands.as_slice() else {
+        panic!("expected unavailable reason copy");
+    };
+    assert_eq!(text, "not exposed by Windows without a kernel driver");
+    assert!(app.specs.is_none());
+}
+
+#[test]
+fn section_copy_and_group_copy_follow_explicit_private_reveal() {
+    for reveal in [false, true] {
+        let ctx = egui::Context::default();
+        let mut app = populated(ThemeSettings::default());
+        theme::install(&ctx, app.theme);
+        let size = Vec2::new(1280.0, 900.0);
+        app.system_section = SectionId::Motherboard;
+        if reveal {
+            click_local_text(&ctx, &mut app, size, "Privacy");
+            click_local_text(&ctx, &mut app, size, "Reveal private values");
+            click_local_text(&ctx, &mut app, size, "Privacy •");
+        }
+        let output = pointer_label(
+            &ctx,
+            &mut app,
+            size,
+            "Copy section",
+            egui::PointerButton::Primary,
+        );
+        let [egui::OutputCommand::CopyText(text)] = output.platform_output.commands.as_slice()
+        else {
+            panic!("expected section copy");
+        };
+        assert_eq!(text.contains(fixtures::PRIVATE_SERIAL), reveal);
+        assert!(text.contains("Model: FX-900"));
+        pointer_label(
+            &ctx,
+            &mut app,
+            size,
+            "Baseboard",
+            egui::PointerButton::Secondary,
+        );
+        let output = pointer_label(
+            &ctx,
+            &mut app,
+            size,
+            "Copy group",
+            egui::PointerButton::Primary,
+        );
+        let [egui::OutputCommand::CopyText(text)] = output.platform_output.commands.as_slice()
+        else {
+            panic!("expected group copy");
+        };
+        assert_eq!(text.contains(fixtures::PRIVATE_SERIAL), reveal);
+        assert!(text.contains("FX-900"));
+        assert!(
+            !text.contains("1.23"),
+            "group copy must exclude sibling BIOS"
+        );
+    }
+}
+
+#[test]
+fn system_missing_reads_and_aged_success_remain_explicit_without_estimates() {
+    use crate::specs::SectionState;
+    let ctx = egui::Context::default();
+    let mut app = populated(ThemeSettings::default());
+    theme::install(&ctx, app.theme);
+    let size = Vec2::new(1280.0, 900.0);
+    app.system_section = SectionId::Motherboard;
+    for (state, expected) in [
+        (SectionState::Waiting, "Waiting for the first read."),
+        (
+            SectionState::Collecting,
+            "Reading now. Nothing is shown until the first read completes.",
+        ),
+        (
+            SectionState::Slow,
+            "The first read is slow. Nothing is estimated meanwhile.",
+        ),
+        (
+            SectionState::Stopped,
+            "The collection worker stopped before its first read.",
+        ),
+        (SectionState::Unavailable, "No data."),
+    ] {
+        let entry = app
+            .specs_view
+            .entries
+            .iter_mut()
+            .find(|e| e.id == SectionId::Motherboard)
+            .unwrap();
+        entry.section = None;
+        entry.health.collected_at = None;
+        entry.health.state = state;
+        let output = render(&ctx, &mut app, size);
+        assert!(present(&output, expected));
+        assert!(!present(&output, "FX-900"));
+        assert!(output.platform_output.commands.is_empty());
+    }
+    let mut app = populated(ThemeSettings::default());
+    app.system_section = SectionId::Motherboard;
+    for (seconds, expected) in [(22, "Read 22 s ago"), (120, "Read 2 min ago")] {
+        let entry = app
+            .specs_view
+            .entries
+            .iter_mut()
+            .find(|e| e.id == SectionId::Motherboard)
+            .unwrap();
+        entry.health.collected_at =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(seconds));
+        let output = render(&ctx, &mut app, size);
+        assert!(present(&output, expected));
+    }
+}
+
+#[test]
+fn private_summary_masks_both_bridge_values_and_cpu_headline_override_until_revealed() {
+    use crate::specs::{BridgeReading, LiveKey, LiveUnit, Section, SummaryLine, Value};
+    use std::sync::Arc;
+    use std::time::Instant;
+    for id in [SectionId::Motherboard, SectionId::Cpu] {
+        let ctx = egui::Context::default();
+        let mut app = populated(ThemeSettings::default());
+        app.snapshot.cpu_percent = 37.2;
+        theme::install(&ctx, app.theme);
+        ctx.global_style_mut(|s| s.interaction.tooltip_delay = 0.0);
+        let now = Instant::now();
+        app.graphs.fixed_now = Some(now);
+        let key = LiveKey::Sensor {
+            id: "PRIVATE-UI-FIXTURE-ID".into(),
+        };
+        let entry = app
+            .specs_view
+            .entries
+            .iter_mut()
+            .find(|e| e.id == id)
+            .unwrap();
+        entry.section = Some(Arc::new(Section::new(id).summary_line(SummaryLine {
+            text: Value::known("PRIVATE-UI-FIXTURE-HEADLINE"),
+            live: Some(key.clone()),
+            private: true,
+        })));
+        let bridge = Arc::make_mut(&mut app.specs_view.bridge);
+        bridge.status = Value::known("Fixture bridge");
+        bridge.collected_at = Some(now);
+        bridge.readings.push(BridgeReading {
+            key,
+            label: "PRIVATE-UI-FIXTURE-LABEL".into(),
+            source: "PRIVATE-UI-FIXTURE-SOURCE".into(),
+            value: 987.25,
+            unit: LiveUnit::Watts,
+        });
+        let size = Vec2::new(1600.0, 1200.0);
+        for section in [SectionId::Summary, id] {
+            app.system_section = section;
+            app.reveal_private = false;
+            let output = render(&ctx, &mut app, size);
+            let hidden = visible(&output, "Hidden")
+                .expect("masked summary stays visible")
+                .visual_bounding_rect()
+                .center();
+            for (shape, _) in text_shapes(&output) {
+                assert!(
+                    !shape.galley.job.text.contains("PRIVATE-UI-FIXTURE")
+                        && !shape.galley.job.text.contains("987.2"),
+                    "private summary leaked: {}",
+                    shape.galley.job.text
+                );
+            }
+            if section == SectionId::Summary && id == SectionId::Cpu {
+                assert!(
+                    !text_shapes(&output).iter().any(|(s, _)| s
+                        .galley
+                        .job
+                        .text
+                        .starts_with("37.2%")
+                        && s.visual_bounding_rect().center().x > hidden.x
+                        && (s.visual_bounding_rect().center().y - hidden.y).abs() < 4.0),
+                    "CPU load override bypassed the private summary gate"
+                );
+            }
+            frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![egui::Event::PointerMoved(hidden)],
+            );
+            let output = render(&ctx, &mut app, size);
+            assert!(present(
+                &output,
+                "Private value hidden. Turn on \"Reveal private values\" at the top of this page to show it."
+            ));
+            for (shape, _) in text_shapes(&output) {
+                assert!(
+                    !shape.galley.job.text.contains("PRIVATE-UI-FIXTURE")
+                        && !shape.galley.job.text.contains("987.2"),
+                    "private hover leaked: {}",
+                    shape.galley.job.text
+                );
+            }
+            frame(&ctx, &mut app, size, vec![egui::Event::PointerGone]);
+            app.reveal_private = true;
+            let output = render(&ctx, &mut app, size);
+            assert!(present(&output, "PRIVATE-UI-FIXTURE-HEADLINE"));
+            if section != SectionId::Summary || id != SectionId::Cpu {
+                assert!(present(&output, "987.2 W"));
+            }
+        }
+    }
+}
+
+#[test]
+fn system_live_cells_and_hover_distinguish_retained_clocks_commit_and_gpu_temperature() {
+    use crate::diagnostics::{Provider, State};
+    use crate::specs::{GpuMetric, GpuRef, LiveKey};
+    use std::time::{Duration, Instant};
+    for dark in [true, false] {
+        let ctx = egui::Context::default();
+        let mut app = populated(ThemeSettings {
+            dark,
+            ..Default::default()
+        });
+        app.snapshot.cpu_percent = 37.2;
+        theme::install(&ctx, app.theme);
+        let now = Instant::now();
+        app.graphs.fixed_now = Some(now);
+        let memory = app
+            .specs_view
+            .entries
+            .iter_mut()
+            .find(|e| e.id == SectionId::Memory)
+            .unwrap();
+        memory.section = Some(std::sync::Arc::new(
+            crate::specs::Section::new(SectionId::Memory).group(
+                crate::specs::Group::new("Windows memory counters")
+                    .row(crate::specs::Row::live("Commit", LiveKey::MemoryCommit)),
+            ),
+        ));
+        app.snapshot.gpu_sensors.last_success = Some(now - Duration::from_secs(4));
+        app.snapshot.gpu_sensors.using_cached = false;
+        for provider in [Provider::CpuClock, Provider::MemoryCounters] {
+            app.snapshot.diagnostics.get_mut(provider).record(
+                now,
+                Duration::ZERO,
+                State::Stale,
+                None,
+                None,
+            );
+        }
+        let size = Vec2::new(1280.0, 900.0);
+        for (id, key) in [
+            (SectionId::Cpu, LiveKey::CpuClockAverage),
+            (SectionId::Memory, LiveKey::MemoryCommit),
+            (
+                SectionId::Graphics,
+                LiveKey::Gpu {
+                    adapter: GpuRef {
+                        name: fixtures::GPU_NAME.into(),
+                        ordinal: 0,
+                    },
+                    metric: GpuMetric::Temperature,
+                },
+            ),
+        ] {
+            let (text, color, hover) = app.live_parts(&key, now, app.colors());
+            assert!(text.ends_with("(cached)"), "{key:?}: {text}");
+            assert_eq!(
+                color,
+                app.colors().text,
+                "retained temperature has no fresh band color"
+            );
+            assert!(hover.starts_with("Cached:"), "{hover}");
+            app.system_section = id;
+            let output = render(&ctx, &mut app, size);
+            assert!(present(&output, &text), "missing cached cell {text}");
+        }
+        app.system_section = SectionId::Summary;
+        let output = render(&ctx, &mut app, size);
+        assert!(
+            text_shapes(&output)
+                .iter()
+                .any(|(s, _)| s.galley.job.text.starts_with("37.2%")
+                    && s.galley.job.text.ends_with("(cached)"))
+        );
+        for provider in [Provider::CpuClock, Provider::MemoryCounters] {
+            app.snapshot.diagnostics.get_mut(provider).record(
+                now,
+                Duration::ZERO,
+                State::Live,
+                None,
+                None,
+            );
+        }
+        app.snapshot.gpu_sensors.last_success = Some(now);
+        let (_, color, hover) = app.live_parts(
+            &LiveKey::Gpu {
+                adapter: GpuRef {
+                    name: fixtures::GPU_NAME.into(),
+                    ordinal: 0,
+                },
+                metric: GpuMetric::Temperature,
+            },
+            now,
+            app.colors(),
+        );
+        assert_ne!(color, app.colors().text);
+        assert!(hover.starts_with("Live:") && !hover.contains("cached"));
+    }
+}
+
+#[test]
+#[ignore = "offscreen fixture-only System freshness review; no native window or OS input"]
+fn render_system_live_freshness_review() {
+    use crate::diagnostics::{Provider, State};
+    use crate::specs::{Group, LiveKey, Row, Section};
+    use std::time::{Duration, Instant};
+    let mut renderer = super::offscreen::Renderer::new();
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target/ui-smoke/system-live-alpha48");
+    std::fs::create_dir_all(&directory).unwrap();
+    for (name, dark, section) in [
+        ("summary-cached-dark", true, SectionId::Summary),
+        ("graphics-cached-light", false, SectionId::Graphics),
+        ("memory-cached-dark", true, SectionId::Memory),
+    ] {
+        let ctx = egui::Context::default();
+        let mut app = populated(ThemeSettings {
+            dark,
+            ..Default::default()
+        });
+        theme::install(&ctx, app.theme);
+        let now = Instant::now();
+        app.graphs.fixed_now = Some(now);
+        app.system_section = section;
+        app.snapshot.cpu_percent = 37.2;
+        app.snapshot.gpu_sensors.last_success = Some(now - Duration::from_secs(4));
+        app.snapshot.gpu_sensors.using_cached = false;
+        for provider in [Provider::CpuClock, Provider::MemoryCounters] {
+            app.snapshot.diagnostics.get_mut(provider).record(
+                now,
+                Duration::ZERO,
+                State::Stale,
+                None,
+                None,
+            );
+        }
+        let memory = app
+            .specs_view
+            .entries
+            .iter_mut()
+            .find(|e| e.id == SectionId::Memory)
+            .unwrap();
+        memory.section = Some(std::sync::Arc::new(
+            Section::new(SectionId::Memory)
+                .summary_line(
+                    crate::specs::SummaryLine::known("Fixture RAM, 64 GB (test data)")
+                        .live(LiveKey::MemoryUsed),
+                )
+                .group(
+                    Group::new("Windows memory counters (test data)")
+                        .row(Row::live("Physical memory", LiveKey::MemoryUsed))
+                        .row(Row::live("Commit charge", LiveKey::MemoryCommit)),
+                ),
+        ));
+        let size = Vec2::new(1280.0, 900.0);
+        let mut output = egui::FullOutput::default();
+        for _ in 0..8 {
+            output.append(frame(&ctx, &mut app, size, vec![]));
+        }
+        assert!(
+            text_shapes(&output).iter().any(|(text, clip)| text
+                .galley
+                .job
+                .text
+                .ends_with("(cached)")
+                && clip.contains_rect(text.visual_bounding_rect()))
+        );
+        renderer.save(&ctx, output, size, &directory.join(format!("{name}.png")));
+    }
+    println!(
+        "SYSTEM_LIVE: 3 offscreen fixture-only views in {}",
+        directory.display()
+    );
+}

@@ -46,23 +46,18 @@ pub fn enumerate_startup() -> StartupInventory {
             ),
             (
                 HKEY_LOCAL_MACHINE,
-                r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
                 Source::MachineRun32,
             ),
         ] {
             let (rows, state) = read_run_key(root, key, name);
             inventory.add(name, rows, state);
         }
-        for (variable, name) in [
-            ("APPDATA", Source::UserFolder),
-            ("PROGRAMDATA", Source::MachineFolder),
-        ] {
-            let Some(root) = std::env::var_os(variable) else {
+        for name in [Source::UserFolder, Source::MachineFolder] {
+            let Ok(path) = crate::startup::control::native::folder_path(name) else {
                 inventory.add(name, Vec::new(), SourceState::Failed);
                 continue;
             };
-            let path =
-                std::path::Path::new(&root).join("Microsoft/Windows/Start Menu/Programs/Startup");
             let (rows, state) = read_folder(&path, name);
             inventory.add(name, rows, state);
         }
@@ -108,7 +103,7 @@ fn read_folder(path: &std::path::Path, source: Source) -> (Vec<StartupRow>, Sour
                     continue;
                 }
                 let row = StartupRow {
-                    key: file_name.into_owned(),
+                    key: file_name.to_string(),
                     name: path
                         .file_stem()
                         .unwrap_or_default()
@@ -116,6 +111,22 @@ fn read_folder(path: &std::path::Path, source: Source) -> (Vec<StartupRow>, Sour
                         .into_owned(),
                     command: path.display().to_string(),
                     source,
+                    control: {
+                        #[cfg(windows)]
+                        {
+                            if path.to_str().is_some() {
+                                Some(crate::startup::control::native::observe_folder(
+                                    source, &file_name, &path,
+                                ))
+                            } else {
+                                None
+                            }
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            None
+                        }
+                    },
                 };
                 text_bytes += row.text_bytes();
                 if text_bytes > TEXT_LIMIT {
@@ -153,7 +164,8 @@ fn read_run_key(
         ERROR_SUCCESS,
     };
     use windows::Win32::System::Registry::{
-        HKEY, KEY_QUERY_VALUE, REG_EXPAND_SZ, REG_SZ, RegCloseKey, RegEnumValueW, RegOpenKeyExW,
+        HKEY, KEY_QUERY_VALUE, KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_EXPAND_SZ, REG_SZ,
+        RegCloseKey, RegEnumValueW, RegOpenKeyExW,
     };
     use windows::core::{PCWSTR, PWSTR};
     struct Key(HKEY);
@@ -167,8 +179,20 @@ fn read_run_key(
     let wide = path.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
     let mut key = HKEY::default();
     // SAFETY: terminated UTF-16 and writable key; query-only, never creates a key.
-    let result =
-        unsafe { RegOpenKeyExW(root, PCWSTR(wide.as_ptr()), None, KEY_QUERY_VALUE, &mut key) };
+    let result = unsafe {
+        RegOpenKeyExW(
+            root,
+            PCWSTR(wide.as_ptr()),
+            None,
+            KEY_QUERY_VALUE
+                | if source == Source::MachineRun32 {
+                    KEY_WOW64_32KEY
+                } else {
+                    KEY_WOW64_64KEY
+                },
+            &mut key,
+        )
+    };
     if result != ERROR_SUCCESS {
         return (
             Vec::new(),
@@ -231,13 +255,24 @@ fn read_run_key(
             state = SourceState::Failed;
             continue;
         };
-        let name = String::from_utf16_lossy(&name[..name_len]);
+        let Ok(name) = String::from_utf16(&name[..name_len]) else {
+            state = SourceState::Failed;
+            continue;
+        };
         if !name.is_empty() && !command.is_empty() {
             let row = StartupRow {
                 key: name.clone(),
-                name,
+                name: name.clone(),
                 command,
                 source,
+                control: Some(crate::startup::control::native::observe_run(
+                    source,
+                    &name,
+                    crate::startup::control::RawValue {
+                        kind,
+                        bytes: data[..data_len].to_vec(),
+                    },
+                )),
             };
             text_bytes += row.text_bytes();
             if text_bytes > TEXT_LIMIT {

@@ -1,4 +1,38 @@
-# Asynchronous tray startup (alpha.29)
+# Smart tray and window close (alpha.50)
+
+Trent requested close to tray on 2026-09-30 (A39). Window X and OS close cancel
+exit and hide the root viewport only when the tray worker reports Ready.
+The native CPU meter/history and CPU/memory/GPU/process tooltip continue on
+their existing worker; the sampler keeps one latest snapshot. Closing captures
+and dispatches settings asynchronously without waiting for disk.
+
+A left click, double click or Show Trontop restores the retained window/view.
+Quit Trontop is available in the tray, About and the titlebar X context menu.
+Only Quit uses the settings-save exit gate. A blocked/failed save from a hidden
+window restores it without requesting focus, exposing Keep open, Retry and
+Close anyway. An explicit Quit cannot be overwritten by a later Show event.
+
+Starting, absent and failed trays keep the window visible with an explanation.
+A failure transition while hidden restores access without requesting keyboard
+focus. A later successful sample recovers Ready and allows close to tray again.
+Normal sample repaints are disabled while hidden and restored on Show; telemetry
+and tray updates continue. Hidden UI frames skip full page drawing. The pinned
+eframe 0.35 runner handles invisible-window repaint events directly and throttles
+them; no eframe fork or dependency upgrade is added here.
+
+Headless app tests use a fake backend on the real tray worker and inspect egui
+commands, never executing them against a native window. They cover X/OS close,
+repeated hide/Show, retained navigation/search, startup/icon/worker failure,
+recovery, quit action priority and pending/failed settings. A separate mailbox
+check proves 10,000 hidden samples keep one latest value without repaint wakes.
+Final suite: 577 passed, 0 failed, 58 ignored; fmt/strict Clippy/release PASS.
+Two fixture-only About views were inspected. Final source coverage is 93.33%
+with zero mixed lines; exact EXE and receipts are in CURRENT_STATE and
+`SMART_TRAY_2026-09-30.md`.
+Native tray clicks/Explorer behavior, hidden-window CPU and teardown timing
+remain unverified for alpha.50 under the project's desktop-isolation rule.
+
+# Asynchronous tray startup (alpha.29, historical)
 
 Scope: the recorded A22 startup wait, with A19/A21/A25 regression coverage.
 Before this change, `TrontopApp::new` called `TrayController::new`, which received

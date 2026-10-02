@@ -177,6 +177,7 @@ impl TrontopApp {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::splat(theme::space::XS);
                 for reading in &cores {
+                    let (text, color, hover) = self.headline_live(&reading.key, now, t);
                     let index = match reading.key {
                         LiveKey::CpuCoreTemperature { index } => index,
                         _ => 0,
@@ -186,14 +187,12 @@ impl TrontopApp {
                         widgets::surface(ui, t, false).inner_margin(egui::Margin::symmetric(6, 3)),
                         |ui| {
                             ui.label(
-                                RichText::new(format!(
-                                    "C{index} {}",
-                                    reading.unit.format(reading.value)
-                                ))
-                                .monospace()
-                                .size(10.0)
-                                .color(t.text),
-                            );
+                                RichText::new(format!("C{index} {text}"))
+                                    .monospace()
+                                    .size(10.0)
+                                    .color(color),
+                            )
+                            .on_hover_text(hover);
                         },
                     );
                 }
@@ -640,9 +639,11 @@ impl TrontopApp {
         let fresh = bridge.collected_at.is_some_and(|at| {
             now.saturating_duration_since(at) <= crate::specs::BRIDGE_STALE_AFTER
         });
-        let published = fresh
+        let published = bridge.status.is_known()
+            && fresh
             && bridge.readings.iter().any(|r| {
-                r.key == crate::specs::LiveKey::CpuPackageTemperature && r.value.is_finite()
+                r.key == crate::specs::LiveKey::CpuPackageTemperature
+                    && r.unit.value_is_finite(r.value)
             });
         if published {
             return None;

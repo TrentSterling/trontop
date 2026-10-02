@@ -5,7 +5,95 @@ test Frame. `TrontopApp::with_services` supplies no sampler and no tray. It does
 create a native window, inject OS input, change focus, or execute viewport commands.
 Fixtures are synthetic TEST DATA and must never become a runtime telemetry fallback.
 
+Alpha.50 adds ten close-to-tray app checks with a fake backend on the real tray
+worker, one hidden-sampling mailbox check and twenty-two RAM/storage checks.
+The app checks inspect X/OS close, Show/retained state, explicit Quit, tray
+failures/recovery and blocked/error save controls. They execute no viewport
+command against an OS window. The mailbox retains one latest sample after
+10,000 hidden publications without sample repaint wakes. About's new Quit
+control fits compact dark/light UI at 1x/1.5x/2x. A full-harness About overflow
+at 1000x580 was corrected by using the existing header row; its original check
+was preserved and passes. Final evidence: `SMART_TRAY_2026-09-30.md`.
+The exact selected offscreen review is:
+`cargo test --offline app::ui_smoke::tray_close::render_tray_about_review -- --ignored --exact --nocapture`.
+It writes two fixture-only About views, with no native window or OS input.
+Native tray, hidden-window CPU and close timing remain separate acceptance gates.
+
+Alpha.49 adds sixteen ordinary hardware-provider checks: nine CPU fact/collection
+cases, six board firmware/PCI cases and the shared nominal-query decoder. They
+exercise missing/unknown facts, group identity, partial failure/budget expiry,
+SMT/cache notes, BIOS date/units/revision markers, chassis/slot bytes and private
+paths through the production builders/reports. Nine failures reproduced before
+fixes. Final suite: 544 pass, 0 fail, 57 ignored; fmt/strict Clippy/release PASS.
+All 24 exact read-only probes and 10 analyzer checks pass. UI layout is unchanged
+and ordinary UI checks pass; no new alpha.49 offscreen images were reviewed.
+Scope and receipts: `HARDWARE_FALLBACKS_2026-09-30.md` and `COVERAGE.md`.
+
+Alpha.48 adds two production-UI privacy/freshness regressions and seven
+resolver/report regressions. They verify cached CPU/commit/GPU cells and hover,
+private summary payloads and CPU override masking, explicit reveal, identity,
+units, missing reasons and recovery. Final full suite: 528 pass, 0 fail, 57 ignored;
+fmt/strict Clippy/release PASS. The exact selected offscreen command
+`cargo test --offline app::ui_smoke::system::render_system_live_freshness_review -- --ignored --exact --nocapture`
+writes three inspected 1280x900 fixture-only views in
+`target/ui-smoke/system-live-alpha48/`: cached Summary dark, Graphics light and
+RAM dark. Cached text fits and retained temperatures have no fresh band coloring.
+An initial whole-page CPU assertion also matched the public meter; its final
+scope is the private summary row. No platform/viewport commands are executed.
+Scope and final measurement: `SYSTEM_LIVE_2026-09-30.md` and `COVERAGE.md`.
+
+Alpha.47 adds eleven ordinary Overview/plot regressions. They exercise bridge
+availability/validity/recovery, the shared CPU gap, native and NVML VRAM freshness,
+partial totals, multi-GPU cache/identity, core hover, navigation and heaviest-instance
+selection. Plot tooltips reject remote/future/expired readings, preserve explicit
+gaps and mark lower bounds in Lines and Bars. Geometry checks stop line/fill at
+gaps and retain hollow partial points. Final full suite: 519 pass, 0 fail, 56 ignored;
+fmt/strict Clippy/release PASS. The selected fixture-only offscreen command
+`cargo test --offline app::ui_smoke::overview::render_overview_truthfulness_review -- --ignored --exact --nocapture`
+writes three inspected 1200x900 views in `target/ui-smoke/overview-state-alpha47/`.
+The first capture exposed a suppressed CPU gap, reproduced and fixed before the
+final images. Scope: `OVERVIEW_GRAPHS_2026-09-30.md`.
+
+Alpha.46 adds four ordinary production-UI checks for stopped-provider expiry and
+recovery, invalid/overflowing core and package temperatures, retained readings
+from unavailable providers, and cached multi-adapter GPU fields and gap-aware
+history peaks on Sensors/Performance. Eight native bridge checks use exclusively
+owned Local mappings and WMI row fixtures. Full suite: 508 pass, 0 fail, 55 ignored;
+format/strict Clippy/release PASS. The exact selected offscreen command
+`cargo test --offline app::ui_smoke::sensors::render_sensor_freshness_review -- --ignored --exact --nocapture`
+writes three inspected views in `target/ui-smoke/sensor-state-alpha46/`.
+Fresh and stopped dark, plus stopped light, show core gaps after expiry. Scope
+and live-provider limitations: `SENSOR_GUARDS_2026-09-30.md`.
+
+Alpha.45 adds twenty ordinary interaction regressions: ten daily-action checks,
+six Theme Studio checks and four System checks. They cover verified suspension
+state and STATE sorting, frozen scheduling targets, Run task, Reveal failure,
+named themes/import/revert, gradient keyboard focus, invalid hex retention,
+recursive groups, explicit read states and privacy-aware context copy. The full
+ordinary suite passes 496 tests (0 failures, 54 ignored); format and strict
+Clippy pass. The exact selected offscreen command
+`cargo test --offline app::ui_smoke::daily_actions::render_verified_suspension_status -- --ignored --exact --nocapture`
+writes three inspected compact views below `target/ui-smoke/process-state-alpha45`.
+Details STATE is checked for an unelided `Suspended` label. Behavior and scope:
+`DAILY_CONTROLS_2026-09-30.md`.
+
+Alpha.44 Startup controls have four local UI checks for frozen source identity,
+changed/cached/expired/unknown refusal, exact Undo, compact dark/light confirmation
+geometry and result polling during graphics recovery. The selected offscreen test
+`cargo test app::ui_smoke::startup_controls::render_startup_control_review -- --ignored --exact`
+writes three test-only PNGs below `target/ui-smoke/startup-controls-alpha44`.
+Eight native control tests create only owned private registry/file fixtures;
+they need registry access outside the filesystem-only sandbox. Verification scope
+and the separate real sign-in acceptance gate: `STARTUP_CONTROLS.md`.
+
 ## Commands
+
+Source coverage is separately reproducible with
+`./scripts/measure-coverage.ps1`; the reference-machine
+`-ReadOnlyProbes` option runs only 24 exact reviewed probes, never a blanket
+ignored-test set. Production/test syntax is classified separately and the exact
+instrumented object/source receipt is preserved. Production line measurements
+do not replace feature or native acceptance. See `COVERAGE.md`.
 
 ```powershell
 cargo test app::ui_smoke -- --nocapture
@@ -68,6 +156,38 @@ session's own concurrent tool activity on this box, not a product regression,
 and shows only as a few extra graph breaks in that run's screenshots.
 
 ## Coverage
+
+- Alpha.43 adds reviewed tree/all-instances targeting, changed-membership refresh,
+  frozen selection, compact light/dark geometry, busy/recovery guards, confirmed
+  Suspend/Resume and worker suspension state checks. Native tests own hidden
+  disposable child processes: they verify whole-tree exit, separate reviewed
+  instances, preservation of unlisted processes, all-handle preflight failures,
+  real stopped/resumed heartbeats and release on worker shutdown. Three final
+  offscreen images are inspected under `target/ui-smoke/process-controls-alpha43`.
+  `PROCESS_CONTROLS.md` records the exact controls and limitations.
+
+  ```powershell
+  cargo test --offline app::ui_smoke::process_controls -- --nocapture
+  cargo test --offline platform::tree::tests -- --nocapture
+  cargo test --offline platform::suspension::tests -- --nocapture
+  cargo test --offline app::ui_smoke::process_controls::render_process_control_review -- --ignored --exact --nocapture
+  ```
+
+- Alpha.42 adds finite freshness expiry/recovery and visibility-aware timer tests,
+  matched network metadata with private values omitted, cached/light/dark/compact
+  geometry and local System navigation, interface/volume selection stability, and
+  an above-fold compact CPU summary regression. Eight new ordinary tests plus the
+  expanded three-clock-field test: 437 pass, 49 ignored. Selected network/CPU fixture
+  visual tests produced 12 inspected PNGs. The final real gauntlet wrote 157 PNGs;
+  implementation, read-only cadence and review identity: `ITERATION_2026-09-29.md`.
+  No native desktop interaction or hidden-window CPU/drag/close/soak claim.
+
+  ```powershell
+  cargo test --offline app::ui_smoke::freshness -- --nocapture
+  cargo test --offline app::ui_smoke::networks -- --nocapture
+  cargo test --offline app::ui_smoke::cpu_clock -- --nocapture
+  cargo test --offline render_network_performance_visual_pass -- --ignored --nocapture
+  ```
 
 - Alpha.32 adds four table-focus regressions: actual local Tab traversal and
   contrast-safe outlines without text movement, Enter/Space and disabled gating,
@@ -312,3 +432,12 @@ cargo build --release --offline --target-dir target/review-build --jobs 4
 The review binary is `target/review-build/release/trontop.exe`. This keeps the running
 `target/release/trontop.exe` untouched. Launching it on Trent's desktop is a separate
 manual action; do not automate window closure, focus, or replacement.
+
+## Alpha.51 paused storage provider checkpoint
+
+Twelve ordinary WMI-row fixtures pass through the production storage join and
+report paths with injected query results; no COM, disk handle or desktop input.
+Ten valid failures reproduced before fixes. Full suite: 589 pass, 0 fail,
+58 ignored; fmt/strict Clippy/release and the fixed 24 read-only probes pass.
+No new native/offscreen image pass was run for this provider-only change.
+[Scope and evidence](STORAGE_PROVIDER_JOINS_2026-09-30.md); [resume anchor](RESUME_ANCHOR.md).

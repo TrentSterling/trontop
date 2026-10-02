@@ -74,14 +74,6 @@ impl WmiValue {
             _ => None,
         }
     }
-
-    /// Every non-empty text item of an array, or the single text value.
-    pub fn texts(&self) -> Vec<String> {
-        match self {
-            Self::Array(items) => items.iter().filter_map(Self::as_text).collect(),
-            other => other.as_text().into_iter().collect(),
-        }
-    }
 }
 
 /// One result object: its non-system properties in WMI's order.
@@ -118,10 +110,6 @@ impl WmiRow {
 
     pub fn bool(&self, name: &str) -> Option<bool> {
         self.get(name)?.as_bool()
-    }
-
-    pub fn texts(&self, name: &str) -> Vec<String> {
-        self.get(name).map(WmiValue::texts).unwrap_or_default()
     }
 }
 
@@ -539,7 +527,13 @@ mod tests {
         assert_eq!(row.u64("SPEED"), Some(6400));
         assert_eq!(row.text("Name").as_deref(), Some("Fixture"));
         assert_eq!(row.text("Blank"), None);
-        assert_eq!(row.texts("HardwareID"), ["HDAUDIO\\FIXTURE"]);
+        assert_eq!(
+            row.get("hardwareid"),
+            Some(&WmiValue::Array(vec![
+                WmiValue::Text("HDAUDIO\\FIXTURE".into()),
+                WmiValue::Null,
+            ]))
+        );
         assert_eq!(row.bool("Enabled"), Some(true));
         assert_eq!(row.u64("Offset"), None);
         assert_eq!(row.i64("Offset"), Some(-5));

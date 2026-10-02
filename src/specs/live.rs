@@ -2,6 +2,7 @@
 //! against the latest sampler snapshot and sensor-bridge readings. Resolution
 //! is pure data lookup: no native calls, no locks, safe on the render thread.
 use super::model::Value;
+use crate::diagnostics::{Provider, State};
 use crate::format;
 use crate::model::SystemSnapshot;
 use std::time::{Duration, Instant};
@@ -87,6 +88,11 @@ pub enum LiveUnit {
 }
 
 impl LiveUnit {
+    /// Temperature coloring uses f32; reject values that overflow that representation.
+    pub fn value_is_finite(self, value: f64) -> bool {
+        value.is_finite() && (self != Self::Celsius || (value as f32).is_finite())
+    }
+
     pub fn format(self, value: f64) -> String {
         match self {
             Self::Celsius => format!("{value:.0} °C"),
@@ -142,6 +148,8 @@ pub struct LiveValue {
     pub celsius: Option<f32>,
     /// "Provider: sensor label" for bridge readings; None for sampler values.
     pub source: Option<String>,
+    /// Retained sampler data, never a current reading or temperature band.
+    pub cached: bool,
 }
 
 impl LiveValue {
@@ -150,6 +158,14 @@ impl LiveValue {
             value: Value::Known(text),
             celsius: None,
             source: None,
+            cached: false,
+        }
+    }
+
+    fn cached(text: String) -> Self {
+        Self {
+            cached: true,
+            ..Self::known(format!("{text} (cached)"))
         }
     }
 
@@ -158,6 +174,7 @@ impl LiveValue {
             value: Value::Known(LiveUnit::Celsius.format(celsius as f64)),
             celsius: Some(celsius),
             source: None,
+            cached: false,
         }
     }
 
@@ -166,6 +183,7 @@ impl LiveValue {
             value: Value::unavailable(reason),
             celsius: None,
             source: None,
+            cached: false,
         }
     }
 }
@@ -224,13 +242,13 @@ fn bridge_fresh(bridge: &BridgeReadings, now: Instant) -> bool {
 }
 
 fn from_bridge(key: &LiveKey, bridge: &BridgeReadings, now: Instant) -> Option<LiveValue> {
-    if !bridge_fresh(bridge, now) {
+    if !bridge.status.is_known() || !bridge_fresh(bridge, now) {
         return None;
     }
     let reading = bridge
         .readings
         .iter()
-        .find(|reading| &reading.key == key && reading.value.is_finite())?;
+        .find(|reading| &reading.key == key && reading.unit.value_is_finite(reading.value))?;
     let mut value = match reading.unit {
         LiveUnit::Celsius => LiveValue::celsius(reading.value as f32),
         unit => LiveValue::known(unit.format(reading.value)),
@@ -251,14 +269,19 @@ fn from_snapshot(key: &LiveKey, snapshot: &SystemSnapshot, now: Instant) -> Opti
             }
         }
         LiveKey::CpuClockAverage | LiveKey::CpuClockFastest => match &snapshot.cpu.clocks {
-            Some(clocks) => LiveValue::known(format!(
-                "{:.0} MHz",
-                if *key == LiveKey::CpuClockAverage {
-                    clocks.average_mhz
-                } else {
-                    clocks.fastest_mhz
-                }
-            )),
+            Some(clocks) => counter_value(
+                snapshot,
+                Provider::CpuClock,
+                now,
+                format!(
+                    "{:.0} MHz",
+                    if *key == LiveKey::CpuClockAverage {
+                        clocks.average_mhz
+                    } else {
+                        clocks.fastest_mhz
+                    }
+                ),
+            ),
             None if snapshot.sequence == 0 => waiting(),
             None => LiveValue::unavailable("CPU clock counters are unavailable"),
         },
@@ -270,7 +293,9 @@ fn from_snapshot(key: &LiveKey, snapshot: &SystemSnapshot, now: Instant) -> Opti
                     .find(|p| p.group == *group && p.number == *number)
             });
             match processor.and_then(|p| p.mhz) {
-                Some(mhz) => LiveValue::known(format!("{mhz:.0} MHz")),
+                Some(mhz) => {
+                    counter_value(snapshot, Provider::CpuClock, now, format!("{mhz:.0} MHz"))
+                }
                 None if snapshot.sequence == 0 => waiting(),
                 None => LiveValue::unavailable("no clock reading for this logical processor"),
             }
@@ -291,11 +316,16 @@ fn from_snapshot(key: &LiveKey, snapshot: &SystemSnapshot, now: Instant) -> Opti
             }
         }
         LiveKey::MemoryCommit => match snapshot.memory_details {
-            Some(details) if details.commit_limit_bytes > 0 => LiveValue::known(format!(
-                "{} of {}",
-                format::bytes(details.commit_bytes),
-                format::bytes(details.commit_limit_bytes)
-            )),
+            Some(details) if details.commit_limit_bytes > 0 => counter_value(
+                snapshot,
+                Provider::MemoryCounters,
+                now,
+                format!(
+                    "{} of {}",
+                    format::bytes(details.commit_bytes),
+                    format::bytes(details.commit_limit_bytes)
+                ),
+            ),
             _ if snapshot.sequence == 0 => waiting(),
             _ => LiveValue::unavailable("Windows commit counters are unavailable"),
         },
@@ -306,7 +336,7 @@ fn from_snapshot(key: &LiveKey, snapshot: &SystemSnapshot, now: Instant) -> Opti
                 LiveValue::known(format::duration(snapshot.uptime_seconds))
             }
         }
-        LiveKey::Gpu { adapter, metric } => gpu(snapshot, adapter, *metric),
+        LiveKey::Gpu { adapter, metric } => gpu(snapshot, adapter, *metric, now),
         LiveKey::DriveTemperature { interface } => drive(snapshot, interface, now),
         LiveKey::NetworkThroughput { interface } => {
             match snapshot.networks.iter().find(|n| &n.name == interface) {
@@ -326,8 +356,28 @@ fn from_snapshot(key: &LiveKey, snapshot: &SystemSnapshot, now: Instant) -> Opti
     })
 }
 
-fn gpu(snapshot: &SystemSnapshot, adapter: &GpuRef, metric: GpuMetric) -> LiveValue {
+fn counter_value(
+    snapshot: &SystemSnapshot,
+    provider: Provider,
+    now: Instant,
+    text: String,
+) -> LiveValue {
+    if matches!(
+        snapshot.diagnostics.get(provider).state(provider, now),
+        State::Live | State::Partial
+    ) {
+        LiveValue::known(text)
+    } else {
+        LiveValue::cached(text)
+    }
+}
+
+fn gpu(snapshot: &SystemSnapshot, adapter: &GpuRef, metric: GpuMetric, now: Instant) -> LiveValue {
     let sensors = &snapshot.gpu_sensors;
+    let fresh = !sensors.using_cached
+        && sensors
+            .last_success
+            .is_some_and(|at| now.saturating_duration_since(at) <= Duration::from_secs(3));
     let Some(found) = sensors
         .adapters
         .iter()
@@ -353,13 +403,13 @@ fn gpu(snapshot: &SystemSnapshot, adapter: &GpuRef, metric: GpuMetric) -> LiveVa
             .map(|(used, total)| format!("{} of {}", format::bytes(used), format::bytes(total))),
     };
     if metric == GpuMetric::Temperature
-        && !sensors.using_cached
+        && fresh
         && let Some(celsius) = found.temperature_c
     {
         return LiveValue::celsius(celsius as f32);
     }
     match text {
-        Some(text) if sensors.using_cached => LiveValue::known(format!("{text} (cached)")),
+        Some(text) if !fresh => LiveValue::cached(text),
         Some(text) => LiveValue::known(text),
         None => LiveValue::unavailable("not supported by this adapter or driver"),
     }
@@ -394,10 +444,9 @@ fn drive(snapshot: &SystemSnapshot, interface: &str, now: Instant) -> LiveValue 
         .and_then(|s| s.celsius);
     match celsius {
         Some(value) if drive.live(now) => LiveValue::celsius(value as f32),
-        Some(value) if drive.last_success.is_some() => LiveValue::known(format!(
-            "{} (cached)",
-            LiveUnit::Celsius.format(value as f64)
-        )),
+        Some(value) if drive.last_success.is_some() => {
+            LiveValue::cached(LiveUnit::Celsius.format(value as f64))
+        }
         _ => LiveValue::unavailable(drive.error.as_ref().map_or_else(
             || "no temperature reading yet".to_string(),
             ToString::to_string,
@@ -511,6 +560,7 @@ mod tests {
         let now = Instant::now();
         let mut snapshot = SystemSnapshot::default();
         snapshot.gpu_sensors.attempted_at = Some(now);
+        snapshot.gpu_sensors.last_success = Some(now);
         snapshot.gpu_sensors.adapters = (0..2)
             .map(|index| crate::gpu_sensors::AdapterSensors {
                 name: "Fixture GPU".into(),

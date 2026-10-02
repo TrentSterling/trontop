@@ -45,6 +45,10 @@ pub(super) struct Harness {
     entered: mpsc::Receiver<()>,
     done: mpsc::Receiver<()>,
 }
+
+pub(super) fn release(harness: &mut Harness) {
+    harness.release.take();
+}
 impl Drop for Harness {
     fn drop(&mut self) {
         self.release.take();
@@ -233,6 +237,7 @@ fn preferences_native_close_defers_while_blocked_then_closes_only_after_latest_s
     let mut h = install(&ctx, true, "pending");
     let app = h.app.as_mut().unwrap();
     let size = Vec2::new(1040.0, 640.0);
+    app.request_quit(&ctx);
     let output = render(&ctx, app, size, vec![], true);
     assert!(commands(&output).any(|c| matches!(c, egui::ViewportCommand::CancelClose)));
     assert!(!commands(&output).any(|c| matches!(c, egui::ViewportCommand::Close)));
@@ -261,14 +266,14 @@ fn preferences_failed_close_keeps_changes_and_retry_uses_real_ui_controls() {
     let ctx = egui::Context::default();
     let mut h = install(&ctx, false, "error");
     let app = h.app.as_mut().unwrap();
-    app.request_close(&ctx);
+    app.request_quit(&ctx);
     let output = click(&ctx, app, "Keep open");
     assert!(!commands(&output).any(|c| matches!(c, egui::ViewportCommand::Close)));
     assert!(app.closing_at.is_none());
     assert!(app.preferences.pending());
     click(&ctx, app, "Users");
     assert!(matches!(app.page, Page::Users));
-    app.request_close(&ctx);
+    app.request_quit(&ctx);
     let output = click(&ctx, app, "Retry save");
     let mut closed = commands(&output).any(|c| matches!(c, egui::ViewportCommand::Close));
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -285,7 +290,7 @@ fn preferences_close_anyway_requires_explicit_control_and_loading_can_close_with
     let ctx = egui::Context::default();
     let mut h = install(&ctx, true, "error");
     let app = h.app.as_mut().unwrap();
-    app.request_close(&ctx);
+    app.request_quit(&ctx);
     let output = click(&ctx, app, "Close anyway");
     assert!(commands(&output).any(|c| matches!(c, egui::ViewportCommand::Close)));
     assert!(app.close_authorized);
@@ -294,6 +299,7 @@ fn preferences_close_anyway_requires_explicit_control_and_loading_can_close_with
     let ctx = egui::Context::default();
     let mut h = install(&ctx, true, "loading");
     let app = h.app.as_mut().unwrap();
+    app.request_quit(&ctx);
     let output = render(&ctx, app, Vec2::new(1040.0, 640.0), vec![], true);
     assert!(commands(&output).any(|c| matches!(c, egui::ViewportCommand::Close)));
     assert!(app.close_authorized);
@@ -360,7 +366,7 @@ fn preferences_app_roundtrip_preserves_latest_theme_named_palette_and_ui_memory(
     render(&ctx, &mut app, size, vec![], false);
     assert!(app.preferences.pending()); // Actual end-of-UI dirty detection.
     let expected = app.theme;
-    app.request_close(&ctx);
+    app.request_quit(&ctx);
     let deadline = Instant::now() + Duration::from_secs(4);
     while !app.close_authorized {
         render(&ctx, &mut app, size, vec![], false);
@@ -433,7 +439,7 @@ fn preferences_unchanged_close_finishes_even_when_settings_files_are_busy() {
             .unwrap()
     };
     let start = Instant::now();
-    app.request_close(&ctx);
+    app.request_quit(&ctx);
     wait(&mut app, false);
     app.preferences_logic(&ctx);
     assert!(app.close_authorized);

@@ -132,6 +132,20 @@ pub(super) struct Chart {
 }
 
 impl Chart {
+    fn next_state_change(&self, now: Instant) -> Option<Instant> {
+        let silent_at = self.last_seen.checked_add(Duration::from_millis(3001))?;
+        if silent_at <= now {
+            return None;
+        }
+        let cached_at = (self.state == "Live")
+            .then_some(self.measured_at)
+            .flatten()
+            .and_then(|at| at.checked_add(self.cadence * 3))
+            .and_then(|at| at.checked_add(Duration::from_millis(1)))
+            .filter(|at| *at > now);
+        Some(cached_at.map_or(silent_at, |at| at.min(silent_at)))
+    }
+
     pub(super) fn state(&self, now: Instant) -> &'static str {
         if self.last_seen < now && now.duration_since(self.last_seen) > Duration::from_secs(3) {
             return "Cached / not reporting";
@@ -235,6 +249,13 @@ struct Field<'a> {
 }
 
 impl History {
+    pub(super) fn next_state_change(&self, now: Instant) -> Option<Instant> {
+        self.charts
+            .iter()
+            .filter_map(|chart| chart.next_state_change(now))
+            .min()
+    }
+
     pub(super) fn chart(&self, id: &Id) -> Option<&Chart> {
         self.index.get(id).map(|&index| &self.charts[index])
     }

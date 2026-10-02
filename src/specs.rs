@@ -25,6 +25,9 @@ mod worker;
 #[cfg(test)]
 pub mod fixtures;
 
+#[cfg(test)]
+mod live_report_tests;
+
 pub use live::{
     BRIDGE_STALE_AFTER, BridgeReading, BridgeReadings, GpuMetric, GpuRef, LiveKey, LiveUnit,
     TempBand, band, resolve,

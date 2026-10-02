@@ -37,7 +37,7 @@ fn set_state(app: &mut TrontopApp, state: State) {
 #[test]
 fn cpu_clock_fields_are_aligned_and_never_fall_back_to_legacy_speed() {
     for dark in [true, false] {
-        for width in [440.0, 820.0] {
+        for width in [440.0, 560.0, 820.0] {
             let settings = ThemeSettings {
                 dark,
                 ..Default::default()
@@ -73,21 +73,34 @@ fn cpu_clock_fields_are_aligned_and_never_fall_back_to_legacy_speed() {
                         .iter()
                         .any(|(t, _)| t.galley.job.text.contains("10.00 GHz"))
                 );
-                let positions: Vec<_> = ["Fastest processor", "Slowest reporting"]
-                    .into_iter()
-                    .map(|label| {
-                        let (text, clip) = texts
-                            .iter()
-                            .find(|(t, _)| t.galley.job.text == label)
-                            .unwrap();
-                        assert_eq!(text.galley.rows.len(), 1, "wrapped {label}");
-                        assert!(
-                            clip.contains_rect(text.visual_bounding_rect()),
-                            "clipped {label}"
-                        );
-                        text.pos
-                    })
-                    .collect();
+                let compact = width == 560.0;
+                let positions: Vec<_> = [
+                    "Average clock",
+                    if compact {
+                        "Fastest"
+                    } else {
+                        "Fastest processor"
+                    },
+                    if compact {
+                        "Slowest"
+                    } else {
+                        "Slowest reporting"
+                    },
+                ]
+                .into_iter()
+                .map(|label| {
+                    let (text, clip) = texts
+                        .iter()
+                        .find(|(t, _)| t.galley.job.text == label)
+                        .unwrap();
+                    assert_eq!(text.galley.rows.len(), 1, "wrapped {label}");
+                    assert!(
+                        clip.contains_rect(text.visual_bounding_rect()),
+                        "clipped {label}"
+                    );
+                    text.pos
+                })
+                .collect();
                 if state == State::Live {
                     baseline = positions;
                 } else {
@@ -97,7 +110,7 @@ fn cpu_clock_fields_are_aligned_and_never_fall_back_to_legacy_speed() {
                     .iter()
                     .filter(|(t, _)| t.galley.job.text.ends_with(" GHz"))
                     .collect();
-                assert_eq!(ghz.len(), 2);
+                assert_eq!(ghz.len(), 3);
                 for (text, clip) in ghz {
                     let value = &text.galley.job.text;
                     assert_eq!(text.galley.rows.len(), 1, "clock stacked: {value}");
@@ -108,6 +121,49 @@ fn cpu_clock_fields_are_aligned_and_never_fall_back_to_legacy_speed() {
                     if matches!(state, State::Starting | State::Unavailable) {
                         assert_eq!(value, "-- GHz");
                     }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn cpu_hardware_summary_stays_visible_at_compact_window_sizes() {
+    for dark in [true, false] {
+        for size in [Vec2::new(1000.0, 580.0), Vec2::new(1040.0, 640.0)] {
+            for state in [State::Live, State::Stale, State::Unavailable] {
+                let settings = ThemeSettings {
+                    dark,
+                    ..Default::default()
+                };
+                let ctx = egui::Context::default();
+                theme::install(&ctx, settings);
+                let mut app = super::app(settings, true);
+                app.snapshot.cpu.clocks = Some(values(24, 0.0));
+                app.page = Page::Performance;
+                app.performance_device = PerformanceDevice::Cpu;
+                set_state(&mut app, state);
+                let mut output = egui::FullOutput::default();
+                for _ in 0..5 {
+                    output = frame(&ctx, &mut app, size, vec![]);
+                }
+                let texts = text_shapes(&output);
+                for label in [
+                    "Average clock",
+                    "Fastest",
+                    "Slowest",
+                    "Cores / threads",
+                    "Up time",
+                    "Per-processor clocks",
+                ] {
+                    let (text, clip) = texts
+                        .iter()
+                        .find(|(text, _)| text.galley.text() == label)
+                        .unwrap_or_else(|| panic!("missing {label} at {size:?}/{state:?}"));
+                    assert!(
+                        clip.contains_rect(text.visual_bounding_rect()),
+                        "clipped {label} at {size:?}/{state:?}"
+                    );
                 }
             }
         }

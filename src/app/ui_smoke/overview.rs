@@ -607,3 +607,477 @@ fn kpi_tiles_without_a_value_draw_no_trend() {
         );
     }
 }
+
+fn bridge_fixture(app: &mut TrontopApp) {
+    use crate::specs::{BridgeReading, BridgeReadings, LiveKey, LiveUnit, Value};
+    app.specs_view.bridge = std::sync::Arc::new(BridgeReadings {
+        readings: vec![
+            BridgeReading {
+                key: LiveKey::CpuPackageTemperature,
+                label: "Fixture package".into(),
+                value: 63.0,
+                unit: LiveUnit::Celsius,
+                source: "Fixture bridge".into(),
+            },
+            BridgeReading {
+                key: LiveKey::Sensor {
+                    id: crate::specs::cpu::PACKAGE_POWER.into(),
+                },
+                label: "Fixture package power".into(),
+                value: 37.0,
+                unit: LiveUnit::Watts,
+                source: "Fixture bridge".into(),
+            },
+        ],
+        status: Value::known("Fixture bridge"),
+        collected_at: Some(Instant::now() + Duration::from_secs(3600)),
+        retry_after: None,
+    });
+}
+
+#[test]
+fn overview_and_system_refuse_retained_values_from_an_unavailable_bridge() {
+    let mut app = app(ThemeSettings::default(), true);
+    bridge_fixture(&mut app);
+    let now = Instant::now();
+    let (fresh, _) = app.overview_thermals(now, app.colors());
+    assert!(
+        fresh
+            .iter()
+            .any(|tile| tile.label == "CPU temperature" && tile.value == "63 °C")
+    );
+    assert!(
+        fresh
+            .iter()
+            .any(|tile| tile.label == "CPU power" && tile.value == "37.0 W")
+    );
+    std::sync::Arc::make_mut(&mut app.specs_view.bridge).status =
+        crate::specs::Value::unavailable("Fixture bridge disconnected");
+    assert!(
+        app.cpu_temperature_gap(now).is_some(),
+        "retained package readings cannot suppress the unavailable-provider gap"
+    );
+    let (unavailable, _) = app.overview_thermals(now, app.colors());
+    assert!(
+        unavailable
+            .iter()
+            .all(|tile| tile.label != "CPU temperature" && tile.label != "CPU power")
+    );
+    let live = crate::specs::resolve(
+        &crate::specs::LiveKey::CpuPackageTemperature,
+        &app.snapshot,
+        &app.specs_view.bridge,
+        now,
+    );
+    assert_eq!(
+        live.value,
+        crate::specs::Value::unavailable("Fixture bridge disconnected")
+    );
+    assert!(live.celsius.is_none() && live.source.is_none());
+    std::sync::Arc::make_mut(&mut app.specs_view.bridge).status =
+        crate::specs::Value::known("Fixture bridge");
+    assert!(
+        app.overview_thermals(now, app.colors())
+            .0
+            .iter()
+            .any(|tile| tile.label == "CPU temperature")
+    );
+    assert!(app.specs.is_none());
+}
+
+#[test]
+fn overview_bridge_temperature_rejects_display_overflow_and_expired_polls() {
+    let mut app = app(ThemeSettings::default(), true);
+    bridge_fixture(&mut app);
+    let now = Instant::now();
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MAX] {
+        std::sync::Arc::make_mut(&mut app.specs_view.bridge).readings[0].value = value;
+        let (tiles, _) = app.overview_thermals(now, app.colors());
+        assert!(tiles.iter().all(|tile| tile.label != "CPU temperature"));
+        assert!(tiles.iter().any(|tile| tile.label == "CPU power"));
+    }
+    let bridge = std::sync::Arc::make_mut(&mut app.specs_view.bridge);
+    bridge.readings[0].value = 58.0;
+    bridge.collected_at = Some(now - crate::specs::BRIDGE_STALE_AFTER - Duration::from_secs(1));
+    assert!(
+        app.overview_thermals(now, app.colors())
+            .0
+            .iter()
+            .all(|tile| tile.label != "CPU temperature" && tile.label != "CPU power")
+    );
+    std::sync::Arc::make_mut(&mut app.specs_view.bridge).collected_at = Some(now);
+    let (recovered, _) = app.overview_thermals(now, app.colors());
+    assert!(
+        recovered
+            .iter()
+            .any(|tile| tile.label == "CPU temperature" && tile.value == "58 °C")
+    );
+}
+
+#[test]
+fn overview_links_open_sensors_processes_cores_and_degraded_source_details() {
+    for (link, expected) in [
+        ("Sensor details", Page::Sensors),
+        ("All processes", Page::Processes),
+        ("All cores", Page::Graphs),
+        ("Details", Page::Overview),
+    ] {
+        let ctx = egui::Context::default();
+        let mut app = app(ThemeSettings::default(), true);
+        app.page = Page::Overview;
+        app.snapshot
+            .diagnostics
+            .get_mut(crate::diagnostics::Provider::GpuActivity)
+            .record(
+                Instant::now(),
+                Duration::ZERO,
+                crate::diagnostics::State::Partial,
+                Some((1, 2)),
+                None,
+            );
+        theme::install(&ctx, app.theme);
+        let output = click_local_text_output(&ctx, &mut app, Vec2::new(1100.0, 900.0), link);
+        assert_eq!(app.page, expected, "{link}");
+        if link == "All cores" {
+            let output = frame(&ctx, &mut app, Vec2::new(1100.0, 900.0), vec![]);
+            assert!(
+                text_shapes(&output)
+                    .iter()
+                    .any(|(text, _)| text.galley.job.text == "CPU 0")
+            );
+        }
+        if link == "Details" {
+            assert!(app.show_diagnostics);
+        }
+        assert!(output.platform_output.commands.is_empty());
+    }
+}
+
+#[test]
+fn overview_group_click_selects_the_heaviest_instance_and_opens_processes() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    let original = app.snapshot.processes[0].clone();
+    app.snapshot.processes = [(900_010, 35.0), (900_011, 65.0), (900_012, 80.0)]
+        .into_iter()
+        .map(|(pid, cpu_percent)| {
+            let mut row = original.clone();
+            row.pid = pid;
+            row.parent_pid = None;
+            row.name = if pid == 900_012 {
+                "Fixture other.exe"
+            } else {
+                "Fixture browser.exe"
+            }
+            .into();
+            row.executable = Some(std::path::PathBuf::from(if pid == 900_012 {
+                r"C:\Fixture\other.exe"
+            } else {
+                r"C:\Fixture\browser.exe"
+            }));
+            row.cpu_percent = cpu_percent;
+            row.memory_bytes = u64::from(pid - 900_000) * 1_048_576;
+            row
+        })
+        .collect();
+    app.page = Page::Overview;
+    theme::install(&ctx, app.theme);
+    click_local_text(
+        &ctx,
+        &mut app,
+        Vec2::new(1100.0, 900.0),
+        "Fixture browser.exe",
+    );
+    assert_eq!(app.page, Page::Processes);
+    assert_eq!(app.selected_pid, Some(900_011));
+    assert_eq!(app.selected_process().unwrap().name, "Fixture browser.exe");
+    assert!(!app.process_actions.busy());
+}
+
+#[test]
+fn overview_partial_totals_and_retained_vram_keep_their_measurement_labels() {
+    use crate::disk_activity::{Device, Metric, Reading, Snapshot};
+    use crate::gpu_adapters::{Adapter, Description};
+    let mut app = app(ThemeSettings::default(), true);
+    gpu_activity_fixture(&mut app);
+    let now = Instant::now();
+    let mut adapter = Adapter {
+        description: Some(Description {
+            name: "Fixture hardware GPU".into(),
+            vendor_id: 0,
+            device_id: 0,
+            dedicated_video: 16 << 30,
+            dedicated_system: 0,
+            shared_limit: 32 << 30,
+            software: false,
+        }),
+        activity: crate::gpu_activity::Usage::Measured(20.0),
+        ..Default::default()
+    };
+    adapter.memory[0].record(Some(4 << 30), now);
+    let mut software = adapter.clone();
+    software.description.as_mut().unwrap().software = true;
+    software.activity = crate::gpu_activity::Usage::Measured(100.0);
+    software.memory[0].record(Some(10 << 30), now);
+    app.snapshot.gpu.adapters = vec![software, adapter];
+    let mut disk = Device {
+        instance: "0 C:".into(),
+        ..Default::default()
+    };
+    disk.readings[Metric::Read as usize] = Reading {
+        value: Some(2048.0),
+        at: Some(now),
+    };
+    disk.readings[Metric::Active as usize] = Reading {
+        value: Some(43.0),
+        at: Some(now),
+    };
+    app.snapshot.physical_disks = std::sync::Arc::new(Snapshot {
+        at: Some(now),
+        generation: 2,
+        devices: vec![disk],
+        ..Default::default()
+    });
+    let tiles = app.overview_kpis(now, app.colors());
+    let gpu = tiles.iter().find(|tile| tile.label == "GPU").unwrap();
+    assert!(gpu.value.ends_with('+'));
+    assert_eq!(gpu.state, Some("Partial"));
+    assert_eq!(gpu.sub, "VRAM 4.00 GiB of 16.0 GiB");
+    let disk = tiles.iter().find(|tile| tile.label == "Disk").unwrap();
+    assert_eq!(disk.value, "2.00 KB/s+");
+    assert_eq!(disk.state, Some("Partial"));
+    assert_eq!(disk.sub, "busiest disk 43% active");
+    assert!(disk.hover.contains("lower bound"));
+    app.snapshot.gpu.adapters[1].memory[0].record(None, now);
+    let tiles = app.overview_kpis(now, app.colors());
+    let gpu = tiles.iter().find(|tile| tile.label == "GPU").unwrap();
+    assert_eq!(gpu.sub, "VRAM ~4.00 GiB of 16.0 GiB");
+    assert!(gpu.hover.contains("VRAM is retained"));
+    app.snapshot.gpu.adapters[1].memory[0].record(Some(5 << 30), now);
+    let gpu = app
+        .overview_kpis(now, app.colors())
+        .into_iter()
+        .find(|tile| tile.label == "GPU")
+        .unwrap();
+    assert_eq!(gpu.sub, "VRAM 5.00 GiB of 16.0 GiB");
+    app.snapshot.gpu.adapters.clear();
+    app.snapshot.gpu_sensors.adapters[0].memory = Some((3 << 30, 8 << 30));
+    app.snapshot.gpu_sensors.last_success = Some(now);
+    app.snapshot.gpu_sensors.using_cached = false;
+    let gpu = app
+        .overview_kpis(now, app.colors())
+        .into_iter()
+        .find(|tile| tile.label == "GPU")
+        .unwrap();
+    assert_eq!(gpu.sub, "VRAM 3.00 GiB of 8.00 GiB");
+    app.snapshot.gpu_sensors.using_cached = true;
+    let gpu = app
+        .overview_kpis(now, app.colors())
+        .into_iter()
+        .find(|tile| tile.label == "GPU")
+        .unwrap();
+    assert!(gpu.sub.is_empty());
+    app.snapshot.gpu_sensors.using_cached = false;
+    app.snapshot.gpu_sensors.last_success = Some(now - Duration::from_secs(4));
+    let gpu = app
+        .overview_kpis(now, app.colors())
+        .into_iter()
+        .find(|tile| tile.label == "GPU")
+        .unwrap();
+    assert!(gpu.sub.is_empty());
+}
+
+#[test]
+fn overview_multi_gpu_thermal_tiles_keep_device_names_cache_and_provider_gaps() {
+    let mut app = app(ThemeSettings::default(), false);
+    let now = Instant::now();
+    let mut snapshot = fixture();
+    snapshot.gpu_sensors.sampled_at = Some(now);
+    snapshot.gpu_sensors.last_success = Some(now);
+    let mut second = snapshot.gpu_sensors.adapters[0].clone();
+    second.uuid = Some("FIXTURE-GPU-1".into());
+    second.name = "NVIDIA GeForce Fixture Second".into();
+    second.temperature_c = Some(61);
+    second.power_w = Some(103.0);
+    let mut unidentified = second.clone();
+    unidentified.uuid = None;
+    unidentified.name = "Fixture GPU without UUID".into();
+    snapshot.gpu_sensors.adapters.extend([second, unidentified]);
+    app.accept_sample(snapshot.clone());
+    let (live, _) = app.overview_thermals(now, app.colors());
+    assert!(
+        live.iter()
+            .any(|tile| tile.label == "GPU temperature Fixture Second"
+                && tile.value == "61 °C"
+                && tile.state.is_none())
+    );
+    assert!(
+        live.iter()
+            .any(|tile| tile.label == "GPU power Fixture Second" && tile.value == "103 W")
+    );
+    assert!(live.iter().all(|tile| !tile.label.contains("without UUID")));
+    snapshot.sequence += 1;
+    snapshot.gpu_sensors.sampled_at = Some(now + Duration::from_secs(1));
+    snapshot.gpu_sensors.using_cached = true;
+    snapshot.gpu_sensors.error = Some("Fixture NVML unavailable".into());
+    app.accept_sample(snapshot.clone());
+    // Advance the production history with the fixture clock; accept_sample
+    // uses wall time and correctly refuses the fixture's future timestamp.
+    app.graphs.sample(&snapshot, now + Duration::from_secs(1));
+    app.graphs.fixed_now = Some(now + Duration::from_secs(1));
+    let (cached, _) = app.overview_thermals(now + Duration::from_secs(1), app.colors());
+    let second = cached
+        .iter()
+        .find(|tile| tile.label == "GPU temperature Fixture Second")
+        .unwrap();
+    assert_eq!(second.value, "61 °C");
+    assert_eq!(second.state, Some("Cached"));
+    assert!(second.series.iter().any(Option::is_none));
+    snapshot.sequence += 1;
+    snapshot.gpu_sensors.adapters.clear();
+    app.accept_sample(snapshot);
+    let (tiles, gaps) = app.overview_thermals(now + Duration::from_secs(2), app.colors());
+    assert!(tiles.iter().all(|tile| !tile.label.starts_with("GPU")));
+    assert!(
+        gaps.iter()
+            .any(|gap| gap.label == "GPU temperature" && gap.reason == "Fixture NVML unavailable")
+    );
+}
+
+#[test]
+fn overview_core_hover_reads_current_load_and_keeps_missing_values_explicit() {
+    let ctx = egui::Context::default();
+    let mut app = app(ThemeSettings::default(), true);
+    app.page = Page::Overview;
+    app.snapshot.cpu.logical_usage[0] = Some(37.5);
+    theme::install(&ctx, app.theme);
+    ctx.global_style_mut(|style| style.interaction.tooltip_delay = 0.0);
+    let size = Vec2::new(1100.0, 900.0);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    for _ in 0..8 {
+        output = frame(&ctx, &mut app, size, vec![]);
+    }
+    let cores_top = text_shapes(&output)
+        .iter()
+        .find(|(text, _)| text.galley.job.text == "Cores")
+        .unwrap()
+        .0
+        .visual_bounding_rect()
+        .bottom();
+    let mut cells: Vec<_> = rect_shapes(&output)
+        .into_iter()
+        .filter(|rect| {
+            rect.left() > 200.0
+                && rect.top() > cores_top
+                && (18.0..=36.0).contains(&rect.height())
+                && rect.width() < 40.0
+        })
+        .collect();
+    cells.sort_by(|a, b| a.left().total_cmp(&b.left()));
+    let position = cells.first().expect("visible core cell").center();
+    for value in [Some(37.5), None, Some(f32::NAN), Some(0.0)] {
+        app.snapshot.cpu.logical_usage[0] = value;
+        for _ in 0..8 {
+            output = frame(
+                &ctx,
+                &mut app,
+                size,
+                vec![egui::Event::PointerMoved(position)],
+            );
+        }
+        let expected = match value {
+            Some(value) if value.is_finite() => format!("CPU 0: {value:.1}%"),
+            _ => "CPU 0: not reported".into(),
+        };
+        assert!(
+            text_shapes(&output)
+                .iter()
+                .any(|(text, _)| text.galley.job.text == expected),
+            "missing {expected}"
+        );
+        assert!(output.platform_output.commands.is_empty());
+    }
+}
+
+#[test]
+#[ignore = "Offscreen Overview telemetry review, fixture data only; no native window or input"]
+fn render_overview_truthfulness_review() {
+    use crate::gpu_adapters::{Adapter, Description};
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target/ui-smoke/overview-state-alpha47");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut renderer = offscreen::Renderer::new();
+    for (name, dark, unavailable) in [
+        ("fresh-dark", true, false),
+        ("retained-dark", true, true),
+        ("retained-light", false, true),
+    ] {
+        let ctx = egui::Context::default();
+        let settings = ThemeSettings {
+            dark,
+            ..Default::default()
+        };
+        let mut app = app(settings, false);
+        app.accept_sample(fixture());
+        app.page = Page::Overview;
+        bridge_fixture(&mut app);
+        let now = Instant::now();
+        let mut adapter = Adapter {
+            description: Some(Description {
+                name: "Fixture hardware GPU".into(),
+                vendor_id: 0,
+                device_id: 0,
+                dedicated_video: 16 << 30,
+                dedicated_system: 0,
+                shared_limit: 32 << 30,
+                software: false,
+            }),
+            activity: crate::gpu_activity::Usage::Measured(20.0),
+            ..Default::default()
+        };
+        adapter.memory[0].record(Some(4 << 30), now);
+        if unavailable {
+            std::sync::Arc::make_mut(&mut app.specs_view.bridge).status =
+                crate::specs::Value::unavailable("Fixture bridge disconnected");
+            adapter.memory[0].record(None, now);
+            app.snapshot.cpu.logical_usage[0] = None;
+        }
+        app.snapshot.gpu.adapters = vec![adapter];
+        theme::install(&ctx, settings);
+        let size = Vec2::new(1200.0, 900.0);
+        let mut output = egui::FullOutput::default();
+        for _ in 0..20 {
+            output.append(frame(&ctx, &mut app, size, vec![]));
+        }
+        let texts = text_shapes(&output);
+        assert!(
+            texts
+                .iter()
+                .any(|(text, _)| text.galley.job.text.contains(if unavailable {
+                    "VRAM ~4.00 GiB"
+                } else {
+                    "VRAM 4.00 GiB"
+                }))
+        );
+        assert_eq!(
+            texts
+                .iter()
+                .any(|(text, _)| text.galley.job.text == "63 °C"),
+            !unavailable
+        );
+        assert_eq!(
+            texts.iter().any(|(text, _)| text
+                .galley
+                .job
+                .text
+                .contains("CPU temp: not checked yet")),
+            unavailable,
+            "the worker-free fixture must retain its explicit CPU gap"
+        );
+        renderer.save(&ctx, output, size, &directory.join(format!("{name}.png")));
+    }
+    println!(
+        "OVERVIEW_STATE: 3 fixture-only offscreen views in {}",
+        directory.display()
+    );
+}

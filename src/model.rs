@@ -245,11 +245,18 @@ pub struct StartupRow {
     pub name: String,
     pub command: String,
     pub source: crate::startup::Source,
+    pub control: Option<crate::startup::control::Control>,
 }
 
 impl StartupRow {
     pub fn text_bytes(&self) -> usize {
-        self.key.len() + self.name.len() + self.command.len()
+        self.key.len()
+            + self.name.len()
+            + self.command.len()
+            + self
+                .control
+                .as_ref()
+                .map_or(0, crate::startup::control::Control::text_bytes)
     }
 }
 

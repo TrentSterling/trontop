@@ -1,5 +1,17 @@
 # Graph wall
 
+## Alpha.47: tooltip gaps and lower bounds (A07/A16/A25/A32)
+
+Tooltips now select each series within half its own cadence of the hovered sample.
+Remote, future and expired points stay `No exact measurement`; explicit missing
+samples remain gaps. Partial points keep `+ (lower bound)` in the tooltip.
+Production-plot regressions verify Lines/Bars text, cadence, line/fill gaps and
+hollow partial markers. Overview navigation, sensor validity and VRAM freshness
+have seven additional regressions. The first offscreen review exposed a suppressed
+CPU gap, reproduced and fixed before the final views. Full suite: 519 pass, 0 fail,
+56 ignored; fmt/strict Clippy/release PASS. Behavior, commands and final artifact:
+[OVERVIEW_GRAPHS_2026-09-30.md](OVERVIEW_GRAPHS_2026-09-30.md).
+
 ## Alpha.33: All cores and dense Overview (A06/A32)
 
 Per-logical-processor history, the CPU grid, graph-heavy Overview, process count

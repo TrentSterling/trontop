@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 pub const ENTRY_LIMIT: usize = 4096;
 pub const TEXT_LIMIT: usize = 2 * 1024 * 1024;
 const STALE_AFTER: Duration = Duration::from_secs(75);
+pub mod control;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Source {

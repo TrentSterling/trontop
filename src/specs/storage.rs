@@ -9,6 +9,8 @@
 use super::{Context, Group, LiveKey, Row, Section, SectionId, SummaryLine, Value};
 use crate::format;
 
+#[cfg(any(windows, test))]
+mod management;
 #[cfg(windows)]
 mod native;
 
@@ -26,11 +28,11 @@ struct Descriptor {
 }
 
 fn descriptor_text(bytes: &[u8], offset: usize) -> Option<String> {
-    if offset == 0 || offset >= bytes.len() {
+    if offset < 36 || offset >= bytes.len() {
         return None;
     }
     let raw = &bytes[offset..];
-    let end = raw.iter().position(|b| *b == 0).unwrap_or(raw.len());
+    let end = raw.iter().position(|b| *b == 0)?;
     let text = String::from_utf8_lossy(&raw[..end]).trim().to_string();
     (!text.is_empty()).then_some(text)
 }
@@ -41,10 +43,15 @@ fn parse_descriptor(bytes: &[u8]) -> Option<Descriptor> {
             .get(at..at + 4)
             .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     };
-    if bytes.len() < 32 {
+    if bytes.len() < 36 {
         return None;
     }
-    let size = (dword(4)? as usize).min(bytes.len());
+    let version = dword(0)? as usize;
+    let declared_size = dword(4)? as usize;
+    if version < 36 || declared_size < version {
+        return None;
+    }
+    let size = declared_size.min(bytes.len());
     let bytes = &bytes[..size];
     Some(Descriptor {
         removable: bytes.get(10).is_some_and(|b| *b != 0),
@@ -63,6 +70,7 @@ fn bus_name(bus: u32) -> Option<&'static str> {
         0x02 => "ATAPI",
         0x03 => "ATA",
         0x04 => "IEEE 1394",
+        0x05 => "SSA",
         0x06 => "Fibre Channel",
         0x07 => "USB",
         0x08 => "RAID",
@@ -120,6 +128,28 @@ fn parse_nvme_health(log: &[u8]) -> Option<NvmeHealth> {
     })
 }
 
+/// Protocol property reply, with payload offsets relative to its protocol header.
+fn parse_nvme_reply(reply: &[u8]) -> Option<NvmeHealth> {
+    let dword = |at: usize| {
+        reply
+            .get(at..at + 4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    };
+    let version = dword(0)?;
+    let size = dword(4)?;
+    if version < 48 || size < version || size > reply.len() || dword(8)? != 3 || dword(12)? != 2 {
+        return None;
+    }
+    let offset = dword(24)?;
+    let length = dword(28)?;
+    let start = 8usize.checked_add(offset)?;
+    if offset < 40 || start < version || length < 512 {
+        return None;
+    }
+    let payload = reply.get(start..start.checked_add(length)?)?;
+    parse_nvme_health(&payload[..512])
+}
+
 fn critical_warning(bits: u8) -> String {
     if bits == 0 {
         return "None".into();
@@ -130,21 +160,30 @@ fn critical_warning(bits: u8) -> String {
         "reliability degraded",
         "media read-only",
         "volatile memory backup failed",
-        "persistent memory region read-only",
+        "persistent memory region read-only or unreliable",
     ];
-    names
+    let mut warnings = names
         .iter()
         .enumerate()
         .filter(|(bit, _)| bits & (1 << bit) != 0)
-        .map(|(_, name)| *name)
-        .collect::<Vec<_>>()
-        .join(", ")
+        .map(|(_, name)| name.to_string())
+        .collect::<Vec<_>>();
+    let unknown = bits & 0xc0;
+    if unknown != 0 {
+        warnings.push(format!("unrecognized warning bits 0x{unknown:02X}"));
+    }
+    warnings.join(", ")
 }
 
 /// NVMe data units are 1000 x 512 bytes.
 fn data_units(units: u128) -> String {
-    let bytes = units.saturating_mul(512_000);
-    format::bytes(u64::try_from(bytes).unwrap_or(u64::MAX))
+    units
+        .checked_mul(512_000)
+        .and_then(|bytes| u64::try_from(bytes).ok())
+        .map_or_else(
+            || format!("{units} data units (512,000 bytes each)"),
+            format::bytes,
+        )
 }
 
 fn health_group(health: &NvmeHealth) -> Group {
@@ -209,9 +248,9 @@ fn gpt_type(guid: &str) -> Option<&'static str> {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Partition {
-    number: u32,
+    number: Option<u32>,
     letter: Option<char>,
-    bytes: u64,
+    bytes: Option<u64>,
     kind: Option<String>,
     file_system: Option<String>,
     label: Option<String>,
@@ -281,7 +320,7 @@ fn disk_group(disk: &Disk, reliability: &Value) -> Group {
         "Capacity",
         Value::from_option(disk.bytes.map(format::bytes), NOT_REPORTED_DRIVE),
     ));
-    let bus = bus_name(descriptor.bus);
+    let bus = disk.descriptor.as_ref().and_then(|d| bus_name(d.bus));
     group.push_row(
         Row::new(
             "Interface",
@@ -290,7 +329,11 @@ fn disk_group(disk: &Disk, reliability: &Value) -> Group {
                     Some(link) if bus == "NVMe" => format!("NVMe ({link})"),
                     _ => bus.to_string(),
                 }),
-                format!("Windows reports bus type {}", descriptor.bus),
+                if disk.descriptor.is_some() {
+                    format!("Windows reports bus type {}", descriptor.bus)
+                } else {
+                    "Windows did not return a usable device descriptor".into()
+                },
             ),
         )
         .note("STORAGE_DEVICE_DESCRIPTOR bus type; PCIe link from the NVMe controller"),
@@ -326,7 +369,12 @@ fn disk_group(disk: &Disk, reliability: &Value) -> Group {
     );
     group.push_row(Row::new(
         "Removable",
-        Value::known(if descriptor.removable { "Yes" } else { "No" }),
+        Value::from_option(
+            disk.descriptor
+                .as_ref()
+                .map(|d| if d.removable { "Yes" } else { "No" }),
+            NOT_REPORTED_DRIVE,
+        ),
     ));
     group.push_row(
         Row::new(
@@ -399,11 +447,17 @@ fn disk_group(disk: &Disk, reliability: &Value) -> Group {
     if !disk.partitions.is_empty() {
         let mut partitions = Group::new(format!("Partitions ({})", disk.partitions.len()));
         for part in &disk.partitions {
-            let mut title = format!("Partition {}", part.number);
+            let mut title = part.number.map_or_else(
+                || "Partition (number unavailable)".into(),
+                |n| format!("Partition {n}"),
+            );
             if let Some(letter) = part.letter {
                 title.push_str(&format!(" ({letter}:)"));
             }
-            let mut text = format::bytes(part.bytes);
+            let mut text = part
+                .bytes
+                .map(format::bytes)
+                .unwrap_or_else(|| "Size unavailable".into());
             if let Some(kind) = &part.kind {
                 text.push_str(&format!(", {kind}"));
             }
@@ -426,14 +480,14 @@ fn disk_group(disk: &Disk, reliability: &Value) -> Group {
 }
 
 fn build(disks: Result<Vec<Disk>, String>, reliability: Value, issues: Vec<String>) -> Section {
-    let disks = match disks {
-        Ok(disks) if !disks.is_empty() => disks,
-        Ok(_) => {
-            return Section::unavailable(SectionId::Storage, "Windows reports no disk devices");
-        }
-        Err(reason) => return Section::unavailable(SectionId::Storage, reason),
+    let (disks, mut section) = match disks {
+        Ok(disks) if !disks.is_empty() => (disks, Section::new(SectionId::Storage)),
+        Ok(_) => (
+            Vec::new(),
+            Section::unavailable(SectionId::Storage, "Windows reports no disk devices"),
+        ),
+        Err(reason) => (Vec::new(), Section::unavailable(SectionId::Storage, reason)),
     };
-    let mut section = Section::new(SectionId::Storage);
     for issue in issues {
         section.push_issue(issue);
     }
@@ -509,10 +563,13 @@ pub fn collect_optical(ctx: &Context) -> Section {
 }
 
 #[cfg(test)]
+mod fixture_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    fn descriptor_bytes(bus: u32) -> Vec<u8> {
+    pub(super) fn descriptor_bytes(bus: u32) -> Vec<u8> {
         let mut bytes = vec![0u8; 36];
         let strings = b"TEAM\0TM8FP6002T\0SN26510\0FIXTURE-DRIVE-SERIAL\0";
         let base = bytes.len() as u32;
@@ -579,9 +636,9 @@ mod tests {
             nvme: Some(NvmeHealth::default()),
             trim: Some(true),
             partitions: vec![Partition {
-                number: 3,
+                number: Some(3),
                 letter: Some('C'),
-                bytes: 2_027_299_012_608,
+                bytes: Some(2_027_299_012_608),
                 kind: gpt_type("{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}").map(str::to_string),
                 file_system: Some("NTFS".into()),
                 free: Some(1 << 40),

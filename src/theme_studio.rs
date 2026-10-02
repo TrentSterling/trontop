@@ -711,6 +711,17 @@ fn ramp(
         s.move_stop(*selected, (p.x - rail.left()) / rail.width());
     }
     if response.has_focus() {
+        // Arrow keys edit this control; Tab and Escape still leave it normally.
+        ui.memory_mut(|memory| {
+            memory.set_focus_lock_filter(
+                response.id,
+                egui::EventFilter {
+                    horizontal_arrows: true,
+                    vertical_arrows: true,
+                    ..Default::default()
+                },
+            );
+        });
         ui.input(|input| {
             let step = if input.modifiers.shift { 0.05 } else { 0.01 };
             if input.key_pressed(egui::Key::ArrowLeft) {
@@ -870,3 +881,6 @@ fn preview(ui: &mut egui::Ui, s: ThemeSettings) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod interaction_tests;

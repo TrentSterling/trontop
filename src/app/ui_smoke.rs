@@ -11,27 +11,37 @@ mod actions;
 mod compact_layout;
 mod contrast;
 mod cpu_clock;
+mod daily_actions;
 mod disks;
 mod export;
 mod failure;
 mod first_paint;
+mod freshness;
 mod gauntlet;
 mod gpu_adapters;
 mod graphs;
+#[cfg(windows)]
+mod hotkey;
 mod marketing;
 mod memory;
+mod networks;
 mod offscreen;
 mod overview;
 mod polish;
 mod preferences;
+mod process_controls;
 mod process_perf;
 mod process_sort;
 mod renderer_recovery;
+mod sensors;
 mod service_retention;
 mod settle;
+mod startup_controls;
 mod system;
 mod table_layout;
 mod theme_controls;
+#[cfg(windows)]
+mod tray_close;
 
 fn fixture() -> SystemSnapshot {
     let processes: Vec<_> = (0..64)
@@ -216,6 +226,7 @@ fn fixture() -> SystemSnapshot {
                                     "C:\\Fixture\\Long Directory Name\\fixture.exe --test-only"
                                         .into(),
                                 source,
+                                control: None,
                             })
                             .collect(),
                     })

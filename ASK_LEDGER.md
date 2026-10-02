@@ -21,6 +21,110 @@ engineering detail; `docs/CURRENT_STATE.md` records builds and test evidence.
 - This ledger covers Trontop. The earlier Photochop/Boxel/project-naming conversation
   is context, not additional Trontop release work.
 
+## Paused checkpoint: alpha.51, 2026-09-30
+
+Trent: "trontop rocks Im glad you've basically fixed it - if we can lets find
+a good stopping point and list coverage stuff still remaining in a future anchor
+resume thing". The active full goal is **PAUSED at his request** after finishing
+the in-progress storage fixes and final verification. This positive feedback
+does not silently complete every unchecked Required/Decision item.
+
+Latest verified candidate is open at his explicit launch/replacement request:
+`target/review/alpha51-provider-joins/trontop.exe` (PID 126156, title Trontop).
+Final 589 ordinary tests pass, fmt/strict Clippy/release PASS, 24 exact read-only
+probes and ten analyzer checks PASS. Production coverage is 93.34%, 1,739 missed,
+zero mixed. A39 stays done on the requested implementation/headless evidence;
+no mouse/desktop testing. Old review copies are preserved; source is uncommitted.
+
+Resume only when requested. [Resume anchor](docs/RESUME_ANCHOR.md) records every
+remaining product/native/decision gate and next scope. [Complete source gaps](docs/COVERAGE_REMAINING_2026-09-30.md)
+list all 92 files and exact missed line ranges. Final receipt details are in
+[CURRENT_STATE](docs/CURRENT_STATE.md). Historical ACTIVE records below are superseded.
+
+## Smart tray and coverage continuation: alpha.50, 2026-09-30
+
+Trent added A39 (smart tray and close to tray). X/OS close hide while the live
+tray and sampling continue; Show restores, explicit Quit saves and exits.
+Tray failures preserve window access, and hidden Quit exposes save recovery.
+Thirty-three new ordinary checks include ten app/tray cases, a hidden mailbox
+and twenty-two RAM/storage cases. Final suite: 577 pass, 0 fail, 58 ignored;
+fmt/strict Clippy/release PASS; 24 exact read-only probes and ten analyzer checks
+pass. Production source lines: **93.33% (24,267/26,000)**, 1,733 uncovered,
+zero mixed, all 193 source/build inputs independently verified. Two offscreen
+About views inspected; native tray/CPU/teardown acceptance remains open.
+Seventeen hardware failures reproduced before fixes. Scope and receipts:
+`docs/SMART_TRAY_2026-09-30.md`, `docs/COVERAGE.md`, CURRENT_STATE.
+Exact alpha.50 candidate is ready; alpha.49 was left untouched. No automatic
+launch or replacement. The complete product goal remains ACTIVE.
+
+## Previous coverage checkpoint: alpha.49, 2026-09-30
+
+Alpha.49 advances A06/A07/A25/A33 through sixteen CPU/firmware fixture checks.
+Per-processor clock identity, partial/budget failures, missing CPUID/packages,
+unknown vendor/suffixes, bus fallback, independent PCI retention and BIOS markers,
+units and dates are verified. Nine failures reproduced before fixes. Final suite:
+544 pass, 0 fail, 57 ignored; 24 exact read-only probes and 10 analyzer checks pass.
+Production lines: **92.88% (23,947/25,782)**, 1,835 uncovered, zero mixed; all 189
+source/build inputs independently verified. UI layout unchanged; ordinary UI
+checks pass, no new alpha.49 image inspection. Evidence:
+`docs/HARDWARE_FALLBACKS_2026-09-30.md`, `docs/COVERAGE.md` and CURRENT_STATE.
+Trent has the verified candidate with End process tree and End all instances.
+Native/field-parity/provider/soak/release gates and the full goal remain open.
+
+## Previous coverage checkpoint: alpha.48, 2026-09-30
+
+Alpha.48 advances A07/A16/A18/A25/A33 with nine new ordinary checks. GPU age,
+CPU clock/commit health, cached metadata and private summary gates agree across
+resolution, the page, text and JSON. Five failures reproduced before fixes;
+identity, units, missing counters, recovery and hover privacy also pass.
+Final suite: 528 pass, 0 fail, 57 ignored; 24 exact read-only probes and 10 analyzer
+checks pass. Production source lines: **92.52% (23,743/25,663)**, 1,920 uncovered,
+zero mixed, all 187 source/build inputs verified. Three offscreen views inspected.
+Evidence: `docs/SYSTEM_LIVE_2026-09-30.md`, `docs/COVERAGE.md` and CURRENT_STATE.
+The process-tree/all-instances candidate is ready for Trent to try. Broader
+native/field-parity/sensor/release gates and the full completion goal remain open.
+
+## Previous coverage checkpoint: alpha.47, 2026-09-30
+
+Alpha.47 advances A07/A16/A25/A32 through eleven new Overview/plot regressions
+and six reproduced display failures. Bridge status/validity, shared CPU gaps,
+VRAM freshness and tooltip timing/partial markers now agree with measured data.
+Navigation, grouped-process selection, core hover, multi-GPU states and graph
+gaps are exercised without native input. Final suite: 519 pass, 0 fail, 56 ignored;
+24 exact read-only probes and 10 analyzer checks pass. Production source lines:
+**92.31% (23,650/25,621)**, 1,971 uncovered, zero mixed, all 186 source/build
+inputs independently verified. Evidence: `docs/OVERVIEW_GRAPHS_2026-09-30.md`,
+`docs/COVERAGE.md` and CURRENT_STATE. Broader native/field-parity/sensor/release
+acceptance remains open; the persistent completion goal is ACTIVE.
+
+## Previous coverage checkpoint: alpha.46, 2026-09-30
+
+Alpha.46 advances A07/A10/A16/A25 with truthful sensor expiry/recovery, numeric
+guards and real owned shared-memory reader fixtures. Twelve new ordinary checks
+bring the suite to 508 passing tests; 24 exact read-only probes and 10 analyzer
+checks also pass. Final production line coverage is **92.07% (23,567/25,596)**,
+2,029 uncovered, zero mixed, with unchanged source verified throughout measurement.
+Evidence: `docs/SENSOR_GUARDS_2026-09-30.md`, `docs/COVERAGE.md` and CURRENT_STATE.
+End process tree/all-instances and Startup controls remain included in the exact
+candidate. This closes no real-provider decision, native acceptance, field-parity
+or release gate. The persistent completion goal remains ACTIVE.
+
+## Iteration, 2026-09-29
+
+Trent requested another pass across responsiveness, UI polish and hardware/graphs.
+Alpha.42 advances A06/A07/A15/A22/A25 with finite stale-state repaints, CPU average
+clock/topology/uptime, interface-matched Network Performance metadata and stable
+interface/volume selection through enumeration changes. Scope and verification:
+`docs/ITERATION_2026-09-29.md`. This does not close field parity, native acceptance,
+sensor decisions or the remaining daily-use controls.
+
+The persistent completion goal continues beyond this pass. Coverage tooling now
+distinguishes test-only syntax from production and preserves exact binary/source
+receipts. The 437-test suite plus 24 selected read-only native probes measure
+90.20% of production source lines; 10 analyzer checks pass. This advances A25's
+evidence and identifies remaining gaps; it closes no native/release/sensor
+decision item. `docs/COVERAGE.md` tracks the measured scope and commands.
+
 ## Public preview decision, 2026-09-24
 
 Trent explicitly requested a public source repository, Windows download, product
@@ -38,6 +142,39 @@ launch does not assert that the broader completion ledger is closed.
   Evidence: `docs/PUBLIC_LAUNCH_2026-09-24.md`. Broader native acceptance stays open.
 
 ## Required: useful task manager
+
+- [ ] **A38: End process tree and all browser instances. REVIEW.** Trent explicitly
+  requested this during the September 29 iteration: selecting a Chrome or Firefox
+  child should offer a way to end the whole application. Alpha.43 adds a pinned
+  End process tree action and a confirmed all-instances option using the same
+  executable path. The dialog freezes and lists targets, requires refreshed review
+  when membership changes, and the worker verifies all captured native identities,
+  protection and parent links before starting. Evidence and limits belong in
+  `docs/PROCESS_CONTROLS.md`. Trent's review of the exact candidate remains open.
+
+- [x] **A39: Smart system tray and close to tray. DONE for requested scope.** Trent,
+  2026-09-30: "lets give it smart systray and close to systray when u close the window".
+  Window X and OS close should hide while monitoring and the live tray meter
+  continue. Show restores the retained view; explicit Quit saves and exits.
+  A missing/failing tray must keep the window reachable, and a slow/failed save
+  during tray Quit must expose recovery controls. Headless app/worker checks
+  inspect commands without executing them. Scope:
+  `docs/TRAY_LIFECYCLE.md` and `docs/SMART_TRAY_2026-09-30.md`.
+  Alpha.50 passes 577 ordinary checks, fmt/strict Clippy/release and two
+  offscreen About reviews. Trent explicitly directed on 2026-09-30:
+  "dont hijack my mouse to test systray tho just fix it and call it done".
+  Marked done on implementation/headless evidence under that instruction.
+  No mouse/desktop automation or native-interaction verification claim.
+
+- [ ] **A40: Global show/hide hotkey. REVIEW.** Trent, 2026-10-01: a global hotkey
+  that shows Trontop from anywhere. Default Ctrl+Shift+`; it shows, restores and
+  focuses the window when it is hidden in the tray, minimized or not in front, and
+  hides it with the close-to-tray path when it is already in front. Rebind in About
+  (Ctrl+Shift+`, Ctrl+Alt+Esc, Win+Shift+Esc, Off); saved with the other settings and
+  re-registered live. A combo another app owns shows a notice and Trontop keeps
+  running. One listener thread, no timer repaints. Checked with a fake hotkey API and
+  headless egui only; a real key press and foreground change need Trent's review.
+  Separate from D05 (the Ctrl+Shift+Esc takeover), which stays open.
 
 - [x] **A37: Real launch telemetry and author story. PUBLISHED.** Trent rejected
   the synthetic sine-wave screenshots and requested his real CPU/GPU workload.
@@ -60,10 +197,18 @@ launch does not assert that the broader completion ledger is closed.
   process. Evidence: `docs/PROCESS_TREE.md`, `docs/PROCESS_SORTING.md`, headless checks.
 - [x] **A03: Basic process control.** Run task, confirmed End task, priority and CPU
   affinity with stale-PID/critical-process guards. Evidence: `docs/PROCESS_ACTION_SAFETY.md`.
-- [ ] **A04: Finish daily-use controls. PARTIAL.** Suspend/resume and reversible
-  Startup enable/disable are still missing. Service Start/Stop/Restart is coded but
+- [ ] **A04: Finish daily-use controls. PARTIAL.** Alpha.43 adds confirmed
+  suspend/resume with worker-owned Windows 11 state handles and real owned-child
+  recovery checks (`docs/PROCESS_CONTROLS.md`). Alpha.44 adds reversible Startup
+  enable/disable, exact Undo and background Refresh, with native owned-fixture
+  rollback and concurrent-edit guards (`docs/STARTUP_CONTROLS.md`). Task Manager
+  interpretation and next-sign-in behavior still need isolated native acceptance.
+  Service Start/Stop/Restart is coded but
   requires the isolated native command gate in `docs/SERVICE_CONTROLS.md`. Done when
   each advertised action succeeds or explains failure, and recovery is verified.
+  Alpha.45 fixes verified owned-suspension labels and immediate STATE sorting;
+  ten daily-action UI regressions cover scheduling confirmation, failure state,
+  PID reuse, Run task and Reveal. Evidence: `docs/DAILY_CONTROLS_2026-09-30.md`.
 - [x] **A05: Dashboard plus all requested page families.** Overview, Processes,
   Performance, History, Startup, Users, Details, Services and Hardware sensors
   exist with real backing data. History is explicitly lifetime CPU/I/O, not claimed
@@ -207,6 +352,10 @@ launch does not assert that the broader completion ledger is closed.
   row/icon Tab stops. Four regressions cover keyboard sorting/selection, disabled
   cells, preserved mouse gaps and geometry/contrast. Four focus views inspected;
   this is a bounded interaction fix, not final whole-app/native acceptance.
+  Alpha.45 reserves compact Details space for an unelided Suspended state and
+  repairs Theme Studio arrow-key focus without trapping Tab/Escape. Twenty
+  interaction regressions and three inspected compact views advance A04/A07/A16/A25;
+  final acceptance remains open. Evidence: `docs/DAILY_CONTROLS_2026-09-30.md`.
 - [x] **A17: Display labels must not be highlightable.** Global non-selectable
   labels; only deliberate editable/copy fields select text. Evidence: `src/theme.rs`
   and headless text/control checks. Recheck as part of the final UI audit.

@@ -206,10 +206,6 @@ impl Cpuid {
         self.extended1.0 & (1 << 2) != 0
     }
 
-    fn intel(&self) -> bool {
-        self.vendor == "GenuineIntel"
-    }
-
     /// Instruction set extensions the processor reports, in Speccy's order.
     fn instructions(&self) -> Vec<&'static str> {
         let (ecx1, edx1) = self.leaf1;
@@ -227,7 +223,11 @@ impl Cpuid {
             (bit(ecx_ext, 6), "SSE4a"),
             (
                 bit(edx_ext, 29),
-                if self.intel() { "Intel 64" } else { "AMD64" },
+                match self.vendor.as_str() {
+                    "GenuineIntel" => "Intel 64",
+                    "AuthenticAMD" => "AMD64",
+                    _ => "x86-64",
+                },
             ),
             (bit(edx_ext, 20), "NX"),
             (bit(ecx1, 25), "AES"),
@@ -268,16 +268,18 @@ fn mobile_part(brand: Option<&str>) -> Option<bool> {
         if digits < 3 {
             continue;
         }
-        seen = true;
         let suffix = token[digits..].to_ascii_uppercase();
         let mobile = matches!(
             suffix.as_str(),
             "H" | "HX" | "HK" | "HS" | "U" | "P" | "Y" | "V"
         ) || (suffix.len() == 2
             && suffix.starts_with('G')
-            && suffix.as_bytes()[1].is_ascii_digit());
+            && (b'1'..=b'7').contains(&suffix.as_bytes()[1]));
         if mobile {
             return Some(true);
+        }
+        if matches!(suffix.as_str(), "" | "K" | "KF" | "KS" | "F" | "S" | "T") {
+            seen = true;
         }
     }
     seen.then_some(false)
@@ -519,12 +521,26 @@ fn virtualization(
     firmware_flag: Option<bool>,
     slat_flag: Option<bool>,
 ) -> Virtualization {
-    let technology = if cpuid.intel() {
-        "Intel VT-x"
-    } else {
-        "AMD-V (SVM)"
+    let technology = match cpuid.vendor.as_str() {
+        "GenuineIntel" => "Intel VT-x",
+        "AuthenticAMD" => "AMD-V (SVM)",
+        _ => "VMX/SVM",
     };
     let yes_no = |flag: bool| if flag { "Yes" } else { "No" };
+    if cpuid.vendor.is_empty() {
+        return Virtualization {
+            capability: Value::unavailable("CPUID is not available on this architecture"),
+            firmware: Value::from_option(
+                firmware_flag.map(yes_no),
+                "Windows did not report the firmware state",
+            ),
+            slat: Value::from_option(
+                slat_flag.map(yes_no),
+                "Windows did not report second level address translation",
+            ),
+            hypervisor: Value::unavailable("CPUID hypervisor detection is unavailable"),
+        };
+    }
     let microsoft = cpuid.hypervisor.as_deref() == Some("Microsoft Hv");
     match (cpuid.hypervisor_bit(), microsoft, cpuid.root_partition) {
         // Windows is the Hyper-V root: the hypervisor hides VMX/SVM from CPUID,
@@ -586,18 +602,59 @@ pub fn collect(ctx: &Context) -> Section {
 }
 
 /// Everything the native side gathered; mapping to rows is portable.
+type NominalClocks = BTreeMap<(u16, u32), u32>;
+
 #[derive(Clone, Debug)]
 struct Facts {
     cpuid: Option<Cpuid>,
     topology: Result<Topology, String>,
-    /// PROCESSOR_POWER_INFORMATION MaxMhz by logical processor index (group 0).
-    nominal_mhz: Result<Vec<u32>, String>,
+    /// Validated reference clocks by Windows processor group and number.
+    nominal_mhz: Result<NominalClocks, String>,
     firmware_flag: Option<bool>,
     slat_flag: Option<bool>,
     microcode: Option<u32>,
     /// SMBIOS type 4: socket designation and external clock MHz.
     socket: Option<(Option<String>, Option<u16>)>,
     issues: Vec<String>,
+}
+
+/// Read each requested processor once. Partial results retain their identity;
+/// zero/invalid references and budget expiry remain explicit to the builder.
+fn collect_nominal_mhz(
+    processors: impl IntoIterator<Item = (u16, u32)>,
+    stopped: impl Fn() -> bool,
+    mut read: impl FnMut(u16, u32) -> Result<u32, String>,
+) -> (Result<NominalClocks, String>, Vec<String>) {
+    let mut values = BTreeMap::new();
+    let mut failures = 0;
+    let mut requested = std::collections::BTreeSet::new();
+    let mut issues = Vec::new();
+    for (group, number) in processors {
+        if stopped() {
+            issues.push("Read budget exhausted; nominal CPU clocks are partial.".into());
+            break;
+        }
+        if !requested.insert((group, number)) {
+            continue;
+        }
+        match read(group, number) {
+            Ok(mhz) if (1..=100_000).contains(&mhz) => {
+                values.insert((group, number), mhz);
+            }
+            _ => failures += 1,
+        }
+    }
+    if failures != 0 {
+        issues.push(format!(
+            "Nominal CPU clocks unavailable for {failures} logical processors."
+        ));
+    }
+    let result = if values.is_empty() {
+        Err("Windows did not report usable nominal CPU clocks".into())
+    } else {
+        Ok(values)
+    };
+    (result, issues)
 }
 
 impl Default for Facts {
@@ -728,7 +785,14 @@ fn build(facts: Facts) -> Section {
     );
     match topology {
         Some(topology) => {
-            identity.push_row(Row::known("Packages", topology.packages.max(1).to_string()));
+            identity.push_row(Row::new(
+                "Packages",
+                if topology.packages == 0 {
+                    Value::unavailable("Windows did not report processor packages")
+                } else {
+                    Value::known(topology.packages.to_string())
+                },
+            ));
             identity.push_row(Row::known("Cores", core_counts(topology)));
             let smt = topology.cores.iter().any(|c| c.smt);
             identity.push_row(Row::known(
@@ -800,16 +864,26 @@ fn build(facts: Facts) -> Section {
         Ok(mhz) if !mhz.is_empty() => {
             let mut per_class = BTreeMap::<u8, Vec<u32>>::new();
             let mut single = Vec::new();
-            for (index, value) in mhz.iter().enumerate() {
-                match topology.and_then(|t| t.class_of((0, index as u32))) {
+            for (&processor, &value) in mhz
+                .iter()
+                .filter(|(_, value)| (1..=100_000).contains(*value))
+            {
+                match topology.and_then(|t| t.class_of(processor)) {
                     Some(class) if topology.is_some_and(Topology::hybrid) => {
-                        per_class.entry(class).or_default().push(*value)
+                        per_class.entry(class).or_default().push(value)
                     }
-                    _ => single.push(*value),
+                    _ => single.push(value),
                 }
             }
             if let Some(topology) = topology.filter(|t| t.hybrid()) {
-                for (class, values) in per_class.iter().rev() {
+                for class in topology.classes() {
+                    let Some(values) = per_class.get(&class) else {
+                        clocks.push_row(Row::unavailable(
+                            format!("Base clock ({})", topology.class_name(class)),
+                            "Windows did not report a nominal clock for this core type",
+                        ));
+                        continue;
+                    };
                     let (low, high) = (
                         values.iter().min().copied().unwrap_or(0),
                         values.iter().max().copied().unwrap_or(0),
@@ -819,59 +893,84 @@ fn build(facts: Facts) -> Section {
                     } else {
                         format!("{low} to {high} MHz")
                     };
+                    let expected = topology
+                        .cores
+                        .iter()
+                        .filter(|core| core.efficiency == class)
+                        .flat_map(|core| core.processors.iter())
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .len();
+                    let text = if values.len() < expected {
+                        format!("{text} (partial)")
+                    } else {
+                        text
+                    };
                     clocks.push_row(
-                        Row::known(
-                            format!("Base clock ({})", topology.class_name(*class)),
-                            text,
-                        )
-                        .note("CallNtPowerInformation ProcessorInformation MaxMhz (nominal)"),
+                        Row::known(format!("Base clock ({})", topology.class_name(class)), text)
+                            .note(format!(
+                                "{}; {} of {expected} logical processors reported",
+                                crate::cpu_clock::NOMINAL_SOURCE,
+                                values.len()
+                            )),
                     );
                 }
             } else if let Some(max) = single.iter().max() {
-                clocks.push_row(
-                    Row::known("Base clock", format!("{max} MHz"))
-                        .note("CallNtPowerInformation ProcessorInformation MaxMhz (nominal)"),
-                );
+                let expected = topology.map_or(mhz.len(), Topology::threads);
+                let text = if single.len() < expected {
+                    format!("{max} MHz (partial)")
+                } else {
+                    format!("{max} MHz")
+                };
+                clocks.push_row(Row::known("Base clock", text).note(format!(
+                    "{}; {} of {expected} logical processors reported",
+                    crate::cpu_clock::NOMINAL_SOURCE,
+                    single.len()
+                )));
+            } else {
+                clocks.push_row(Row::unavailable(
+                    "Base clock",
+                    "Windows did not report usable nominal CPU clocks",
+                ));
             }
         }
         Ok(_) => clocks.push_row(Row::unavailable("Base clock", "no processors reported")),
         Err(reason) => clocks.push_row(Row::unavailable("Base clock", reason.clone())),
     }
-    match cpuid.frequency {
-        Some((base, max, bus)) => {
-            if max > 0 {
-                clocks.push_row(
-                    Row::known("Maximum (rated)", format!("{max} MHz"))
-                        .note("CPUID leaf 16h, as the processor reports it"),
-                );
-            }
-            if base > 0 {
-                clocks.push_row(
-                    Row::known("Base (rated)", format!("{base} MHz"))
-                        .note("CPUID leaf 16h, as the processor reports it"),
-                );
-            }
-            if bus > 0 {
-                clocks.push_row(
-                    Row::known("Bus (reference) clock", format!("{bus} MHz"))
-                        .note("CPUID leaf 16h"),
-                );
-            }
-        }
-        None => {
-            let external = facts.socket.as_ref().and_then(|s| s.1).filter(|v| *v > 0);
+    if let Some((base, max, _)) = cpuid.frequency {
+        if max > 0 {
             clocks.push_row(
-                Row::new(
-                    "Bus (reference) clock",
-                    Value::from_option(
-                        external.map(|v| format!("{v} MHz")),
-                        "not reported by CPUID leaf 16h or SMBIOS",
-                    ),
-                )
-                .note("SMBIOS type 4 external clock"),
+                Row::known("Maximum (rated)", format!("{max} MHz"))
+                    .note("CPUID leaf 16h, as the processor reports it"),
+            );
+        }
+        if base > 0 {
+            clocks.push_row(
+                Row::known("Base (rated)", format!("{base} MHz"))
+                    .note("CPUID leaf 16h, as the processor reports it"),
             );
         }
     }
+    let cpuid_bus = cpuid.frequency.map(|(_, _, bus)| bus).filter(|v| *v > 0);
+    let external = facts
+        .socket
+        .as_ref()
+        .and_then(|s| s.1)
+        .filter(|v| *v > 0)
+        .map(u32::from);
+    clocks.push_row(
+        Row::new(
+            "Bus (reference) clock",
+            Value::from_option(
+                cpuid_bus.or(external).map(|v| format!("{v} MHz")),
+                "not reported by CPUID leaf 16h or SMBIOS",
+            ),
+        )
+        .note(if cpuid_bus.is_some() {
+            "CPUID leaf 16h"
+        } else {
+            "SMBIOS type 4 external clock"
+        }),
+    );
     section.push_group(clocks);
 
     if let Some(topology) = topology {
@@ -1114,7 +1213,14 @@ mod tests {
                 ..Default::default()
             }),
             topology: parse_topology(&glpi()).ok_or_else(String::new),
-            nominal_mhz: Ok(vec![3700, 3700, 3200, 3200]),
+            nominal_mhz: Ok([
+                ((0, 0), 3700),
+                ((0, 1), 3700),
+                ((0, 2), 3200),
+                ((0, 3), 3200),
+            ]
+            .into_iter()
+            .collect()),
             ..Default::default()
         };
         let section = build(facts);
@@ -1145,3 +1251,6 @@ mod tests {
         println!("collected in {elapsed:.3} ms (private values masked)");
     }
 }
+
+#[cfg(test)]
+mod fixture_tests;

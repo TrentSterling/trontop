@@ -7,17 +7,19 @@ use std::time::Instant;
 const CHIP_HEIGHT: f32 = 26.0;
 
 /// Startup table columns: `(header, fraction, minimum)`, last column flexible.
-const STARTUP_COLUMNS_WITH_FRESHNESS: [(&str, f32, f32); 4] = [
-    ("NAME", 0.24, 140.0),
-    ("COMMAND / FILE", 0.34, 170.0),
-    ("SOURCE", 0.27, 175.0),
-    ("FRESHNESS", 0.15, 90.0),
+const STARTUP_COLUMNS_WITH_FRESHNESS: [(&str, f32, f32); 5] = [
+    ("NAME", 0.21, 115.0),
+    ("COMMAND / FILE", 0.29, 120.0),
+    ("STATE", 0.15, 100.0),
+    ("SOURCE", 0.22, 140.0),
+    ("FRESHNESS", 0.13, 100.0),
 ];
-/// Same three columns, widths rebalanced across the space FRESHNESS gave up.
-const STARTUP_COLUMNS: [(&str, f32, f32); 3] = [
-    ("NAME", 0.28, 140.0),
-    ("COMMAND / FILE", 0.40, 170.0),
-    ("SOURCE", 0.32, 175.0),
+/// Fresh rows give the optional freshness column's width back to content.
+const STARTUP_COLUMNS: [(&str, f32, f32); 4] = [
+    ("NAME", 0.23, 120.0),
+    ("COMMAND / FILE", 0.37, 150.0),
+    ("STATE", 0.15, 100.0),
+    ("SOURCE", 0.25, 150.0),
 ];
 const SERVICES_COLUMNS_WITH_FRESHNESS: [(&str, f32, f32); 5] = [
     ("DISPLAY NAME", 0.22, 130.0),
@@ -35,13 +37,14 @@ const SERVICES_COLUMNS: [(&str, f32, f32); 4] = [
     ("PID", 0.14, 70.0),
 ];
 
-const STARTUP_CAVEAT: &str = "Read-only inventory; enabled/disabled state is not inferred.";
+const STARTUP_CAVEAT: &str = "Windows startup approval; other policies may also affect sign-in. Select a row for confirmed controls.";
 const SERVICES_CAVEAT: &str = "Select a row for confirmed controls.";
 
 impl TrontopApp {
-    pub(super) fn startup_inventory(&self, ui: &mut egui::Ui) {
+    pub(super) fn startup_inventory(&mut self, ui: &mut egui::Ui) {
         let t = self.colors();
         let now = self.graphs.now();
+        self.startup_controls(ui);
         let snapshot = &self.snapshot.startup;
         let total = snapshot.rows().count();
         startup_chip_row(ui, snapshot, now, t);
@@ -57,33 +60,46 @@ impl TrontopApp {
             })
             .collect::<Vec<_>>();
         let shown = rows.len();
+        let selected = rows.iter().position(|(_, entry)| {
+            Some(&crate::startup::control::Key::of(&entry.row)) == self.selected_startup.as_ref()
+        });
+        let warn = ui.visuals().warn_fg_color;
+        let state_color = |state: &str| match state {
+            "Enabled" => t.good,
+            "Disabled" => t.text_muted,
+            _ => warn,
+        };
+        let views = rows
+            .iter()
+            .map(|(source, entry)| self.startup_observations.view(source, entry, now))
+            .collect::<Vec<_>>();
         // The FRESHNESS column only earns its place when it would say something
         // other than "Live" for every row; an all-fresh table gives that width
         // back to NAME, COMMAND / FILE and SOURCE instead.
-        let all_live = rows
-            .iter()
-            .all(|(source, entry)| source.row_state(entry, now) == "Live");
+        let all_live = views.iter().all(|(_, freshness, _)| *freshness == "Live");
         // COMMAND / FILE is the flexible column on both variants, at index 1;
         // NAME and SOURCE (and FRESHNESS, when present) keep fixed widths.
-        if all_live {
+        let clicked = if all_live {
             widgets::inventory_table(
                 ui,
                 "startup_grid",
                 STARTUP_COLUMNS,
                 1,
                 shown,
-                None,
-                None,
+                selected,
+                Some((2, &state_color)),
                 |index| {
                     let (source, entry) = rows[index];
+                    let state = startup_state(&views[index].0, views[index].1);
                     [
                         (entry.row.name.clone(), entry.row.name.clone()),
                         (entry.row.command.clone(), entry.row.command.clone()),
+                        state,
                         (source.source.name().into(), source.source.name().into()),
                     ]
                 },
                 t,
-            );
+            )
         } else {
             widgets::inventory_table(
                 ui,
@@ -91,24 +107,35 @@ impl TrontopApp {
                 STARTUP_COLUMNS_WITH_FRESHNESS,
                 1,
                 shown,
-                None,
-                None,
+                selected,
+                Some((2, &state_color)),
                 |index| {
                     let (source, entry) = rows[index];
-                    let freshness = source.row_state(entry, now).to_string();
+                    let freshness = views[index].1.to_string();
+                    let state = startup_state(&views[index].0, views[index].1);
                     let freshness_hover = format!(
                         "{freshness}, observed {}",
-                        age(Some(entry.observed_at), now)
+                        age(
+                            Some(
+                                self.startup_observations
+                                    .observed_at(&views[index].0, entry.observed_at)
+                            ),
+                            now
+                        )
                     );
                     [
                         (entry.row.name.clone(), entry.row.name.clone()),
                         (entry.row.command.clone(), entry.row.command.clone()),
+                        state,
                         (source.source.name().into(), source.source.name().into()),
                         (freshness, freshness_hover),
                     ]
                 },
                 t,
-            );
+            )
+        };
+        if let Some(index) = clicked {
+            self.selected_startup = Some(crate::startup::control::Key::of(&rows[index].1.row));
         }
         let footer = if needle.is_empty() {
             format!("{total} entries")
@@ -260,6 +287,36 @@ impl TrontopApp {
         widgets::hover_label(ui, RichText::new(footer).size(10.0).color(t.text_muted))
             .on_hover_text(SERVICES_CAVEAT);
     }
+}
+
+fn startup_state(row: &crate::model::StartupRow, freshness: &str) -> (String, String) {
+    if matches!(freshness, "Refresh required" | "Pre-command") {
+        return (
+            "Unavailable".into(),
+            "The last command outcome needs a newer read. Refresh before changing this entry."
+                .into(),
+        );
+    }
+    let Some(control) = &row.control else {
+        return (
+            "Unavailable".into(),
+            "Approval metadata is unavailable. Refresh to try reading it again.".into(),
+        );
+    };
+    let detail = match &control.approval {
+        crate::startup::control::Approval::Missing => "No approval override was found; Windows' default is enabled. Other sign-in policies can still apply.".into(),
+        crate::startup::control::Approval::Unreadable(error) => error.clone(),
+        _ if control.approval.state() == crate::startup::control::State::Unsupported => "This Windows approval record is unrecognized. Trontop will preserve it and refuse changes.".into(),
+        _ => format!("Windows startup approval: {}. Other sign-in policies can still apply.", control.approval.state().label()),
+    };
+    (
+        control.approval.state().label().into(),
+        if control.registration.is_none() {
+            format!("{detail} Registration identity could not be verified; controls are disabled.")
+        } else {
+            detail
+        },
+    )
 }
 
 /// Short chip label for a Startup source, none of which truncate at a 1000 px

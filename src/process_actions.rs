@@ -15,10 +15,14 @@ use std::time::{Duration, Instant};
 
 pub const SLOW_AFTER: Duration = Duration::from_secs(5);
 const START_DEADLINE: Duration = Duration::from_secs(30);
+pub mod tree;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     End(ProcessIdentity),
+    EndTree(tree::Plan),
+    Suspend(ProcessIdentity),
+    Resume(ProcessIdentity),
     Priority(ProcessIdentity, PriorityClass),
     Affinity(ProcessIdentity, usize),
     Reveal(PathBuf),
@@ -29,6 +33,8 @@ impl Action {
     fn validate(&self) -> Result<(), String> {
         match self {
             Self::End(identity) => platform::can_terminate(identity.pid),
+            Self::EndTree(plan) => plan.validate(),
+            Self::Suspend(identity) | Self::Resume(identity) => platform::can_control(identity.pid),
             Self::Priority(identity, priority) => {
                 platform::can_control(identity.pid)?;
                 if !PriorityClass::EDITABLE.contains(priority) {
@@ -56,6 +62,9 @@ impl Action {
     pub fn label(&self) -> &'static str {
         match self {
             Self::End(_) => "End task",
+            Self::EndTree(_) => "End process tree",
+            Self::Suspend(_) => "Suspend process",
+            Self::Resume(_) => "Resume process",
             Self::Priority(..) => "Set priority",
             Self::Affinity(..) => "Set affinity",
             Self::Reveal(_) => "Reveal in Explorer",
@@ -99,6 +108,8 @@ impl Request {
 pub struct Outcome {
     pub request: Request,
     pub result: Result<(), String>,
+    /// Worker-owned references, not inferred CPU activity or another tool's state.
+    held_suspensions: Vec<ProcessIdentity>,
 }
 
 impl Outcome {
@@ -115,9 +126,12 @@ impl Outcome {
     }
 }
 
-fn native(action: &Action) -> Result<(), String> {
+fn native(action: &Action, suspensions: &mut platform::Suspensions) -> Result<(), String> {
     match action {
         Action::End(identity) => platform::terminate_process(*identity),
+        Action::EndTree(plan) => platform::terminate_tree(plan),
+        Action::Suspend(identity) => suspensions.suspend(*identity),
+        Action::Resume(identity) => suspensions.resume(*identity),
         Action::Priority(identity, priority) => {
             platform::set_process_priority(*identity, *priority)
         }
@@ -134,17 +148,57 @@ pub struct Controller {
     worker: Option<JoinHandle<()>>,
     stop: Arc<AtomicBool>,
     active: Option<Request>,
+    held_suspensions: Vec<ProcessIdentity>,
 }
 
 impl Controller {
     pub fn spawn(ctx: Context) -> Self {
-        Self::with_backend(ctx, native)
+        // Native handles are created inside their owning worker. No handle
+        // crosses threads and no unsafe Send implementation is needed.
+        Self::with_factory(ctx, || {
+            let mut suspensions = platform::Suspensions::default();
+            move |action: &Action| {
+                suspensions.prune_exited();
+                let result = native(action, &mut suspensions);
+                suspensions.prune_exited();
+                (result, suspensions.held())
+            }
+        })
     }
 
+    #[cfg(test)]
     pub(crate) fn with_backend(
         ctx: Context,
         mut backend: impl FnMut(&Action) -> Result<(), String> + Send + 'static,
     ) -> Self {
+        Self::with_factory(ctx, move || {
+            let mut held = Vec::new();
+            move |action: &Action| {
+                let result = backend(action);
+                if result.is_ok() {
+                    match action {
+                        Action::Suspend(identity) if !held.contains(identity) => {
+                            held.push(*identity)
+                        }
+                        Action::Resume(identity) | Action::End(identity) => {
+                            held.retain(|held| held != identity)
+                        }
+                        Action::EndTree(plan) => held.retain(|held| {
+                            !plan.targets().iter().any(|target| target.identity == *held)
+                        }),
+                        _ => {}
+                    }
+                }
+                (result, held.clone())
+            }
+        })
+    }
+
+    fn with_factory<F, B>(ctx: Context, factory: F) -> Self
+    where
+        F: FnOnce() -> B + Send + 'static,
+        B: FnMut(&Action) -> (Result<(), String>, Vec<ProcessIdentity>) + 'static,
+    {
         let (requests, incoming) = mpsc::sync_channel::<Request>(1);
         let (completed, results) = mpsc::sync_channel(1);
         let stop = Arc::new(AtomicBool::new(false));
@@ -152,6 +206,8 @@ impl Controller {
         let worker = thread::Builder::new()
             .name("trontop-process-actions".into())
             .spawn(move || {
+                let mut backend = factory();
+                let mut held_suspensions = Vec::new();
                 while let Ok(request) = incoming.recv() {
                     if worker_stop.load(Ordering::Acquire) {
                         break;
@@ -162,10 +218,19 @@ impl Controller {
                         } else {
                             // Existing native functions validate creation time and
                             // critical-process policy on the SAME action handle.
-                            backend(&request.action)
+                            let (result, held) = backend(&request.action);
+                            held_suspensions = held;
+                            result
                         }
                     });
-                    if completed.try_send(Outcome { request, result }).is_err() {
+                    if completed
+                        .try_send(Outcome {
+                            request,
+                            result,
+                            held_suspensions: held_suspensions.clone(),
+                        })
+                        .is_err()
+                    {
                         break;
                     }
                     ctx.request_repaint();
@@ -178,6 +243,7 @@ impl Controller {
                 worker: Some(worker),
                 stop,
                 active: None,
+                held_suspensions: Vec::new(),
             },
             Err(_) => Self::default(),
         }
@@ -200,8 +266,19 @@ impl Controller {
         self.active.as_ref()
     }
 
+    pub fn holds_suspension(&self, identity: ProcessIdentity) -> bool {
+        self.held_suspensions.contains(&identity)
+    }
+
     pub fn submit(&mut self, request: Request) -> Result<(), String> {
         request.validate()?;
+        if let Action::Suspend(identity) = request.action
+            && self.holds_suspension(identity)
+        {
+            return Err(
+                "Trontop already holds a suspension for this process. Resume it first.".into(),
+            );
+        }
         if self.busy() {
             return Err(
                 "Another process or launch action is pending. No additional request was sent."
@@ -224,14 +301,17 @@ impl Controller {
         match result {
             Ok(outcome) => {
                 self.active = None;
+                self.held_suspensions = outcome.held_suspensions.clone();
                 Some(outcome)
             }
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Disconnected) => {
                 self.requests = None;
+                self.held_suspensions.clear();
                 self.active.take().map(|request| Outcome {
                     request,
                     result: Err("Action worker disconnected. Outcome is unknown; verify the target before retrying. No automatic retry was sent.".into()),
+                    held_suspensions: Vec::new(),
                 })
             }
         }

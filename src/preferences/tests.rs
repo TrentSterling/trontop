@@ -51,6 +51,7 @@ fn snapshot(seed: u8) -> Snapshot {
     Snapshot {
         theme,
         library,
+        hotkey: crate::hotkey::Choice::default().encode().to_owned(),
         memory,
     }
 }
@@ -462,4 +463,41 @@ fn preferences_unchanged_save_skips_storage_contention_but_changed_save_still_co
             .contains("another instance")
     );
     assert_eq!(fs::read(fixture.0.join(FILE_NAME)).unwrap(), external);
+}
+
+#[test]
+fn hotkey_choice_defaults_for_old_files_and_unknown_text_and_round_trips() {
+    use crate::hotkey::Choice;
+    let fixture = Fixture::new();
+    let target = fixture.0.join(FILE_NAME);
+    // A file written before the hotkey existed: no key at all.
+    let old = br#"{"format":"trontop-settings","version":1,"values":{"unknown-preserved-key":"keep me"}}"#;
+    fs::write(&target, old).unwrap();
+    let mut store = file::Store::new(fixture.0.clone());
+    assert_eq!(store.load().unwrap().hotkey, Choice::CtrlShiftBacktick);
+    // Every choice survives save then a fresh load, and the key sits beside the rest.
+    for choice in Choice::ALL {
+        let mut saved = snapshot(5);
+        saved.hotkey = choice.encode().to_owned();
+        store.save(&saved, &AtomicBool::new(false)).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&fs::read(&target).unwrap()).unwrap();
+        assert_eq!(json["values"][crate::hotkey::STORAGE_KEY], choice.encode());
+        assert_eq!(json["values"]["unknown-preserved-key"], "keep me");
+        store = file::Store::new(fixture.0.clone());
+        assert_eq!(store.load().unwrap().hotkey, choice);
+    }
+    // Text from a newer build (or a hand edit) is the default, not a load error
+    // that would lock theme editing, and the file is untouched by loading it.
+    for text in ["", "ctrl+shift+f12", "Ctrl+Shift+`", "null"] {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "format": "trontop-settings",
+            "version": 1,
+            "values": { crate::hotkey::STORAGE_KEY: text },
+        }))
+        .unwrap();
+        fs::write(&target, &bytes).unwrap();
+        let loaded = file::Store::new(fixture.0.clone()).load().unwrap();
+        assert_eq!(loaded.hotkey, Choice::CtrlShiftBacktick, "{text:?}");
+        assert_eq!(fs::read(&target).unwrap(), bytes);
+    }
 }

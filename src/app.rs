@@ -23,16 +23,21 @@ const NAV_FOOTER_HEIGHT: f32 = 122.0;
 mod diagnostics;
 mod disks;
 mod export;
+mod global_hotkey;
 mod gpus;
 mod graphs;
 mod inventory;
+mod networks;
 mod overview;
 mod preferences;
+mod process_controls;
 mod sensors;
 mod service_controls;
+mod startup_controls;
 mod storage;
 mod system;
 mod tree_state;
+mod window;
 
 #[cfg(test)]
 mod ui_smoke;
@@ -120,7 +125,8 @@ impl Page {
             Self::History => {
                 "Processes ranked by CPU time since they started, with their total I/O."
             }
-            Self::Startup => "Programs Windows starts when you sign in. Read-only.",
+            // Startup leads with its controls and source chips at compact sizes.
+            Self::Startup => "",
             Self::Users => "Resource use per Windows account.",
             Self::Details => "Every process with all counters. Drag column edges to resize.",
             // Services leads with its control row instead; the buttons'
@@ -155,6 +161,12 @@ enum PerformanceDevice {
 
 #[derive(Clone, Copy)]
 enum PendingControlAction {
+    Suspend {
+        identity: ProcessIdentity,
+    },
+    Resume {
+        identity: ProcessIdentity,
+    },
     Priority {
         identity: ProcessIdentity,
         priority: PriorityClass,
@@ -205,7 +217,12 @@ pub struct TrontopApp {
     pending_service: Option<crate::service_control::Request>,
     service_event: Option<crate::service_control::Event>,
     service_observations: crate::service_control::Observations,
+    selected_startup: Option<crate::startup::control::Key>,
+    startup_controller: crate::startup::control::Controller,
+    startup_observations: crate::startup::control::Observations,
+    pending_startup: Option<crate::startup::control::Request>,
     pending_end_task: Option<PendingEndTask>,
+    pending_end_tree: Option<process_controls::PendingEndTree>,
     pending_control_action: Option<PendingControlAction>,
     process_actions: crate::process_actions::Controller,
     message: Option<(String, bool)>,
@@ -240,6 +257,10 @@ pub struct TrontopApp {
     affinity_draft: usize,
     run_command: String,
     tray: Option<TrayController>,
+    hidden_to_tray: bool,
+    /// Global show/hide hotkey: its own thread, absent in headless tests.
+    hotkey: Option<crate::hotkey::Controller>,
+    hotkey_choice: crate::hotkey::Choice,
     /// Started lazily on the first System or Sensors page view; never in
     /// headless tests.
     specs: Option<crate::specs::Monitor>,
@@ -274,9 +295,12 @@ impl TrontopApp {
         app.graphics_recovering = graphics_recovering;
         app.process_icons = crate::process_icons::Cache::spawn(cc.egui_ctx.clone());
         app.service_controller = crate::service_control::Controller::spawn(cc.egui_ctx.clone());
+        app.startup_controller = crate::startup::control::Controller::spawn(cc.egui_ctx.clone());
         app.process_actions = crate::process_actions::Controller::spawn(cc.egui_ctx.clone());
         app.exporter = crate::export::Exporter::native();
         app.specs_enabled = true;
+        // The saved choice arrives with the preferences load and re-registers live.
+        app.hotkey = crate::hotkey::Controller::new(cc.egui_ctx.clone(), app.hotkey_choice);
         app
     }
 
@@ -318,7 +342,12 @@ impl TrontopApp {
             pending_service: None,
             service_event: None,
             service_observations: crate::service_control::Observations::default(),
+            selected_startup: None,
+            startup_controller: Default::default(),
+            startup_observations: Default::default(),
+            pending_startup: None,
             pending_end_task: None,
+            pending_end_tree: None,
             pending_control_action: None,
             process_actions: crate::process_actions::Controller::default(),
             message: None,
@@ -354,6 +383,9 @@ impl TrontopApp {
             affinity_draft: 0,
             run_command: String::new(),
             tray,
+            hidden_to_tray: false,
+            hotkey: None,
+            hotkey_choice: crate::hotkey::Choice::default(),
             specs: None,
             specs_enabled: false,
             specs_view: crate::specs::Snapshot::default(),
@@ -370,6 +402,35 @@ impl TrontopApp {
     }
 
     fn accept_sample(&mut self, snapshot: SystemSnapshot) {
+        // Enumeration order can change during hotplug. Keep the selected
+        // interface or volume attached to its identity, never its old index.
+        self.performance_device = match self.performance_device {
+            PerformanceDevice::Network(index) => PerformanceDevice::Network(
+                self.snapshot
+                    .networks
+                    .get(index)
+                    .and_then(|selected| {
+                        snapshot
+                            .networks
+                            .iter()
+                            .position(|row| row.name == selected.name)
+                    })
+                    .unwrap_or(usize::MAX),
+            ),
+            PerformanceDevice::Disk(index) => PerformanceDevice::Disk(
+                self.snapshot
+                    .disks
+                    .get(index)
+                    .and_then(|selected| {
+                        snapshot
+                            .disks
+                            .iter()
+                            .position(|row| row.mount == selected.mount)
+                    })
+                    .unwrap_or(usize::MAX),
+            ),
+            device => device,
+        };
         self.tree_expansion.retain_live(&snapshot.processes);
         if let Some(selected) = self.selected_process() {
             let same = snapshot
@@ -520,12 +581,31 @@ impl TrontopApp {
             .filter(|(_, process)| matching_pids.contains(&process.pid))
             .map(|(index, _)| index)
             .collect();
-        sort_process_indices(
-            &mut self.visible_processes,
-            &self.snapshot.processes,
-            self.sort_column,
-            self.sort_direction,
-        );
+        if self.sort_column == SortColumn::Status {
+            let processes = &self.snapshot.processes;
+            let actions = &self.process_actions;
+            self.visible_processes.sort_by_cached_key(|&index| {
+                let process = &processes[index];
+                let state = process
+                    .identity()
+                    .filter(|&identity| actions.holds_suspension(identity))
+                    .map_or_else(
+                        || process_state_label(&process.status),
+                        |_| "Suspended".into(),
+                    );
+                (state, process.pid)
+            });
+            if self.sort_direction == SortDirection::Descending {
+                self.visible_processes.reverse();
+            }
+        } else {
+            sort_process_indices(
+                &mut self.visible_processes,
+                &self.snapshot.processes,
+                self.sort_column,
+                self.sort_direction,
+            );
+        }
         self.history_processes.clone_from(&self.visible_processes);
         self.history_processes.sort_by(|&a, &b| {
             self.snapshot.processes[b]
@@ -606,9 +686,17 @@ impl TrontopApp {
                             .id(egui::Id::new("chrome_window_buttons"))
                             .layout(Layout::right_to_left(Align::Center)),
                         |ui| {
-                            if chrome_button(ui, Icon::Close, "Close", t, true).clicked() {
-                                self.request_close(ui.ctx());
+                            let close = chrome_button(ui, Icon::Close, "Close", t, true)
+                                .on_hover_text("Close to tray; monitoring continues. Right-click for Quit Trontop.");
+                            if close.clicked() {
+                                self.request_window_close(ui.ctx());
                             }
+                            close.context_menu(|ui| {
+                                if ui.button("Quit Trontop").clicked() {
+                                    ui.close();
+                                    self.request_quit(ui.ctx());
+                                }
+                            });
                             let maximized = ui
                                 .ctx()
                                 .input(|input| input.viewport().maximized.unwrap_or(false));
@@ -1000,7 +1088,11 @@ impl TrontopApp {
                 })
         });
         match result {
-            Ok(target) => self.pending_end_task = Some(target),
+            Ok(target) => {
+                self.pending_end_tree = None;
+                self.pending_control_action = None;
+                self.pending_end_task = Some(target);
+            }
             Err(error) => self.message = Some((error, true)),
         }
     }
@@ -1055,7 +1147,7 @@ impl TrontopApp {
                 ui.add_space(10.0);
                 // Identity and the confirmed End task action stay above the scroll.
                 if let Some(process) = self.selected_process().cloned() {
-                    let state_label = process_state_label(&process.status);
+                    let state_label = self.observed_process_state(&process);
                     ui.horizontal(|ui| {
                         self.process_icons.paint(ui, process.executable.as_deref(), 32.0, t.text_muted, egui::Sense::hover()).on_hover_text("Executable icon; not a verified publisher identity");
                         widgets::status_pill(ui, &state_label, if state_label == "Running" { t.good } else { t.text_muted });
@@ -1071,16 +1163,21 @@ impl TrontopApp {
                         {
                             self.request_end_selected();
                         }
+                        if widgets::action_button_enabled(ui, RichText::new("End process tree").color(t.text), Vec2::new(ui.available_width(), 30.0), t.panel_raised, t, self.process_actions.ready())
+                            .on_hover_text("Review this branch or every instance of the same executable before ending them.").clicked() {
+                            self.request_end_tree_selected();
+                        }
                     });
                 }
                 ui.separator();
                 egui::ScrollArea::vertical().id_salt("inspector_scroll").auto_shrink([false, false]).show(ui, |ui| {
                 let selected = self.selected_process().cloned();
                 if let Some(process) = selected {
-                    let state_label = process_state_label(&process.status);
+                    let state_label = self.observed_process_state(&process);
                     widgets::detail_row(ui, "PID", &process.pid.to_string(), t);
                     widgets::detail_row(ui, "Account", &process.user, t);
                     widgets::detail_row(ui, "Status", &state_label, t);
+                    self.suspension_controls(ui, &process, t);
                     widgets::detail_row(ui, "CPU", &format::percent(process.cpu_percent), t);
                     widgets::detail_row(ui, "GPU", &process.gpu_percent.label(), t);
                     widgets::hover_label(ui, RichText::new(process.gpu_percent.status()).size(10.0).color(t.text_muted))
@@ -1617,7 +1714,7 @@ impl TrontopApp {
                             }
                         });
                         widgets::table_column(&mut row, t, |ui| {
-                            let state_label = process_state_label(&process.status);
+                            let state_label = self.observed_process_state(process);
                             // Running is the overwhelming common case, so it
                             // recedes in muted text; any other state is the
                             // noteworthy one and reads in full-contrast text.
@@ -1991,7 +2088,12 @@ impl TrontopApp {
             self.graphs.cpu_grid(ui, self.snapshot.cpu.logical_cores, t);
         } else {
             // Room below: the clock tiles and the per-processor header.
-            let height = widgets::fit_height(ui, 124.0, 160.0, 270.0);
+            let below = if ui.available_width() >= 520.0 {
+                166.0
+            } else {
+                228.0
+            };
+            let height = widgets::fit_height(ui, below, 140.0, 270.0);
             widgets::history_graph_with_window(
                 ui,
                 &self.cpu_history,
@@ -2026,10 +2128,40 @@ impl TrontopApp {
             }
         );
         let state = (!live).then(|| clock_state.label());
-        ui.columns(2, |columns| {
+        let wide = ui.available_width() >= 520.0;
+        let compact = wide && ui.available_width() < 600.0;
+        if !wide {
             widgets::value_tile(
-                &mut columns[0],
-                "Fastest processor",
+                ui,
+                "Average clock",
+                &ghz(clocks.map(|v| v.average_mhz)),
+                &provenance,
+                state,
+                false,
+                t,
+            );
+            ui.add_space(theme::space::S);
+        }
+        ui.columns(if wide { 3 } else { 2 }, |columns| {
+            let offset = usize::from(wide);
+            if wide {
+                widgets::value_tile(
+                    &mut columns[0],
+                    "Average clock",
+                    &ghz(clocks.map(|v| v.average_mhz)),
+                    &provenance,
+                    state,
+                    false,
+                    t,
+                );
+            }
+            widgets::value_tile(
+                &mut columns[offset],
+                if compact {
+                    "Fastest"
+                } else {
+                    "Fastest processor"
+                },
                 &ghz(clocks.map(|v| v.fastest_mhz)),
                 &provenance,
                 state,
@@ -2037,12 +2169,47 @@ impl TrontopApp {
                 t,
             );
             widgets::value_tile(
-                &mut columns[1],
-                "Slowest reporting",
+                &mut columns[offset + 1],
+                if compact {
+                    "Slowest"
+                } else {
+                    "Slowest reporting"
+                },
                 &ghz(clocks.map(|v| v.slowest_mhz)),
                 &provenance,
                 state,
                 true,
+                t,
+            );
+        });
+        ui.add_space(theme::space::S);
+        ui.columns(2, |columns| {
+            widgets::detail_row(
+                &mut columns[0],
+                "Cores / threads",
+                &format!(
+                    "{} / {}",
+                    if self.snapshot.cpu.physical_cores > 0 {
+                        self.snapshot.cpu.physical_cores.to_string()
+                    } else {
+                        "--".into()
+                    },
+                    if self.snapshot.cpu.logical_cores > 0 {
+                        self.snapshot.cpu.logical_cores.to_string()
+                    } else {
+                        "--".into()
+                    }
+                ),
+                t,
+            );
+            widgets::detail_row(
+                &mut columns[1],
+                "Up time",
+                &if self.seen_generation > 0 {
+                    format::duration(self.snapshot.uptime_seconds)
+                } else {
+                    "--".into()
+                },
                 t,
             );
         });
@@ -2348,64 +2515,6 @@ Counters: {state}."
         });
     }
 
-    fn network_performance(&mut self, ui: &mut egui::Ui, index: usize) {
-        let t = self.colors();
-        self.graphs.ensure_sample(&self.snapshot);
-        let Some(network) = self.snapshot.networks.get(index) else {
-            widgets::gap_row(
-                ui,
-                "Network adapter",
-                "No longer present",
-                "This adapter is no longer reported. Choose another device on the left.",
-                t,
-            );
-            return;
-        };
-        let rate = network.received_bytes_per_sec + network.transmitted_bytes_per_sec;
-        widgets::performance_heading(
-            ui,
-            &network.name,
-            "Network adapter",
-            &format::rate(rate),
-            t.secondary,
-            t,
-        )
-        .on_hover_text("Download plus upload throughput for this adapter.");
-        let height = widgets::fit_height(ui, 84.0, 160.0, 360.0);
-        self.graphs.network_graph(ui, &network.name, height, t);
-        ui.add_space(theme::space::L);
-        ui.columns(4, |columns| {
-            for (index, (column, (label, value, hover))) in columns
-                .iter_mut()
-                .zip([
-                    (
-                        "Download",
-                        format::rate(network.received_bytes_per_sec),
-                        "Bytes downloaded (received) per second.",
-                    ),
-                    (
-                        "Upload",
-                        format::rate(network.transmitted_bytes_per_sec),
-                        "Bytes uploaded (sent) per second.",
-                    ),
-                    (
-                        "Downloaded",
-                        format::bytes(network.total_received_bytes),
-                        "Total downloaded since Windows started counting, as reported by Windows.",
-                    ),
-                    (
-                        "Uploaded",
-                        format::bytes(network.total_transmitted_bytes),
-                        "Total uploaded since Windows started counting, as reported by Windows.",
-                    ),
-                ])
-                .enumerate()
-            {
-                widgets::value_tile(column, label, &value, hover, None, index % 2 == 1, t);
-            }
-        });
-    }
-
     fn gpu_performance(&mut self, ui: &mut egui::Ui) {
         if !self.snapshot.gpu.adapters.is_empty() {
             self.gpu_adapters_page(ui);
@@ -2468,7 +2577,7 @@ Counters: {state}."
         self.inventory_header(
             ui,
             "Startup",
-            "Read-only Run keys and Startup folders, with independent source freshness",
+            "Select a program to change startup for your next sign-in",
             "Search startup inventory",
         );
         self.startup_inventory(ui);
@@ -2862,7 +2971,9 @@ Counters: {state}."
         };
         let identity = match action {
             PendingControlAction::Priority { identity, .. }
-            | PendingControlAction::Affinity { identity, .. } => identity,
+            | PendingControlAction::Affinity { identity, .. }
+            | PendingControlAction::Suspend { identity }
+            | PendingControlAction::Resume { identity } => identity,
         };
         let pid = identity.pid;
         let process = self
@@ -2876,6 +2987,18 @@ Counters: {state}."
             .map(|process| process.name.as_str())
             .unwrap_or("Unknown process");
         let (title, description, button, dangerous) = match action {
+            PendingControlAction::Suspend { .. } => (
+                "Suspend this process?".into(),
+                "Execution stops until you resume it or Trontop closes. Apps depending on this process may stop responding.",
+                "Suspend process",
+                true,
+            ),
+            PendingControlAction::Resume { .. } => (
+                "Resume this process?".into(),
+                "Releases Trontop's suspension. If Trontop holds none, Windows receives a resume request. Independent suspension holds from other tools can remain.",
+                "Resume process",
+                false,
+            ),
             PendingControlAction::Priority { priority, .. } => (
                 format!("Set {} priority?", priority.label()),
                 if priority == PriorityClass::High {
@@ -2939,6 +3062,8 @@ Counters: {state}."
                 .clicked()
                 {
                     let action = match action {
+                        PendingControlAction::Suspend { .. } => ProcessAction::Suspend(identity),
+                        PendingControlAction::Resume { .. } => ProcessAction::Resume(identity),
                         PendingControlAction::Priority { priority, .. } => {
                             ProcessAction::Priority(identity, priority)
                         }
@@ -3120,6 +3245,8 @@ impl eframe::App for TrontopApp {
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.tray_logic(ctx);
+        self.hotkey_logic(ctx);
         self.preferences_logic(ctx);
         if let Some(snapshot) = self
             .sampler
@@ -3129,23 +3256,44 @@ impl eframe::App for TrontopApp {
             self.accept_sample(snapshot);
         }
         self.poll_specs(ctx);
-        if let Some(action) = self.tray.as_ref().and_then(TrayController::poll) {
-            match action {
-                TrayAction::Show => {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                }
-                TrayAction::Quit => self.request_close(ctx),
-            }
-        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if self.hidden_to_tray {
+            return;
+        }
         let ctx = ui.ctx().clone();
+        self.poll_startup_command();
+        // Workers normally wake the UI. If they stall, repaint only at the
+        // remaining freshness transitions so a frozen view cannot claim Live.
+        // egui anticipates a frame when scheduling; add that time back to avoid
+        // a burst of immediate repaints just before the expiry deadline.
+        if ctx.input(|input| input.viewport().visible() != Some(false)) {
+            let now = self.graphs.now();
+            let deadline = self
+                .snapshot
+                .diagnostics
+                .next_state_change(now)
+                .into_iter()
+                .chain(self.graphs.next_state_change(now))
+                .chain(
+                    self.startup_observations
+                        .next_state_change(&self.snapshot.startup, now),
+                )
+                .min();
+            if let Some(deadline) = deadline {
+                let frame_time = ctx.input(|input| {
+                    std::time::Duration::try_from_secs_f32(input.predicted_dt).unwrap_or_default()
+                });
+                ctx.request_repaint_after(deadline.duration_since(now).saturating_add(frame_time));
+            }
+        }
         self.native_icon.sync(&ctx, self.theme);
         if let Some(outcome) = self.process_actions.poll() {
             self.message = Some(outcome.message());
+            if self.sort_column == SortColumn::Status {
+                self.rebuild_visible_processes();
+            }
         }
         if self
             .graphics_recovering
@@ -3213,10 +3361,12 @@ impl eframe::App for TrontopApp {
                 Page::System => self.system_page(ui),
             });
         self.confirm_end_task(&ctx);
+        self.confirm_end_tree(&ctx);
         self.priority_editor(&ctx);
         self.affinity_editor(&ctx);
         self.confirm_control_action(&ctx);
         self.confirm_service_command(&ctx);
+        self.confirm_startup_command(&ctx);
         self.run_task_window(&ctx);
         self.theme_editor(&ctx);
         self.diagnostics_window(&ctx);
@@ -3337,15 +3487,15 @@ const TABLE_TEXT_SIZE: f32 = 12.0;
 /// PID, "Protected", "100.0%", "12.7 GiB", a nine character rate ("1023
 /// MB/s") and an eight character CPU time ("09:16:55").
 const DETAILS_COLUMNS: [(f32, f32); 9] = [
-    (62.0, 60.0),
-    (70.0, 68.0),
-    (64.0, 62.0),
-    (58.0, 56.0),
-    (58.0, 56.0),
-    (76.0, 74.0),
-    (84.0, 82.0),
-    (84.0, 82.0),
-    (76.0, 74.0),
+    (60.0, 60.0),
+    (68.0, 68.0),
+    (80.0, 80.0),
+    (56.0, 56.0),
+    (56.0, 56.0),
+    (74.0, 74.0),
+    (82.0, 82.0),
+    (82.0, 82.0),
+    (74.0, 74.0),
 ];
 const DETAILS_NAME_MIN: f32 = 120.0;
 /// Every Details column minimum plus NAME: the width below which the table

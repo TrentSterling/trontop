@@ -17,7 +17,9 @@ const NOT_SET: &str = "not set by the manufacturer";
 struct Dimm {
     locator: Option<String>,
     bank: Option<String>,
-    /// None when the slot is empty.
+    /// Only a zero Size field proves the socket is empty.
+    populated: Option<bool>,
+    /// Missing capacity does not establish an empty socket.
     bytes: Option<u64>,
     kind: Option<&'static str>,
     form: Option<&'static str>,
@@ -35,7 +37,7 @@ struct Dimm {
 struct Array {
     slots: Option<u32>,
     max_bytes: Option<u64>,
-    ecc: Option<&'static str>,
+    ecc: Option<String>,
 }
 
 fn memory_type(code: u8) -> Option<&'static str> {
@@ -97,9 +99,13 @@ fn dimm_bytes(s: &smbios::Structure<'_>) -> Option<u64> {
         0 | 0xFFFF => None,
         0x7FFF => s
             .dword(0x1C)
-            .map(|mb| u64::from(mb & 0x7FFF_FFFF) * MB)
+            .filter(|mb| mb & 0x8000_0000 == 0)
+            .map(|mb| u64::from(mb) * MB)
             .filter(|b| *b > 0),
-        size if size & 0x8000 != 0 => Some(u64::from(size & 0x7FFF) * 1024),
+        size if size & 0x8000 != 0 => {
+            let bytes = u64::from(size & 0x7FFF) * 1024;
+            (bytes > 0).then_some(bytes)
+        }
         size => Some(u64::from(size) * MB),
     }
 }
@@ -110,18 +116,32 @@ fn speed(s: &smbios::Structure<'_>, word: usize, extended: usize) -> Option<u32>
         0 => None,
         0xFFFF => s
             .dword(extended)
-            .map(|v| v & 0x7FFF_FFFF)
+            .filter(|v| v & 0x8000_0000 == 0)
             .filter(|v| *v > 0),
         value => Some(u32::from(value)),
     }
 }
 
 fn dimms(table: &Table) -> Vec<Dimm> {
+    let non_system_arrays = table
+        .of_type(16)
+        .filter(|s| matches!(s.byte(5), Some(4..=7)))
+        .map(|s| s.handle)
+        .collect::<Vec<_>>();
     table
         .of_type(17)
+        .filter(|s| {
+            !s.word(4)
+                .is_some_and(|handle| non_system_arrays.contains(&handle))
+        })
         .map(|s| Dimm {
             locator: text(&s, 0x10),
             bank: text(&s, 0x11),
+            populated: match s.word(0x0c) {
+                Some(0) => Some(false),
+                Some(0xffff) | None => None,
+                Some(_) => Some(true),
+            },
             bytes: dimm_bytes(&s),
             kind: s.byte(0x12).and_then(memory_type),
             form: s.byte(0x0E).and_then(form_factor),
@@ -147,22 +167,35 @@ fn array(table: &Table) -> Option<Array> {
         return None;
     }
     // Firmware words and qwords: add in a wider type or checked, never wrap.
-    let slots = arrays
-        .iter()
-        .filter_map(|s| s.word(0x0D))
-        .map(u32::from)
-        .sum::<u32>();
+    let slots = arrays.iter().try_fold(0_u32, |total, s| {
+        let count = s.word(0x0d).filter(|n| *n > 0)?;
+        total.checked_add(u32::from(count))
+    });
     let max_bytes = arrays.iter().try_fold(0u64, |total, s| {
         let bytes = match s.dword(0x07)? {
             0x8000_0000 => s.qword(0x0F)?,
             kb => u64::from(kb) * 1024,
         };
+        (bytes > 0).then_some(())?;
         total.checked_add(bytes)
     });
+    let ecc = arrays
+        .iter()
+        .map(|s| s.byte(6).and_then(ecc_type))
+        .collect::<Option<Vec<_>>>()
+        .map(|mut values| {
+            values.sort_unstable();
+            values.dedup();
+            if values.len() == 1 {
+                values[0].to_string()
+            } else {
+                format!("Mixed ({})", values.join(", "))
+            }
+        });
     Some(Array {
-        slots: (slots > 0).then_some(slots),
+        slots,
         max_bytes: max_bytes.filter(|b| *b > 0),
-        ecc: arrays.first().and_then(|s| s.byte(0x06)).and_then(ecc_type),
+        ecc,
     })
 }
 
@@ -197,14 +230,61 @@ fn build(
     let array = table.and_then(array);
     let populated = dimms
         .iter()
-        .filter(|d| d.bytes.is_some())
+        .filter(|d| d.populated != Some(false))
         .collect::<Vec<_>>();
-    let smbios_total = populated.iter().filter_map(|d| d.bytes).sum::<u64>();
-    let installed = installed.or((smbios_total > 0).then_some(smbios_total));
+    let confirmed = dimms.iter().filter(|d| d.populated == Some(true)).count();
+    let unknown = dimms.iter().filter(|d| d.populated.is_none()).count();
+    let slots = array
+        .as_ref()
+        .and_then(|a| a.slots)
+        .map_or(dimms.len(), |n| n as usize);
+    let missing_slot_count = array.as_ref().is_some_and(|a| a.slots.is_none());
+    let contradictory_slots = array
+        .as_ref()
+        .and_then(|a| a.slots)
+        .is_some_and(|n| (n as usize) < dimms.len());
+    let incomplete = table.is_some_and(Table::truncated)
+        || slots > dimms.len()
+        || missing_slot_count
+        || contradictory_slots
+        || populated.iter().any(|d| d.bytes.is_none());
+    if table.is_some_and(Table::truncated) {
+        section
+            .push_issue("SMBIOS memory records are truncated; readable module facts are retained.");
+    }
+    if slots > dimms.len() {
+        section.push_issue(format!(
+            "Firmware lists {slots} memory slots but only {} device records were read.",
+            dimms.len()
+        ));
+    }
+    if missing_slot_count {
+        section.push_issue("Not every physical memory array reports a slot count; the device-record count is partial.");
+    }
+    if contradictory_slots {
+        section.push_issue(format!("Firmware lists {slots} memory slots but {} device records; total slot occupancy is unavailable.",dimms.len()));
+    }
+    if populated.iter().any(|d| d.bytes.is_none()) {
+        section.push_issue("Some memory-device capacities are unavailable; these sockets are not reported as empty.");
+    }
+    let smbios_total = (!incomplete)
+        .then(|| {
+            populated
+                .iter()
+                .try_fold(0_u64, |total, d| total.checked_add(d.bytes?))
+        })
+        .flatten()
+        .filter(|b| *b > 0);
+    let windows_installed = installed.filter(|b| *b > 0);
+    let installed = windows_installed.or(smbios_total);
+    let usable = usable.filter(|b| *b > 0);
     let mut kinds = populated.iter().filter_map(|d| d.kind).collect::<Vec<_>>();
+    kinds.sort_unstable();
     kinds.dedup();
     let kind = (kinds.len() == 1).then(|| kinds[0]);
     let configured = populated.iter().filter_map(|d| d.configured).min();
+    let configured_count = populated.iter().filter(|d| d.configured.is_some()).count();
+    let partial_speed = configured.is_some() && configured_count < populated.len();
 
     let mut headline = installed.map_or_else(|| "Memory".to_string(), format::bytes);
     if let Some(kind) = kind {
@@ -212,9 +292,25 @@ fn build(
     }
     if let Some(speed) = configured {
         headline.push_str(&format!(" @ {speed} MT/s"));
+        if partial_speed {
+            headline.push_str(" (partial speed)");
+        }
     }
     if !dimms.is_empty() {
-        headline.push_str(&format!(" ({} of {} slots)", populated.len(), dimms.len()));
+        if contradictory_slots {
+            headline.push_str(&format!(
+                " ({confirmed} confirmed, {unknown} unknown slots; total unavailable)"
+            ));
+        } else if unknown > 0 {
+            headline.push_str(&format!(
+                " ({confirmed} confirmed, {unknown} unknown of {slots} slots)"
+            ));
+        } else {
+            headline.push_str(&format!(" ({confirmed} of {slots} slots)"));
+        }
+        if incomplete {
+            headline.push_str(" (partial)");
+        }
     }
     section.push_summary(SummaryLine::known(headline).live(LiveKey::MemoryUsed));
 
@@ -227,7 +323,11 @@ fn build(
                     "Windows did not report installed memory",
                 ),
             )
-            .note("GetPhysicallyInstalledSystemMemory (from the firmware's SMBIOS table)"),
+            .note(if windows_installed.is_some() {
+                "GetPhysicallyInstalledSystemMemory (from the firmware's SMBIOS table)"
+            } else {
+                "Sum of complete SMBIOS type 17 system-memory device capacities; Windows installed-memory query did not report a usable value"
+            }),
         )
         .row(
             Row::new(
@@ -256,12 +356,22 @@ fn build(
         "Slots used",
         if dimms.is_empty() {
             Value::unavailable("the firmware lists no SMBIOS memory devices")
+        } else if contradictory_slots {
+            Value::unavailable(format!(
+                "firmware lists {slots} slots but {} device records",
+                dimms.len()
+            ))
         } else {
-            let slots = array
-                .as_ref()
-                .and_then(|a| a.slots)
-                .map_or(dimms.len(), |n| n as usize);
-            Value::known(format!("{} of {slots}", populated.len()))
+            let count = if unknown > 0 {
+                format!("{confirmed} confirmed, {unknown} unknown of {slots}")
+            } else {
+                format!("{confirmed} of {slots}")
+            };
+            Value::known(if incomplete {
+                format!("{count} (partial)")
+            } else {
+                count
+            })
         },
     ));
     if let Some(array) = &array {
@@ -271,7 +381,10 @@ fn build(
         ));
         overview.push_row(Row::new(
             "Error correction",
-            Value::from_option(array.ecc, NOT_SET),
+            Value::from_option(
+                array.ecc.clone(),
+                "error correction is not reported for every system-memory array",
+            ),
         ));
     }
     let mut channels = populated
@@ -284,7 +397,9 @@ fn build(
     overview.push_row(
         Row::new(
             "Channels populated",
-            if channels.is_empty() {
+            if unknown > 0 {
+                Value::unavailable("some memory-device occupancy is unknown")
+            } else if channels.is_empty() {
                 Value::unavailable("the slot labels do not name channels")
             } else {
                 let mode = match channels.len() {
@@ -301,8 +416,11 @@ fn build(
     );
     overview.push_row(Row::new(
         "Configured speed",
-        Value::from_option(configured.map(mts), NOT_SET),
-    ));
+        Value::from_option(configured.map(|value| {
+            let text=mts(value);
+            if partial_speed {format!("{text} (partial)")} else {text}
+        }), NOT_SET),
+    ).note(format!("Minimum of readable SMBIOS configured speeds: {configured_count} of {} non-empty or unknown device records.",populated.len())));
     overview.push_row(Row::live("In use", LiveKey::MemoryUsed));
     overview.push_row(Row::live("Commit charge", LiveKey::MemoryCommit));
     overview.push_row(
@@ -326,16 +444,23 @@ fn build(
             .locator
             .clone()
             .unwrap_or_else(|| format!("Slot {}", index + 1));
-        let Some(bytes) = dimm.bytes else {
+        if dimm.populated == Some(false) {
             section.push_group(
                 Group::new(format!("{name}: empty"))
                     .collapsed()
                     .kv("Bank", Value::from_option(dimm.bank.clone(), NOT_SET)),
             );
             continue;
-        };
-        let mut group = Group::new(format!("{name}: {}", format::bytes(bytes)));
-        group.push_row(Row::known("Size", format::bytes(bytes)));
+        }
+        let capacity = dimm.bytes.map(format::bytes);
+        let mut group = Group::new(format!(
+            "{name}: {}",
+            capacity.as_deref().unwrap_or("size unavailable")
+        ));
+        group.push_row(Row::new(
+            "Size",
+            Value::from_option(capacity, "not reported by the firmware"),
+        ));
         group.push_row(Row::new("Type", Value::from_option(dimm.kind, NOT_SET)));
         group.push_row(Row::new(
             "Form factor",
@@ -426,7 +551,7 @@ fn native_totals() -> (Option<u64>, Option<u64>) {
     // SAFETY: writable output value.
     let installed = unsafe { GetPhysicallyInstalledSystemMemory(&mut kilobytes) }
         .ok()
-        .map(|()| kilobytes * 1024)
+        .and_then(|()| kilobytes.checked_mul(1024))
         .filter(|b| *b > 0);
     let mut status = MEMORYSTATUSEX {
         dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
@@ -439,6 +564,9 @@ fn native_totals() -> (Option<u64>, Option<u64>) {
         .filter(|b| *b > 0);
     (installed, usable)
 }
+
+#[cfg(test)]
+mod fixture_tests;
 
 #[cfg(test)]
 mod tests {
@@ -511,7 +639,7 @@ mod tests {
         let array = array(&table).unwrap();
         assert_eq!(array.slots, Some(4));
         assert_eq!(array.max_bytes, Some(256 * 1024 * 1024 * 1024));
-        assert_eq!(array.ecc, Some("None"));
+        assert_eq!(array.ecc.as_deref(), Some("None"));
     }
 
     #[test]
@@ -540,7 +668,7 @@ mod tests {
         );
         let text = crate::specs::probe_text(std::slice::from_ref(&section));
         assert!(
-            text.contains("64.0 GiB DDR5 @ 6000 MT/s (1 of 2 slots)"),
+            text.contains("64.0 GiB DDR5 @ 6000 MT/s (1 of 4 slots)"),
             "{text}"
         );
         assert!(text.contains("Reserved by hardware: 1.00 GiB"), "{text}");

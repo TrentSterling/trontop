@@ -53,28 +53,34 @@ fn group_id(section: SectionId, path: &[usize]) -> egui::Id {
 
 impl TrontopApp {
     /// Called from `logic`, and again from `ui` when the page changed in
-    /// that pass: start the workers the first time the System or Sensors
-    /// page is shown and pull the latest published snapshot. Only
+    /// that pass: start the workers for System, Sensors or network Performance
+    /// and pull the latest published snapshot. Only
     /// publication reads here.
     pub(super) fn poll_specs(&mut self, ctx: &egui::Context) {
-        let visible = matches!(self.page, Page::System | Page::Sensors);
+        let live_active = matches!(self.page, Page::System | Page::Sensors)
+            || (self.page == Page::Overview && self.specs.is_some());
+        let visible = matches!(self.page, Page::System | Page::Sensors)
+            || (self.page == Page::Performance
+                && matches!(self.performance_device, PerformanceDevice::Network(_)));
         self.prepare_page(self.page, ctx);
         // Overview shows CPU temperature and power tiles from the same bridge,
         // but never starts the specs workers itself.
         let visible = visible || (self.page == Page::Overview && self.specs.is_some());
         if let Some(monitor) = &mut self.specs {
-            monitor.set_live_active(visible);
+            monitor.set_live_active(live_active);
             if visible {
                 self.specs_view = monitor.snapshot(self.graphs.now());
             }
         }
     }
 
-    /// Starts the specs workers for a System or Hardware sensors visit
-    /// (shown or about to be); no-op for other pages or once started. A
+    /// Starts the specs workers for System, Hardware sensors or a network
+    /// Performance visit; no-op for other pages or once started. A
     /// published read requests one repaint so it reaches the screen at once.
     pub(super) fn prepare_page(&mut self, page: Page, ctx: &egui::Context) {
-        if matches!(page, Page::System | Page::Sensors)
+        if (matches!(page, Page::System | Page::Sensors)
+            || (page == Page::Performance
+                && matches!(self.performance_device, PerformanceDevice::Network(_))))
             && self.specs.is_none()
             && self.specs_enabled
         {
@@ -598,7 +604,14 @@ impl TrontopApp {
         (text, color, hover)
     }
 
-    fn spec_row(&mut self, ui: &mut egui::Ui, row: &Row, banded: bool, now: Instant, t: Tokens) {
+    pub(super) fn spec_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        row: &Row,
+        banded: bool,
+        now: Instant,
+        t: Tokens,
+    ) {
         let (text, color, hover) = self.row_parts(row, now, t);
         let response = spec_text_row(ui, &row.label, (&text, color), Some(&hover), banded, t);
         let hidden = row.private && !self.reveal_private;
@@ -645,12 +658,16 @@ impl TrontopApp {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), Sense::hover());
         paint_band(ui, rect, &response, banded, t);
         // A row with no real live value shows nothing here, never a muted "--".
-        let live = override_live.or_else(|| {
-            line.live.as_ref().and_then(|key| {
-                let value = self.headline_live(key, now, t);
-                (value.0 != "--").then_some(value)
+        let live = if line.private && !self.reveal_private {
+            None
+        } else {
+            override_live.or_else(|| {
+                line.live.as_ref().and_then(|key| {
+                    let value = self.headline_live(key, now, t);
+                    (value.0 != "--").then_some(value)
+                })
             })
-        });
+        };
         // Room for the whole live value (memory usage is long), within limits.
         let live_width = live.as_ref().map_or(0.0, |(text, _, _)| {
             let measured = ui
@@ -706,9 +723,10 @@ impl TrontopApp {
                         TempBand::Hot => t.danger,
                     })
                 });
+                let state = if value.cached { "Cached" } else { "Live" };
                 let hover = match value.source {
-                    Some(source) => format!("Live: {text}\nSource: {source}"),
-                    None => format!("Live: {text}"),
+                    Some(source) => format!("{state}: {text}\nSource: {source}"),
+                    None => format!("{state}: {text}"),
                 };
                 (text, color, hover)
             }
@@ -725,7 +743,12 @@ impl TrontopApp {
 
     /// Live value beside a headline or group title: a muted "--" when absent,
     /// with the reason on hover, so titles do not repeat "Unavailable".
-    fn headline_live(&self, key: &LiveKey, now: Instant, t: Tokens) -> (String, Color32, String) {
+    pub(super) fn headline_live(
+        &self,
+        key: &LiveKey,
+        now: Instant,
+        t: Tokens,
+    ) -> (String, Color32, String) {
         let (text, color, hover) = self.live_parts(key, now, t);
         // A missing CPU temperature is absent here too: its "Needs sensor
         // app" wording belongs on the labeled row, not beside the CPU name.
@@ -807,7 +830,7 @@ fn waiting_text(state: SectionState) -> &'static str {
 }
 
 /// "Read 22 s ago", in whole seconds or minutes.
-fn read_ago(at: Instant, now: Instant) -> String {
+pub(super) fn read_ago(at: Instant, now: Instant) -> String {
     let seconds = now.saturating_duration_since(at).as_secs();
     match seconds {
         0 => "Read just now".into(),

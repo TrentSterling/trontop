@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 pub const SOURCE: &str = "Windows performance-state deltas / per-processor nominal clocks";
+pub const NOMINAL_SOURCE: &str = "Windows branded frequency / per-processor group and number";
 pub const SEMANTICS: &str = "Hit-weighted frequency over the sampling interval, using each logical processor's nominal clock. Not an instantaneous clock or Task Manager's undocumented aggregate.";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -115,7 +116,7 @@ struct Counter {
 type Counters = BTreeMap<(u16, u32), Counter>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Error {
+pub(crate) enum Error {
     Native(u32),
     Layout,
     Limit,
@@ -234,6 +235,45 @@ fn parse(data: &[u8]) -> Result<BTreeMap<u32, Vec<Bucket>>, Error> {
     Ok(result)
 }
 
+/// Shared with static CPU inventory so reference clocks use the same processor
+/// identity as live clocks. This reads the existing Windows internal power API.
+#[cfg(windows)]
+pub(crate) fn nominal_mhz(group: u16, number: u32) -> Result<u32, Error> {
+    use std::ffi::c_void;
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn NtPowerInformation(
+            level: u32,
+            input: *const c_void,
+            input_length: u32,
+            output: *mut c_void,
+            output_length: u32,
+        ) -> i32;
+    }
+    if group >= 64 || number >= 64 {
+        return Err(Error::Limit);
+    }
+    // POWER_INTERNAL_PROCESSOR_BRANDED_FREQUENCY_INPUT, version 1:
+    // type=43; version=1; PROCESSOR_NUMBER={u16 group,u8 number,u8 reserved}.
+    let input = [43_u32, 1, u32::from(group) | (number << 16)];
+    let mut output = [1_u32, 0];
+    // SAFETY: exact fixed-size input/output layouts, read-only frequency query.
+    let status =
+        unsafe { NtPowerInformation(87, input.as_ptr().cast(), 12, output.as_mut_ptr().cast(), 8) };
+    decode_nominal_mhz(status, output)
+}
+
+#[cfg(windows)]
+fn decode_nominal_mhz(status: i32, output: [u32; 2]) -> Result<u32, Error> {
+    if status < 0 {
+        return Err(Error::Native(status as u32));
+    }
+    if output[0] != 1 || !(1..=100_000).contains(&output[1]) {
+        return Err(Error::Layout);
+    }
+    Ok(output[1])
+}
+
 #[cfg(windows)]
 fn query() -> Result<Counters, Error> {
     use std::ffi::c_void;
@@ -249,13 +289,6 @@ fn query() -> Result<Counters, Error> {
             output: *mut c_void,
             output_length: u32,
             returned: *mut u32,
-        ) -> i32;
-        fn NtPowerInformation(
-            level: u32,
-            input: *const c_void,
-            input_length: u32,
-            output: *mut c_void,
-            output_length: u32,
         ) -> i32;
     }
     let groups = unsafe { GetActiveProcessorGroupCount() };
@@ -307,23 +340,10 @@ fn query() -> Result<Counters, Error> {
             return Err(Error::Layout);
         }
         for (number, buckets) in parsed {
-            // POWER_INTERNAL_PROCESSOR_BRANDED_FREQUENCY_INPUT, version 1:
-            // type=43; version=1; PROCESSOR_NUMBER={u16 group,u8 number,u8 reserved}.
-            let input = [43_u32, 1, u32::from(group) | (number << 16)];
-            let mut output = [1_u32, 0];
-            let status = unsafe {
-                NtPowerInformation(87, input.as_ptr().cast(), 12, output.as_mut_ptr().cast(), 8)
-            };
-            if status < 0 {
-                return Err(Error::Native(status as u32));
-            }
-            if output[0] != 1 || !(1..=100_000).contains(&output[1]) {
-                return Err(Error::Layout);
-            }
             result.insert(
                 (group, number),
                 Counter {
-                    nominal_mhz: output[1],
+                    nominal_mhz: nominal_mhz(group, number)?,
                     buckets,
                 },
             );
@@ -340,6 +360,24 @@ fn query() -> Result<Counters, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn nominal_query_output_validates_version_frequency_and_native_status() {
+        assert_eq!(decode_nominal_mhz(0, [1, 3600]), Ok(3600));
+        assert_eq!(decode_nominal_mhz(0, [1, 1]), Ok(1));
+        assert_eq!(decode_nominal_mhz(0, [1, 100_000]), Ok(100_000));
+        for output in [[0, 3600], [2, 3600], [1, 0], [1, 100_001], [1, u32::MAX]] {
+            assert_eq!(decode_nominal_mhz(0, output), Err(Error::Layout));
+        }
+        let status = 0xc000_000du32 as i32;
+        assert_eq!(
+            decode_nominal_mhz(status, [1, 3600]),
+            Err(Error::Native(status as u32))
+        );
+        assert_eq!(nominal_mhz(64, 0), Err(Error::Limit));
+        assert_eq!(nominal_mhz(0, 64), Err(Error::Limit));
+    }
     use crate::diagnostics::Provider;
 
     fn counters(step: u64) -> Counters {

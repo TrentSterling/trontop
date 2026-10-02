@@ -21,6 +21,8 @@ const SLOW: Duration = Duration::from_secs(2);
 pub struct Snapshot {
     pub theme: String,
     pub library: String,
+    /// `crate::hotkey::Choice::encode` text for the global show/hide hotkey.
+    pub hotkey: String,
     pub memory: egui::Memory,
 }
 
@@ -29,6 +31,8 @@ pub struct Loaded {
     pub theme: crate::theme::ThemeSettings,
     pub library: Option<String>,
     pub memory: Option<egui::Memory>,
+    /// Missing or unrecognized stored text is the default, never a load error.
+    pub hotkey: crate::hotkey::Choice,
 }
 
 pub(crate) trait Backend: Send + 'static {
@@ -304,9 +308,16 @@ fn values_to_loaded(values: &BTreeMap<String, String>) -> Result<Loaded, String>
     }) {
         return Err("Saved UI scale is invalid; file preserved.".into());
     }
+    // Settings written before the hotkey existed (or by a newer build with an
+    // unknown choice) open with the default instead of locking the whole file.
+    let hotkey = values
+        .get(crate::hotkey::STORAGE_KEY)
+        .and_then(|text| crate::hotkey::Choice::parse(text))
+        .unwrap_or_default();
     Ok(Loaded {
         theme,
         library,
         memory,
+        hotkey,
     })
 }

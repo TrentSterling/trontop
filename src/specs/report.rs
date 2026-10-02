@@ -28,11 +28,10 @@ fn live_text(key: &LiveKey, live: LiveSource<'_>) -> String {
 }
 
 fn summary_line(line: &SummaryLine, live: LiveSource<'_>, reveal: bool) -> String {
-    let mut text = if line.private && !reveal {
-        HIDDEN.to_string()
-    } else {
-        value_text(&line.text)
-    };
+    if line.private && !reveal {
+        return HIDDEN.to_string();
+    }
+    let mut text = value_text(&line.text);
     if let Some(key) = &line.live {
         let _ = write!(text, "    {}", live_text(key, live));
     }
@@ -203,6 +202,9 @@ fn json_live(key: &LiveKey, live: LiveSource<'_>) -> serde_json::Value {
         if let Some(celsius) = value.celsius {
             out["celsius"] = f64::from(celsius).into();
         }
+        if value.cached {
+            out["cached"] = true.into();
+        }
         if let Some(source) = value.source {
             out["source"] = source.into();
         }
@@ -274,7 +276,9 @@ pub fn json(snapshot: &Snapshot, live: LiveSource<'_>, reveal: bool) -> serde_js
                     .iter()
                     .map(|line| {
                         let mut value = json_value(&line.text, line.private, reveal);
-                        if let Some(key) = &line.live {
+                        if (!line.private || reveal)
+                            && let Some(key) = &line.live
+                        {
                             value["live"] = json_live(key, live);
                         }
                         value

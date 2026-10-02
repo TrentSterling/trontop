@@ -210,6 +210,8 @@ fn json_snapshot(w: &mut impl Write, c: &Capture, stop: &AtomicBool) -> io::Resu
     array(w, "startup", s.startup.rows().map(|(source, entry)| json!({
         "name": entry.row.name, "source": source.source.name(), "state": source.row_state(entry, c.at),
         "observed_age_seconds": seconds(Some(entry.observed_at), c.at),
+        "approval_state": entry.row.control.as_ref().map_or("Unavailable", |control| control.approval.state().label()),
+        "approval_source": "last startup inventory; command observations not included",
         "key": private.then_some(&entry.row.key), "command": private.then_some(&entry.row.command)
     })), stop)?;
     array(w, "services", s.services.iter().map(|service| json!({

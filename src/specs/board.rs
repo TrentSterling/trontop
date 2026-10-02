@@ -115,8 +115,24 @@ fn bios_date(text: &str) -> Option<String> {
         2 => format!("19{year}"),
         _ => return None,
     };
+    if parts.next().is_some()
+        || !year.bytes().all(|b| b.is_ascii_digit())
+        || !month.bytes().all(|b| b.is_ascii_digit())
+        || !day.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let numeric_year = year.parse::<u16>().ok().filter(|y| *y != 0)?;
     let month = month.parse::<u8>().ok().filter(|m| (1..=12).contains(m))?;
-    let day = day.parse::<u8>().ok().filter(|d| (1..=31).contains(d))?;
+    let leap = numeric_year.is_multiple_of(4)
+        && (!numeric_year.is_multiple_of(100) || numeric_year.is_multiple_of(400));
+    let days = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    let day = day.parse::<u8>().ok().filter(|d| (1..=days).contains(d))?;
     Some(format!("{year}-{month:02}-{day:02}"))
 }
 
@@ -126,12 +142,12 @@ fn rom_size(bios: &smbios::Structure<'_>) -> Option<String> {
             let extended = bios.word(0x18)?;
             let size = extended & 0x3FFF;
             match extended >> 14 {
-                0 => Some(format!("{size} MB")),
-                1 => Some(format!("{size} GB")),
+                0 => Some(format!("{size} MiB")),
+                1 => Some(format!("{size} GiB")),
                 _ => None,
             }
         }
-        blocks => Some(format!("{} KB", (u32::from(blocks) + 1) * 64)),
+        blocks => Some(format!("{} KiB", (u32::from(blocks) + 1) * 64)),
     }
 }
 
@@ -143,20 +159,46 @@ struct Chipset {
     error: Option<String>,
 }
 
+fn append_chipset_rows(group: &mut Group, chipset: &Chipset) {
+    group.push_row(
+        Row::new("Chipset bridge (LPC/eSPI)", match &chipset.bridge {
+            Some((name, _)) => Value::known(name.clone()),
+            None => Value::unavailable(chipset.error.clone().unwrap_or_else(|| "no PCI ISA/LPC bridge reported by Windows".into())),
+        }).note("PCI class 0601 function of the platform controller hub; Windows names it generically, so no chipset model is claimed"),
+    );
+    if let Some((name, driver)) = &chipset.host {
+        let mut row = Row::known("Host bridge", name.clone());
+        if let Some(driver) = driver {
+            row = row.note(format!("Driver {driver}"));
+        }
+        group.push_row(row);
+    }
+}
+
 fn build(table: Option<&Table>, chipset: Chipset, issues: Vec<String>) -> Section {
     let mut section = Section::new(SectionId::Motherboard);
     for issue in issues {
         section.push_issue(issue);
     }
     let Some(table) = table else {
-        return Section::unavailable(
-            SectionId::Motherboard,
-            section
-                .issues
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "SMBIOS unavailable".into()),
-        );
+        let reason = section
+            .issues
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "SMBIOS unavailable".into());
+        if section.issues.is_empty() {
+            section.push_issue(reason.clone());
+        }
+        section.push_summary(SummaryLine::new(Value::unavailable(reason)));
+        if chipset.bridge.is_some() || chipset.host.is_some() {
+            let mut group = Group::new("Motherboard");
+            append_chipset_rows(&mut group, &chipset);
+            section.push_group(group);
+        }
+        if let Some(error) = chipset.error {
+            section.push_issue(format!("PCI inventory: {error}"));
+        }
+        return section;
     };
     let board = table.of_type(2).next();
     let system = table.of_type(1).next();
@@ -187,28 +229,7 @@ fn build(table: Option<&Table>, chipset: Chipset, issues: Vec<String>) -> Sectio
             )
             .private(),
         );
-    baseboard.push_row(
-        Row::new(
-            "Chipset bridge (LPC/eSPI)",
-            match &chipset.bridge {
-                Some((name, _)) => Value::known(name.clone()),
-                None => Value::unavailable(
-                    chipset
-                        .error
-                        .clone()
-                        .unwrap_or_else(|| "no PCI ISA/LPC bridge reported by Windows".into()),
-                ),
-            },
-        )
-        .note("PCI class 0601 function of the platform controller hub; Windows names it generically, so no chipset model is claimed"),
-    );
-    if let Some((name, driver)) = &chipset.host {
-        let mut row = Row::known("Host bridge", name.clone());
-        if let Some(driver) = driver {
-            row = row.note(format!("Driver {driver}"));
-        }
-        baseboard.push_row(row);
-    }
+    append_chipset_rows(&mut baseboard, &chipset);
     baseboard.push_row(
         Row::live("Temperature", LiveKey::MotherboardTemperature)
             .note("From a running sensor provider only; Windows exposes no board sensors"),
@@ -218,7 +239,9 @@ fn build(table: Option<&Table>, chipset: Chipset, issues: Vec<String>) -> Sectio
     if let Some(bios) = bios {
         let uefi = bios.byte(0x13).map(|b| b & 0x08 != 0);
         let release = match (bios.byte(0x14), bios.byte(0x15)) {
-            (Some(major), Some(minor)) if major != 0xFF => Some(format!("{major}.{minor}")),
+            (Some(major), Some(minor)) if major != 0xFF && minor != 0xFF => {
+                Some(format!("{major}.{minor}"))
+            }
             _ => None,
         };
         section.push_group(
@@ -379,6 +402,17 @@ pub fn collect(ctx: &Context) -> Section {
 #[cfg(windows)]
 fn native_chipset(ctx: &Context) -> Chipset {
     use super::native::setupapi::{Filter, Query, devices};
+    match devices(&Query::new(Filter::Enumerator("PCI"), ctx)) {
+        Ok(list) => chipset_from_devices(&list),
+        Err(error) => Chipset {
+            error: Some(error.to_string()),
+            ..Default::default()
+        },
+    }
+}
+
+#[cfg(windows)]
+fn chipset_from_devices(list: &[super::native::setupapi::DeviceInfo]) -> Chipset {
     let describe = |d: &super::native::setupapi::DeviceInfo| {
         let name = d.name().unwrap_or("PCI device").to_string();
         match PciId::parse(&d.hardware_ids) {
@@ -397,26 +431,18 @@ fn native_chipset(ctx: &Context) -> Chipset {
                 .starts_with(&format!("PCI\\CC_{code}"))
         })
     };
-    match devices(&Query::new(Filter::Enumerator("PCI"), ctx)) {
-        Ok(list) => {
-            let bridges = list
-                .iter()
-                .filter(|d| class(d, "0601"))
-                .map(describe)
-                .collect::<Vec<_>>();
-            Chipset {
-                bridge: (!bridges.is_empty()).then(|| (bridges.join("; "), None)),
-                host: list
-                    .iter()
-                    .find(|d| class(d, "0600"))
-                    .map(|d| (describe(d), d.driver_version.clone())),
-                error: None,
-            }
-        }
-        Err(error) => Chipset {
-            error: Some(error.to_string()),
-            ..Default::default()
-        },
+    let bridges = list
+        .iter()
+        .filter(|d| class(d, "0601"))
+        .map(describe)
+        .collect::<Vec<_>>();
+    Chipset {
+        bridge: (!bridges.is_empty()).then(|| (bridges.join("; "), None)),
+        host: list
+            .iter()
+            .find(|d| class(d, "0600"))
+            .map(|d| (describe(d), d.driver_version.clone())),
+        error: None,
     }
 }
 #[cfg(test)]
@@ -483,7 +509,7 @@ mod tests {
         let text = crate::specs::probe_text(std::slice::from_ref(&section));
         assert!(text.contains("  Fixture Board Co. FX-890"), "{text}");
         assert!(text.contains("Release date: 2026-07-15"), "{text}");
-        assert!(text.contains("ROM size: 32 MB"), "{text}");
+        assert!(text.contains("ROM size: 32 MiB"), "{text}");
         assert!(text.contains("UEFI support: Yes"), "{text}");
         assert!(
             text.contains("Product: Unavailable (not set by the manufacturer)"),
@@ -512,3 +538,6 @@ mod tests {
         println!("collected in {elapsed:.3} ms (private values masked)");
     }
 }
+
+#[cfg(test)]
+mod fixture_tests;

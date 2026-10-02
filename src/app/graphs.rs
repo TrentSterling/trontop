@@ -2,6 +2,8 @@
 use super::*;
 use std::time::{Duration, Instant};
 mod history;
+#[cfg(test)]
+mod interaction_tests;
 mod wall;
 pub(super) use history::disk_short_name as disk_label;
 use history::{Group, History, WINDOW};
@@ -56,6 +58,10 @@ pub(super) struct Dashboard {
     pub(super) fixed_now: Option<Instant>,
 }
 impl Dashboard {
+    pub(super) fn next_state_change(&self, now: Instant) -> Option<Instant> {
+        self.history.next_state_change(now)
+    }
+
     /// One remembered choice shared by Overview, Graphs, Performance and the
     /// small history bands. It lives in UI memory, separately from theme colors.
     pub(super) fn style_control(&mut self, ui: &mut egui::Ui, t: Tokens) -> bool {
@@ -856,6 +862,24 @@ fn legend_entries(card: &wall::Card<'_>, with_values: bool) -> Vec<String> {
         .collect()
 }
 
+/// A tooltip can use a nearby actual sample, never a retained value across a
+/// gap. Half a cadence is the boundary between adjacent sampling intervals.
+fn hovered_sample(chart: &history::Chart, at: Instant, now: Instant) -> Option<&history::Point> {
+    let distance = |point: &history::Point| {
+        if point.at > at {
+            point.at - at
+        } else {
+            at - point.at
+        }
+    };
+    chart
+        .points
+        .iter()
+        .filter(|point| point.at <= now && now.duration_since(point.at) <= WINDOW)
+        .min_by_key(|point| distance(point))
+        .filter(|point| distance(point) <= chart.cadence / 2)
+}
+
 fn plot(
     ui: &mut egui::Ui,
     card: &wall::Card<'_>,
@@ -1068,22 +1092,17 @@ fn plot(
             );
             let mut text = card.title.clone();
             for series in &card.series {
-                // Each series' own sample nearest in time to the hovered one.
-                let value = series
-                    .chart
-                    .points
-                    .iter()
-                    .min_by_key(|p| {
-                        if p.at > point.at {
-                            p.at - point.at
-                        } else {
-                            point.at - p.at
-                        }
-                    })
-                    .and_then(|p| p.value);
+                let value = hovered_sample(series.chart, point.at, now)
+                    .and_then(|sample| sample.value.map(|value| (value, sample.partial)));
                 let value = value.map_or_else(
                     || "No exact measurement".into(),
-                    |v| series.chart.unit.format(v),
+                    |(value, partial)| {
+                        format!(
+                            "{}{}",
+                            series.chart.unit.format(value),
+                            if partial { "+ (lower bound)" } else { "" }
+                        )
+                    },
                 );
                 if series.label.is_empty() {
                     text.push_str(&format!("\n{value}"));

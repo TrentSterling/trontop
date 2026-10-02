@@ -125,6 +125,18 @@ fn process_action_confirmation_is_nonblocking_and_keeps_its_original_target() {
 fn process_action_stale_confirmations_cannot_reach_injected_backend() {
     for control in [
         None,
+        Some(PendingControlAction::Suspend {
+            identity: ProcessIdentity {
+                pid: 900_001,
+                created_at_100ns: 1,
+            },
+        }),
+        Some(PendingControlAction::Resume {
+            identity: ProcessIdentity {
+                pid: 900_001,
+                created_at_100ns: 1,
+            },
+        }),
         Some(PendingControlAction::Priority {
             identity: ProcessIdentity {
                 pid: 900_001,
@@ -148,6 +160,14 @@ fn process_action_stale_confirmations_cannot_reach_injected_backend() {
             Controller::with_backend(ctx.clone(), |_| panic!("stale action executed"));
         app.selected_pid = Some(900_001);
         let label = match control {
+            Some(PendingControlAction::Suspend { .. }) => {
+                app.pending_control_action = control;
+                "Suspend process"
+            }
+            Some(PendingControlAction::Resume { .. }) => {
+                app.pending_control_action = control;
+                "Resume process"
+            }
             None => {
                 app.request_end_selected();
                 "End process"

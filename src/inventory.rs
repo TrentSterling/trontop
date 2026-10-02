@@ -214,6 +214,9 @@ impl Inventories {
     pub fn request_services(&self) {
         self.services.request();
     }
+    pub fn request_startup(&self) {
+        self.startup.request();
+    }
 }
 
 fn invalidate_startup(cache: &Arc<startup::Snapshot>, at: Instant) -> Arc<startup::Snapshot> {

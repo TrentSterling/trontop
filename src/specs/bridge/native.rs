@@ -5,10 +5,11 @@ use super::*;
 use crate::specs::native::{NativeError, wmi};
 use windows::Win32::Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND, HANDLE};
 use windows::Win32::System::Memory::{
-    FILE_MAP_READ, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS, MapViewOfFile,
-    OpenFileMappingW, UnmapViewOfFile, VirtualQuery,
+    FILE_MAP_READ, MEM_COMMIT, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS, MapViewOfFile,
+    OpenFileMappingW, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY,
+    PAGE_GUARD, PAGE_READONLY, PAGE_READWRITE, PAGE_WRITECOPY, UnmapViewOfFile, VirtualQuery,
 };
-use windows::core::w;
+use windows::core::HSTRING;
 
 const LARGEST_VIEW: usize = 16 * 1024 * 1024;
 
@@ -23,16 +24,20 @@ fn hardware_monitor(ctx: &Context, namespace: &str) -> Result<Vec<Raw>, String> 
     let hardware = connection
         .query("SELECT Identifier, Name FROM Hardware", timeout)
         .map_err(|e| e.to_string())?;
-    let names = hardware
-        .iter()
-        .filter_map(|row| Some((row.text("Identifier")?, row.text("Name")?)))
-        .collect::<BTreeMap<_, _>>();
     let rows = connection
         .query(
             "SELECT Identifier, Name, SensorType, Value, Parent FROM Sensor",
             ctx.timeout(Duration::from_secs(2)),
         )
         .map_err(|e| e.to_string())?;
+    Ok(hardware_monitor_rows(&hardware, &rows))
+}
+
+fn hardware_monitor_rows(hardware: &[wmi::WmiRow], rows: &[wmi::WmiRow]) -> Vec<Raw> {
+    let names = hardware
+        .iter()
+        .filter_map(|row| Some((row.text("Identifier")?, row.text("Name")?)))
+        .collect::<BTreeMap<_, _>>();
     let rows = rows
         .iter()
         .filter_map(|row| {
@@ -46,13 +51,13 @@ fn hardware_monitor(ctx: &Context, namespace: &str) -> Result<Vec<Raw>, String> 
             ))
         })
         .collect::<Vec<_>>();
-    Ok(from_wmi(&rows))
+    from_wmi(&rows)
 }
 
 struct Mapping(HANDLE);
 impl Drop for Mapping {
     fn drop(&mut self) {
-        // SAFETY: owns one handle from OpenFileMappingW.
+        // SAFETY: owns one section handle.
         unsafe {
             let _ = CloseHandle(self.0);
         }
@@ -70,19 +75,21 @@ impl Drop for View {
 }
 
 fn hwinfo() -> Result<Vec<Raw>, String> {
+    hwinfo_mapping(&HSTRING::from(r"Global\HWiNFO_SENS_SM2"))
+}
+
+fn hwinfo_mapping(name: &HSTRING) -> Result<Vec<Raw>, String> {
     // SAFETY: read-only open of a named section; no inheritance.
-    let mapping = unsafe {
-        OpenFileMappingW(FILE_MAP_READ.0, false, w!("Global\\HWiNFO_SENS_SM2"))
-    }
-    .map(Mapping)
-    .map_err(|error| {
-        if error.code() == ERROR_FILE_NOT_FOUND.to_hresult() {
-            "not running (shared memory not published; enable Shared Memory Support in HWiNFO)"
-                .to_string()
-        } else {
-            NativeError::from_windows("OpenFileMappingW", &error).to_string()
-        }
-    })?;
+    let mapping = unsafe { OpenFileMappingW(FILE_MAP_READ.0, false, name) }
+        .map(Mapping)
+        .map_err(|error| {
+            if error.code() == ERROR_FILE_NOT_FOUND.to_hresult() {
+                "not running (shared memory not published; enable Shared Memory Support in HWiNFO)"
+                    .to_string()
+            } else {
+                NativeError::from_windows("OpenFileMappingW", &error).to_string()
+            }
+        })?;
     // SAFETY: maps the whole section read-only.
     let view = View(unsafe { MapViewOfFile(mapping.0, FILE_MAP_READ, 0, 0, 0) });
     if view.0.Value.is_null() {
@@ -100,14 +107,31 @@ fn hwinfo() -> Result<Vec<Raw>, String> {
     if written == 0 {
         return Err(NativeError::last_error("VirtualQuery").to_string());
     }
+    let readable = PAGE_READONLY
+        | PAGE_READWRITE
+        | PAGE_WRITECOPY
+        | PAGE_EXECUTE_READ
+        | PAGE_EXECUTE_READWRITE
+        | PAGE_EXECUTE_WRITECOPY;
+    if written != std::mem::size_of::<MEMORY_BASIC_INFORMATION>()
+        || info.State != MEM_COMMIT
+        || info.Protect.0 & PAGE_GUARD.0 != 0
+        || info.Protect.0 & readable.0 == 0
+        || info.RegionSize == 0
+    {
+        return Err(
+            "HWiNFO shared memory is not readable (uncommitted, protected or guarded pages)".into(),
+        );
+    }
     let size = info.RegionSize.min(LARGEST_VIEW);
     // HWiNFO writes this memory from its own process, so no Rust reference to
     // it is ever formed: the bytes are copied raw and parsed from the copy
     // (bounds-checked; a torn copy can only mix two polls, never read out of
     // bounds).
     let mut bytes = Vec::<u8>::with_capacity(size);
-    // SAFETY: RegionSize bytes are mapped and readable, `bytes` has `size`
-    // bytes of capacity, the ranges cannot overlap, and u8 has no invalid
+    // SAFETY: VirtualQuery verified the first RegionSize bytes are committed,
+    // readable and unguarded; only this process can protect this held view.
+    // `bytes` has `size` bytes of capacity, the ranges cannot overlap, and u8 has no invalid
     // bit patterns; copied before unmapping.
     unsafe {
         std::ptr::copy_nonoverlapping(view.0.Value.cast::<u8>(), bytes.as_mut_ptr(), size);
@@ -117,6 +141,9 @@ fn hwinfo() -> Result<Vec<Raw>, String> {
     drop(mapping);
     parse_hwinfo(&bytes)
 }
+
+#[cfg(test)]
+mod tests;
 
 pub(super) fn poll(ctx: &Context) -> Poll {
     Poll {

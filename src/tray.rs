@@ -4,6 +4,18 @@ pub enum TrayAction {
     Quit,
 }
 
+#[cfg(windows)]
+fn queue_action(pending: &std::sync::atomic::AtomicU8, action: TrayAction) {
+    // A later Show click must not swallow an explicit Quit before the UI wakes.
+    pending.fetch_max(
+        match action {
+            TrayAction::Show => 1,
+            TrayAction::Quit => 2,
+        },
+        std::sync::atomic::Ordering::AcqRel,
+    );
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum TrayState {
@@ -103,15 +115,17 @@ fn mix(a: [u8; 3], b: [u8; 3], amount: f32) -> [u8; 3] {
 
 #[cfg(windows)]
 mod native {
-    use super::{CpuMeter, TraySample};
+    use super::{CpuMeter, TrayAction, TraySample, queue_action};
     use eframe::egui;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicU8, Ordering};
+    use std::sync::atomic::AtomicU8;
     use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
     use tray_icon::{
         Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
     };
     mod worker;
+    #[cfg(test)]
+    pub(crate) use worker::Backend;
     pub use worker::{TrayController, TraySink};
 
     struct NativeTray {
@@ -131,9 +145,9 @@ mod native {
         let quit = MenuItem::new("Quit Trontop", true, None);
         let show_id = show.id().clone();
         let quit_id = quit.id().clone();
-        let _ = menu.append(&show);
-        let _ = menu.append(&PredefinedMenuItem::separator());
-        let _ = menu.append(&quit);
+        menu.append(&show).ok()?;
+        menu.append(&PredefinedMenuItem::separator()).ok()?;
+        menu.append(&quit).ok()?;
 
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
@@ -157,7 +171,7 @@ mod native {
                     ..
                 }
             ) {
-                click_pending.store(1, Ordering::Release);
+                queue_action(&click_pending, TrayAction::Show);
                 click_ctx.request_repaint();
             }
         }));
@@ -166,10 +180,10 @@ mod native {
         let menu_ctx = ctx;
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
             if event.id == show_id {
-                menu_pending.store(1, Ordering::Release);
+                queue_action(&menu_pending, TrayAction::Show);
                 menu_ctx.request_repaint();
             } else if event.id == quit_id {
-                menu_pending.store(2, Ordering::Release);
+                queue_action(&menu_pending, TrayAction::Quit);
                 menu_ctx.request_repaint();
             }
         }));
@@ -233,6 +247,9 @@ mod native {
 
 #[cfg(windows)]
 pub use native::{TrayController, TraySink};
+
+#[cfg(all(test, windows))]
+pub(crate) use native::Backend;
 
 #[cfg(not(windows))]
 pub struct TrayController;
