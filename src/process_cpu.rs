@@ -153,6 +153,16 @@ struct SystemProcessInformation {
 }
 
 #[cfg(windows)]
+fn zeroed_buffer(words: usize) -> Result<Vec<u64>, String> {
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(words)
+        .map_err(|_| "Out of memory reading the process snapshot; sample skipped.".to_owned())?;
+    buffer.resize(words, 0);
+    Ok(buffer)
+}
+
+#[cfg(windows)]
 fn read_processes() -> Result<HashMap<u32, ProcessTimes>, String> {
     use std::ffi::c_void;
     #[link(name = "ntdll")]
@@ -169,7 +179,9 @@ fn read_processes() -> Result<HashMap<u32, ProcessTimes>, String> {
     const LIMIT_BYTES: usize = 256 << 20;
 
     // u64 elements keep the buffer 8-byte aligned for the native records.
-    let mut buffer = vec![0_u64; (2 << 20) / 8];
+    // Fallible: under system commit exhaustion an infallible allocation aborts
+    // the process (0xc0000409) before any hook runs; skip the sample instead.
+    let mut buffer = zeroed_buffer((2 << 20) / 8)?;
     for _ in 0..6 {
         let capacity = buffer.len() * 8;
         let mut returned = 0_u32;
@@ -187,7 +199,7 @@ fn read_processes() -> Result<HashMap<u32, ProcessTimes>, String> {
             if wanted > LIMIT_BYTES {
                 return Err("Process snapshot exceeded 256 MB.".into());
             }
-            buffer.resize(wanted.div_ceil(8), 0);
+            buffer = zeroed_buffer(wanted.div_ceil(8))?;
             continue;
         }
         if status < 0 {
