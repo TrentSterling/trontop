@@ -359,6 +359,7 @@ impl TrontopApp {
         let settings = self.theme;
         let mut open_page = None;
         let mut open_cores = false;
+        let mut open_gpu = false;
         let mut select_pid = None;
         let mut show_diagnostics = false;
         let icons = &mut self.process_icons;
@@ -399,7 +400,12 @@ impl TrontopApp {
 
                 // Row 1: KPI tiles.
                 tile_grid(ui, &kpis, columns, |ui, tile| {
-                    widgets::kpi_tile_sized(ui, &tile.kpi(), plan.kpi_height, settings, t);
+                    let response =
+                        widgets::kpi_tile_sized(ui, &tile.kpi(), plan.kpi_height, settings, t);
+                    if tile.label == "GPU" {
+                        let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+                        open_gpu |= response.clicked();
+                    }
                 });
                 ui.add_space(theme::space::L);
 
@@ -507,10 +513,14 @@ impl TrontopApp {
             .settled(ui, widgets::VERTICAL);
         if let Some(pid) = select_pid {
             self.selected_pid = Some(pid);
-            self.page = Page::Processes;
+            self.inspector_visible = true;
         }
         if let Some(page) = open_page {
             self.page = page;
+        }
+        if open_gpu {
+            self.performance_device = PerformanceDevice::Gpu;
+            self.page = Page::Performance;
         }
         if open_cores {
             self.graphs.show_all_cores();
@@ -1347,7 +1357,7 @@ fn process_row(
     response.on_hover_text(format!(
         "{}
 {pids}{}{}
-Click to select {} on Processes.",
+Click to inspect {} and manage it here on Overview.",
         app.lead.name,
         app.lead
             .executable

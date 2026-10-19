@@ -1555,7 +1555,7 @@ pub fn kpi_tile_sized(
 ) -> egui::Response {
     let response = ui.allocate_response(
         Vec2::new(ui.available_width(), height.max(KPI_TILE_HEIGHT)),
-        Sense::hover(),
+        Sense::click(),
     );
     let rect = response.rect;
     let hovered = response.contains_pointer() && ui.is_enabled();

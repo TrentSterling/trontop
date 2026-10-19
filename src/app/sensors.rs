@@ -359,6 +359,72 @@ impl TrontopApp {
     }
 }
 
+impl TrontopApp {
+    /// Temperature and power plots plus clocks, fan and VRAM tiles for one
+    /// NVML adapter, drawn inside the GPU detail page.
+    pub(super) fn gpu_sensor_block(&self, ui: &mut egui::Ui, adapter: &AdapterSensors) {
+        let t = self.colors();
+        let history = adapter
+            .uuid
+            .as_ref()
+            .and_then(|uuid| self.sensor_history.get(uuid));
+        let height = if ui.available_height() < 760.0 {
+            90.0
+        } else {
+            106.0
+        };
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.x = theme::space::GAP;
+            ui.columns(2, |columns| {
+                sensor_card(
+                    &mut columns[0],
+                    "GPU temperature",
+                    adapter.temperature_c.map(|v| format!("{v} °C")),
+                    "GPU die sensor, read-only NVML.",
+                    history,
+                    SensorPlot {
+                        power: false,
+                        height,
+                    },
+                    self.theme,
+                    t,
+                );
+                sensor_card(
+                    &mut columns[1],
+                    "Board power",
+                    adapter.power_w.map(|v| format!("{v:.1} W")),
+                    "Driver-reported board draw, read-only NVML.",
+                    history,
+                    SensorPlot {
+                        power: true,
+                        height,
+                    },
+                    self.theme,
+                    t,
+                );
+            });
+        });
+        ui.add_space(theme::space::GAP);
+        let details = sensor_details(adapter);
+        let note = "VRAM used excludes driver reservations.";
+        let per_row = if ui.available_width() >= 640.0 { 4 } else { 2 };
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.x = theme::space::GAP;
+            for (row_index, row) in details.chunks(per_row).enumerate() {
+                if row_index > 0 {
+                    ui.add_space(theme::space::GAP);
+                }
+                ui.columns(per_row, |columns| {
+                    for (index, (column, (label, value))) in columns.iter_mut().zip(row).enumerate()
+                    {
+                        render_metric(column, index, label, value, note, t);
+                    }
+                });
+            }
+        });
+    }
+}
+
 fn sensor_details(adapter: &AdapterSensors) -> [(&'static str, String); 4] {
     // A value the driver does not report is a muted "--" with the reason on
     // hover, never a word that reads like a measurement.

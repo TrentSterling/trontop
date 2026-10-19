@@ -140,6 +140,37 @@ Windows GPU Engine and GPU Adapter Memory counters.",
             });
         }
         ui.add_space(8.0);
+        {
+            let sensors = &self.snapshot.gpu_sensors.adapters;
+            let name = adapter.name();
+            let hw = sensors.iter().find(|s| s.name == name).or_else(|| {
+                (sensors.len() == 1 && !adapter.description.as_ref().is_some_and(|d| d.software))
+                    .then(|| &sensors[0])
+            });
+            if let Some(hw) = hw {
+                widgets::section_header(ui, "Temperature, power and clocks", None, t);
+                self.gpu_sensor_block(ui, hw);
+                ui.add_space(8.0);
+            }
+        }
+        {
+            let mut busy: Vec<(&str, u32, f32)> = self
+                .snapshot
+                .processes
+                .iter()
+                .filter_map(|p| Some((p.name.as_str(), p.pid, p.gpu_percent.value()?)))
+                .filter(|(_, _, v)| *v > 0.05)
+                .collect();
+            busy.sort_by(|a, b| b.2.total_cmp(&a.2));
+            widgets::section_header(ui, "Top GPU processes", None, t);
+            if busy.is_empty() {
+                widgets::hover_label(ui, "No process is using the GPU right now.");
+            }
+            for (name, pid, value) in busy.into_iter().take(8) {
+                widgets::detail_row(ui, &format!("{name} ({pid})"), &format!("{value:.1}%"), t);
+            }
+            ui.add_space(8.0);
+        }
         widgets::section_header(ui, "Engine histories", None, t);
         if adapter.engines.is_empty() {
             widgets::hover_label(
