@@ -17,8 +17,11 @@ Current public preview: **0.3.0-alpha.41**, Windows 11 x64, unsigned. Read the
 Trontop is a fast, native Windows process and performance manager. It is the tool I
 want open when Windows Task Manager has become part of the problem.
 
-Local development is paused at verified **alpha.51**: 589 passing ordinary
-tests and 93.34% production line coverage. [Resume anchor and remaining work](docs/RESUME_ANCHOR.md).
+Latest local build: **alpha.53**, with **End all instances** as the primary
+process action, a counted confirmation, and single-process/branch controls under
+**More process actions**. The ordinary suite passes 622 tests.
+[Process controls](docs/PROCESS_CONTROLS.md). The broader coverage and product
+goal retains its [earlier resume scope](docs/RESUME_ANCHOR.md).
 
 Version 0.3 alpha provides:
 
@@ -30,7 +33,7 @@ Version 0.3 alpha provides:
 - a persistent process inspector
 - current Windows priority and CPU affinity telemetry, plus confirmed scheduling controls
 - guarded process termination with explicit confirmation
-- local alpha.43: confirmed End process tree with a reviewed all-instances option,
+- local alpha.52: direct End all instances with confirmed single-process/branch alternatives,
   plus recoverable Suspend/Resume; [behavior and evidence](docs/PROCESS_CONTROLS.md)
 - local alpha.44: Startup approval states, confirmed Enable/Disable, exact session
   Undo and background Refresh; [behavior and evidence](docs/STARTUP_CONTROLS.md)

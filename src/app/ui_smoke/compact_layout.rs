@@ -67,14 +67,14 @@ fn compact_layout_keeps_process_headers_and_actions_visible_without_inspector() 
                 }
                 // Nav sidebar is a fixed 196 px column; the command bar goes
                 // compact below 1100 px of what remains. With no process
-                // selected, End task and Inspector have nothing to act on and
+                // selected, End all instances and Inspector have nothing to act on and
                 // disappear entirely there instead of sitting disabled.
                 let compact = size.x - 196.0 < 1100.0;
                 if compact {
-                    assert!(command_rect(&ctx, "End task").is_none());
+                    assert!(command_rect(&ctx, "End all instances").is_none());
                     assert!(command_rect(&ctx, "Inspector").is_none());
                 } else {
-                    for label in ["End task", "Inspector"] {
+                    for label in ["End all instances", "Inspector"] {
                         let rect = command_rect(&ctx, label)
                             .unwrap_or_else(|| panic!("missing command {label}"));
                         assert!(

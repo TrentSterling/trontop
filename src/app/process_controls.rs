@@ -10,6 +10,10 @@ pub(super) struct PendingEndTree {
 }
 
 impl TrontopApp {
+    pub(super) fn request_end_all_selected(&mut self) {
+        self.request_end_group_selected(Scope::AllInstances);
+    }
+
     pub(super) fn observed_process_state(&self, process: &ProcessRow) -> String {
         if process
             .identity()
@@ -22,6 +26,10 @@ impl TrontopApp {
     }
 
     pub(super) fn request_end_tree_selected(&mut self) {
+        self.request_end_group_selected(Scope::SelectedTree);
+    }
+
+    fn request_end_group_selected(&mut self, scope: Scope) {
         if !self.process_actions.ready() {
             return;
         }
@@ -35,7 +43,6 @@ impl TrontopApp {
             ));
             return;
         };
-        let scope = Scope::SelectedTree;
         self.pending_end_tree = Some(PendingEndTree {
             root,
             name: process.name.clone(),
@@ -53,29 +60,23 @@ impl TrontopApp {
         let t = self.colors();
         let mut cancel = false;
         let mut submitted = false;
-        let closed = widgets::action_dialog(ctx, "Confirm end process tree", 520.0, t, |ui| {
+        let all = pending.scope == Scope::AllInstances;
+        let title = if all {
+            "Confirm end all instances"
+        } else {
+            "Confirm end this branch"
+        };
+        let closed = widgets::action_dialog(ctx, title, 520.0, t, |ui| {
             widgets::identity_card(
                 ui,
                 &pending.name,
                 &format!("Selected PID {}", pending.root.pid),
                 t,
             );
-            let mut all = pending.scope == Scope::AllInstances;
-            if ui
-                .checkbox(&mut all, "End all instances of this executable")
-                .changed()
-            {
-                pending.scope = if all {
-                    Scope::AllInstances
-                } else {
-                    Scope::SelectedTree
-                };
-                pending.review = Plan::build(&self.snapshot.processes, pending.root, pending.scope);
-            }
             widgets::hover_label(ui, RichText::new(if all {
-                "Includes separate browser windows and profiles using the same executable, plus their children."
+                "All instances of this executable and their children, across windows and profiles."
             } else {
-                "Includes the selected process and its children. Separate instances and sibling processes are excluded."
+                "This process and its children. Other branches stay open."
             }).color(t.text_muted));
             widgets::hover_label(ui, RichText::new("Processes will be terminated immediately. Unsaved work in every listed process will be lost.").color(t.ink(t.danger)));
             ui.add_space(6.0);
@@ -86,43 +87,61 @@ impl TrontopApp {
             });
             match &pending.review {
                 Ok(plan) => {
-                    // Keep dialog geometry stable when the scope changes.
-                    if let Some(path) = plan.executable() {
-                        ui.add(
-                            egui::Label::new(RichText::new(path).size(10.0).color(t.text_muted))
-                                .truncate(),
-                        )
-                        .on_hover_text(path);
-                    }
                     widgets::hover_label(
                         ui,
                         RichText::new(format!(
-                            "{} processes in the reviewed list",
-                            plan.targets().len()
+                            "End {} {}?",
+                            plan.targets().len(),
+                            if plan.targets().len() == 1 {
+                                "process"
+                            } else {
+                                "processes"
+                            }
                         ))
                         .strong()
                         .color(t.text),
                     );
-                    egui::ScrollArea::vertical()
-                        .id_salt("end_tree_targets")
-                        .max_height((ctx.content_rect().height() - 400.0).clamp(68.0, 220.0))
-                        .auto_shrink([false, true])
-                        .show_rows(ui, 24.0, plan.targets().len(), |ui, range| {
-                            for target in &plan.targets()[range] {
-                                ui.horizontal(|ui| {
-                                    ui.add_space((target.depth.min(8) * 10) as f32);
-                                    ui.label(
-                                        RichText::new(format!("{:>6}", target.identity.pid))
-                                            .monospace()
-                                            .color(t.text_muted),
-                                    );
-                                    ui.add(
-                                        egui::Label::new(RichText::new(&target.name).color(t.text))
-                                            .truncate(),
+                    egui::CollapsingHeader::new("Review processes")
+                        .id_salt("end_process_targets_review")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            if let Some(path) = plan.executable() {
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(path).size(10.0).color(t.text_muted),
                                     )
-                                    .on_hover_text(&target.name);
-                                });
+                                    .truncate(),
+                                )
+                                .on_hover_text(path);
                             }
+                            egui::ScrollArea::vertical()
+                                .id_salt("end_tree_targets")
+                                .max_height(
+                                    (ctx.content_rect().height() - 400.0).clamp(68.0, 180.0),
+                                )
+                                .auto_shrink([false, true])
+                                .show_rows(ui, 24.0, plan.targets().len(), |ui, range| {
+                                    for target in &plan.targets()[range] {
+                                        ui.horizontal(|ui| {
+                                            ui.add_space((target.depth.min(8) * 10) as f32);
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{:>6}",
+                                                    target.identity.pid
+                                                ))
+                                                .monospace()
+                                                .color(t.text_muted),
+                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(&target.name).color(t.text),
+                                                )
+                                                .truncate(),
+                                            )
+                                            .on_hover_text(&target.name);
+                                        });
+                                    }
+                                });
                         });
                     widgets::hover_label(ui, RichText::new(if current {
                         "Only listed processes are targeted. New processes require another confirmation."
@@ -142,9 +161,23 @@ impl TrontopApp {
                         Plan::build(&self.snapshot.processes, pending.root, pending.scope);
                 }
                 // A refresh never submits in the same interaction. It must be reviewed.
+                let end_label = pending.review.as_ref().map_or_else(
+                    |_| "End processes".to_owned(),
+                    |plan| {
+                        format!(
+                            "End {} {}",
+                            plan.targets().len(),
+                            if plan.targets().len() == 1 {
+                                "process"
+                            } else {
+                                "processes"
+                            }
+                        )
+                    },
+                );
                 if widgets::action_button_enabled(
                     ui,
-                    RichText::new("End listed processes").color(Color32::WHITE),
+                    RichText::new(end_label).color(Color32::WHITE),
                     Vec2::ZERO,
                     t.danger,
                     t,

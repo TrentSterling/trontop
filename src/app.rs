@@ -988,32 +988,33 @@ impl TrontopApp {
                         }
                         let selected = self.selected_pid.is_some();
                         // Below the 1100 px label breakpoint, an unselected row
-                        // leaves End task and Inspector nothing to act on, so
+                        // leaves End all instances and Inspector nothing to act on, so
                         // they disappear entirely instead of sitting there
                         // disabled and icon-only. At full width they stay put,
                         // just disabled, since there is room to spare.
                         let show_process_actions = selected || !compact;
-                        if matches!(self.page, Page::Processes | Page::Details)
+                        if matches!(self.page, Page::Overview | Page::Processes | Page::Details)
                             && show_process_actions
                         {
                             ui.add_space(theme::space::M);
-                            let can_end = selected && !self.process_actions.busy();
+                            let can_end = selected && self.process_actions.ready();
                             if ui
                                 .add_enabled_ui(can_end, |ui| {
                                     command_button(
                                         ui,
                                         Icon::Stop,
-                                        "End task",
-                                        compact,
-                                        t.panel_raised,
+                                        "End all instances",
+                                        false,
+                                        t.danger,
                                         t,
                                     )
                                 })
                                 .inner
-                                .on_disabled_hover_text("Select a process to end it.")
+                                .on_hover_text("End every instance of this executable and its children. Review and confirm first.")
+                                .on_disabled_hover_text("Select a process and wait for the action worker.")
                                 .clicked()
                             {
-                                self.request_end_selected();
+                                self.request_end_all_selected();
                             }
                             let fill = if selected && self.inspector_visible {
                                 t.accent_dim
@@ -1124,7 +1125,7 @@ impl TrontopApp {
     }
 
     fn inspector(&mut self, root: &mut egui::Ui) {
-        if !matches!(self.page, Page::Processes | Page::Details)
+        if !matches!(self.page, Page::Overview | Page::Processes | Page::Details)
             || !self.inspector_visible
             || self.selected_process().is_none()
         {
@@ -1145,7 +1146,7 @@ impl TrontopApp {
             .show(root, |ui| {
                 widgets::hover_label(ui, RichText::new("INSPECTOR").size(10.0).strong().color(t.text_muted));
                 ui.add_space(10.0);
-                // Identity and the confirmed End task action stay above the scroll.
+                // Identity and the confirmed End all instances action stay above the scroll.
                 if let Some(process) = self.selected_process().cloned() {
                     let state_label = self.observed_process_state(&process);
                     ui.horizontal(|ui| {
@@ -1155,18 +1156,30 @@ impl TrontopApp {
                     ui.add_space(8.0);
                     ui.add(egui::Label::new(RichText::new(&process.name).size(19.0).strong().color(t.text)).truncate())
                         .on_hover_text(&process.name);
+                    if self.page == Page::Overview && ui.link("Open in Details").clicked() {
+                        self.page = Page::Details;
+                    }
                     ui.add_space(10.0);
                     ui.scope(|ui| {
-                        if widgets::action_button_enabled(ui, RichText::new("End task").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t, self.process_actions.ready())
+                        if widgets::action_button_enabled(ui, RichText::new("End all instances").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t, self.process_actions.ready())
+                            .on_hover_text("End every instance of this executable and its children. Review and confirm first.")
                             .on_disabled_hover_text("Wait for the process action worker to be ready.")
                             .clicked()
                         {
-                            self.request_end_selected();
+                            self.request_end_all_selected();
                         }
-                        if widgets::action_button_enabled(ui, RichText::new("End process tree").color(t.text), Vec2::new(ui.available_width(), 30.0), t.panel_raised, t, self.process_actions.ready())
-                            .on_hover_text("Review this branch or every instance of the same executable before ending them.").clicked() {
-                            self.request_end_tree_selected();
-                        }
+                        ui.add_enabled_ui(self.process_actions.ready(), |ui| {
+                            ui.menu_button("More process actions", |ui| {
+                                if ui.button("End this process").on_hover_text("Only the selected PID, after confirmation.").clicked() {
+                                    self.request_end_selected();
+                                    ui.close();
+                                }
+                                if ui.button("End this branch").on_hover_text("The selected process and its children, after confirmation.").clicked() {
+                                    self.request_end_tree_selected();
+                                    ui.close();
+                                }
+                            });
+                        });
                     });
                 }
                 ui.separator();

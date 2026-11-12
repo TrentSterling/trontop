@@ -244,7 +244,7 @@ fn polish_bar_history_preserves_gaps_and_zero_samples() {
 }
 
 #[test]
-fn polish_inspector_end_task_stays_above_scroll_and_requires_confirmation() {
+fn polish_inspector_end_all_stays_above_scroll_and_requires_confirmation() {
     let ctx = egui::Context::default();
     let settings = ThemeSettings::default();
     theme::install(&ctx, settings);
@@ -263,7 +263,8 @@ fn polish_inspector_end_task_stays_above_scroll_and_requires_confirmation() {
         text_shapes(out)
             .into_iter()
             .filter(|(t, clip)| {
-                t.galley.job.text == "End task" && clip.contains_rect(t.visual_bounding_rect())
+                t.galley.job.text == "End all instances"
+                    && clip.contains_rect(t.visual_bounding_rect())
             })
             .map(|(t, _)| t.visual_bounding_rect())
             .max_by(|a, b| a.center().y.total_cmp(&b.center().y))
@@ -274,7 +275,7 @@ fn polish_inspector_end_task_stays_above_scroll_and_requires_confirmation() {
         out = frame(&ctx, &mut app, size, vec![]);
     }
     let before = end_rect(&out);
-    assert!(before.bottom() < 280.0, "End task is buried");
+    assert!(before.bottom() < 280.0, "End all instances is buried");
     let at = egui::pos2(size.x - 100.0, size.y - 100.0);
     for _ in 0..10 {
         out = frame(
@@ -292,14 +293,14 @@ fn polish_inspector_end_task_stays_above_scroll_and_requires_confirmation() {
             ],
         );
     }
-    assert_eq!(end_rect(&out), before, "End task scrolled away");
+    assert_eq!(end_rect(&out), before, "End all instances scrolled away");
     frame(&ctx, &mut app, size, pointer(before.center(), true));
     frame(&ctx, &mut app, size, pointer(before.center(), false));
-    assert!(app.pending_end_task.is_some());
+    assert!(app.pending_end_tree.is_some());
     assert_eq!(
         calls.load(std::sync::atomic::Ordering::SeqCst),
         0,
-        "End task bypassed confirmation"
+        "End all instances bypassed confirmation"
     );
 }
 

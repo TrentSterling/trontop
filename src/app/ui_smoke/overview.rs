@@ -754,7 +754,7 @@ fn overview_links_open_sensors_processes_cores_and_degraded_source_details() {
 }
 
 #[test]
-fn overview_group_click_selects_the_heaviest_instance_and_opens_processes() {
+fn overview_group_click_inspects_the_heaviest_instance_without_leaving_overview() {
     let ctx = egui::Context::default();
     let mut app = app(ThemeSettings::default(), true);
     let original = app.snapshot.processes[0].clone();
@@ -788,7 +788,8 @@ fn overview_group_click_selects_the_heaviest_instance_and_opens_processes() {
         Vec2::new(1100.0, 900.0),
         "Fixture browser.exe",
     );
-    assert_eq!(app.page, Page::Processes);
+    assert_eq!(app.page, Page::Overview);
+    assert!(app.inspector_visible);
     assert_eq!(app.selected_pid, Some(900_011));
     assert_eq!(app.selected_process().unwrap().name, "Fixture browser.exe");
     assert!(!app.process_actions.busy());
