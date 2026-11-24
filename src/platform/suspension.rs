@@ -52,7 +52,7 @@ impl Suspensions {
 }
 
 #[cfg(windows)]
-struct Hold {
+pub(super) struct Hold {
     identity: ProcessIdentity,
     state: StateHandle,
     process: ProcessHandle,
@@ -61,7 +61,7 @@ struct Hold {
 
 #[cfg(windows)]
 impl Hold {
-    fn create(identity: ProcessIdentity) -> Result<Self, String> {
+    pub(super) fn create(identity: ProcessIdentity) -> Result<Self, String> {
         use windows::Win32::Foundation::HANDLE;
         use windows::Win32::System::Threading::{PROCESS_SET_INFORMATION, PROCESS_SUSPEND_RESUME};
         let process =

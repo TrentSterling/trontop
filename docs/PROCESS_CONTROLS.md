@@ -1,17 +1,26 @@
-# Process tree and suspension controls, alpha.43
+# Process controls, alpha.53
 
-Trent requested End process tree because ending a selected Chrome or Firefox child
-can leave the rest of the browser running. The inspector now pins End process tree
-below End task. Both require confirmation; End task still targets one process.
+Overview keeps its process inspector and actions on the dashboard. Click a top CPU
+or memory row, then use End all instances or More process actions. Confirming or
+cancelling an action never changes the selected page. Open in Details is explicit.
 
-The tree dialog starts with the selected process and its descendants. Check
-**End all instances of this executable** to include independent processes using
-the same executable path and their descendants, including other browser windows
-and profiles. Processes with the same filename in a different directory are
-excluded. Missing paths or creation times explain why a complete list cannot be
-confirmed. The list shows every captured target with its PID and name, with a
-scrollbar for large lists. Cancel, Refresh targets and confirmation remain visible
-at 1000x580 in both themes and scopes.
+Selecting a Chrome or Firefox child and ending only that branch can leave the
+rest of the browser running. **End all instances** is now the primary action in
+the command bar and inspector. Its label stays visible at compact widths. It
+opens an all-instances confirmation directly, including independent processes
+using the same executable path and their descendants across windows and profiles.
+
+There is no scope checkbox. The confirmation shows the target count and an
+**End N processes** button. Expand **Review processes** to inspect executable path,
+PIDs and names. **More process actions** in the inspector offers **End this
+process** for a single PID and **End this branch** for that process and its
+children, each with its own confirmation. These narrower actions do not change
+the primary button's all-instances default.
+
+Processes with the same filename in a different directory are excluded. Missing
+paths or creation times explain why a complete list cannot be confirmed, without
+silently falling back to one PID. The expanded target list scrolls for large
+groups. Cancel, Refresh targets and confirmation remain visible at compact sizes.
 
 The dialog freezes the original process identity and the reviewed list. Changing
 the table selection cannot redirect it. Changed membership, parent relationships,
@@ -68,7 +77,21 @@ release. The [phnt declarations](https://github.com/winsiderss/phnt/blob/master/
 provide the native ABI reference (MIT); no third-party control implementation was
 ported.
 
-Verification: the ordinary suite passes **455 tests, 0 failures, 52 ignored**.
+Alpha.52 verification (2026-10-04): **622 passed, 0 failed, 60 ignored**;
+formatting, strict all-target Clippy and optimized release passed. The focused
+process-control UI suite passes eight checks, including the direct all-instances
+path from both process pages with the inspector hidden, the granular menu,
+missing executable paths, original target identity, stale membership and compact
+dark/light geometry. Four offscreen review images were rendered and inspected.
+The ordinary suite also verifies termination using owned hidden process trees.
+Review artifacts are in `target/review/alpha52-end-all/`, with UI images in
+`target/ui-smoke/process-controls-alpha52/`. The new release was opened and its
+visible, responding window and existing Windows Startup shortcut were verified.
+The frozen-source instrumented run passed the same 622 tests, all 24 fixed
+read-only probes and ten analyzer checks. Its receipt is in
+`target/coverage/runs/20261004-153510-785/` (24,674/26,449 production lines, 93.29%).
+
+Historical alpha.43 verification: **455 tests, 0 failures, 52 ignored**.
 Strict all-target Clippy and format checks pass. The five process-control UI
 regressions pass after the final geometry change. Three final offscreen PNGs
 (compact dark tree, compact light all-instances, compact dark inspector) were

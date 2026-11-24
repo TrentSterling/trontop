@@ -143,11 +143,20 @@ launch does not assert that the broader completion ledger is closed.
 
 ## Required: useful task manager
 
+- [x] **A41: Overview process actions stay on Overview.** Requested 2026-10-12.
+  Alpha.53 selects and inspects in place; single, branch and all-instance actions
+  preserve the page. Cancel and explicit Details navigation verified headlessly
+  in both themes. 624 ordinary tests passed and six offscreen renders reviewed.
+  Installed and restarted with Trent's explicit approval; broader A38 acceptance is separate.
+
 - [ ] **A38: End process tree and all browser instances. REVIEW.** Trent explicitly
   requested this during the September 29 iteration: selecting a Chrome or Firefox
-  child should offer a way to end the whole application. Alpha.43 adds a pinned
-  End process tree action and a confirmed all-instances option using the same
-  executable path. The dialog freezes and lists targets, requires refreshed review
+  child should offer a way to end the whole application. His October 4 review
+  requested the faster all-instances action by default. Alpha.52 makes **End all
+  instances** primary in the command bar and inspector, with one counted
+  confirmation and no scope checkbox. Single-process and branch actions remain
+  under **More process actions**. Matching uses the same executable path.
+  The dialog freezes targets, offers an expandable list, requires refreshed review
   when membership changes, and the worker verifies all captured native identities,
   protection and parent links before starting. Evidence and limits belong in
   `docs/PROCESS_CONTROLS.md`. Trent's review of the exact candidate remains open.

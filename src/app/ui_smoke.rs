@@ -40,6 +40,7 @@ mod startup_controls;
 mod system;
 mod table_layout;
 mod theme_controls;
+mod toolbox_page;
 #[cfg(windows)]
 mod tray_close;
 
@@ -252,7 +253,7 @@ fn fixture() -> SystemSnapshot {
     }
 }
 
-fn app(settings: ThemeSettings, populated: bool) -> TrontopApp {
+pub(super) fn app(settings: ThemeSettings, populated: bool) -> TrontopApp {
     let mut app = TrontopApp::with_services(settings, None, None);
     if populated {
         let mut snapshot = fixture();
@@ -434,7 +435,7 @@ fn inventory_state_fixture(app: &mut TrontopApp, page: Page, state: u8) {
     app.page = page;
 }
 
-fn frame(
+pub(super) fn frame(
     ctx: &egui::Context,
     app: &mut TrontopApp,
     size: Vec2,
@@ -2109,7 +2110,7 @@ fn command_rect(ctx: &egui::Context, label: &str) -> Option<egui::Rect> {
         .map(|(_, rect)| rect)
 }
 
-fn click_local_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label: &str) {
+pub(super) fn click_local_text(ctx: &egui::Context, app: &mut TrontopApp, size: Vec2, label: &str) {
     click_local_text_output(ctx, app, size, label);
 }
 

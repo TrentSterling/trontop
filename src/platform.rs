@@ -1,6 +1,8 @@
 use crate::model::{PriorityClass, ProcessControlInfo, ProcessIdentity};
 use std::path::Path;
 
+#[cfg(windows)]
+pub(crate) mod minimized;
 mod suspension;
 pub use suspension::Suspensions;
 #[cfg(all(test, windows))]

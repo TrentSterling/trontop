@@ -88,19 +88,16 @@ pub fn decode(kind: u32, bytes: &[u8]) -> Option<RegValue> {
 #[cfg(windows)]
 mod native {
     use super::*;
-    #[cfg(test)]
     use windows::Win32::Foundation::ERROR_NO_MORE_ITEMS;
     use windows::Win32::Foundation::{
         ERROR_FILE_NOT_FOUND, ERROR_MORE_DATA, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, WIN32_ERROR,
     };
-    #[cfg(test)]
     use windows::Win32::System::Registry::RegEnumKeyExW;
     use windows::Win32::System::Registry::{
         HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE,
         KEY_WOW64_64KEY, REG_VALUE_TYPE, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
     };
     use windows::core::PCWSTR;
-    #[cfg(test)]
     use windows::core::PWSTR;
 
     struct Key(HKEY);
@@ -192,7 +189,6 @@ mod native {
     }
 
     /// Up to `limit` subkey names. Ok(empty) when the key is absent.
-    #[cfg(test)]
     pub fn subkeys(hive: Hive, path: &str, limit: usize) -> Result<Vec<String>, NativeError> {
         let Some(key) = open(hive, path)? else {
             return Ok(Vec::new());
@@ -231,7 +227,7 @@ mod native {
 
 #[cfg(windows)]
 pub use native::read;
-#[cfg(all(windows, test))]
+#[cfg(windows)]
 pub use native::subkeys;
 
 #[cfg(test)]

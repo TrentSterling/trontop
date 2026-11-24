@@ -38,6 +38,10 @@ use app::TrontopApp;
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    #[cfg(windows)]
+    if let Some(code) = app::scheduled_cleaner(&std::env::args_os().skip(1).collect::<Vec<_>>()) {
+        std::process::exit(code);
+    }
     let failures = std::sync::Arc::new(failure::Recorder::new(
         trontop_state_directory().map(|root| root.join(failure::LOG_NAME)),
     ));

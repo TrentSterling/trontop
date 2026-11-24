@@ -303,7 +303,9 @@ fn gpu_frame(app: &mut TrontopApp, width: f32) -> egui::FullOutput {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    Vec2::new(width, 1800.0),
+                    // This harness measures every engine, including the last
+                    // card in the single-column layout below the sensor block.
+                    Vec2::new(width, 3200.0),
                 )),
                 ..Default::default()
             },

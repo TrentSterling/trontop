@@ -257,7 +257,9 @@ pub fn nav_button(
     label: &str,
     t: Tokens,
 ) -> egui::Response {
-    let height = if ui.ctx().content_rect().height() < 700.0 {
+    let height = if ui.ctx().content_rect().height() < 620.0 {
+        25.0
+    } else if ui.ctx().content_rect().height() < 700.0 {
         28.0
     } else {
         32.0

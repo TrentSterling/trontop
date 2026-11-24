@@ -36,6 +36,9 @@ mod service_controls;
 mod startup_controls;
 mod storage;
 mod system;
+mod toolbox;
+#[cfg(windows)]
+pub(crate) use toolbox::scheduled_cleaner;
 mod tree_state;
 mod window;
 
@@ -56,6 +59,7 @@ enum Page {
     Details,
     Services,
     System,
+    Toolbox,
 }
 
 impl Page {
@@ -72,10 +76,11 @@ impl Page {
             Self::Details => Icon::Details,
             Self::Services => Icon::Services,
             Self::System => Icon::System,
+            Self::Toolbox => Icon::Drive,
         }
     }
 
-    const ALL: [(Self, &'static str, &'static str); 11] = [
+    const ALL: [(Self, &'static str, &'static str); 12] = [
         (Self::Overview, "00", "Overview"),
         (Self::Graphs, "09", "Graphs"),
         (Self::Processes, "01", "Processes"),
@@ -87,6 +92,7 @@ impl Page {
         (Self::Services, "07", "Services"),
         (Self::Sensors, "08", "Hardware sensors"),
         (Self::System, "10", "System"),
+        (Self::Toolbox, "11", "Toolbox"),
     ];
 
     /// Sidebar groups, top to bottom. Every page appears exactly once.
@@ -104,7 +110,10 @@ impl Page {
             "Processes",
             &[Self::Processes, Self::Details, Self::Users, Self::History],
         ),
-        ("System", &[Self::Startup, Self::Services, Self::System]),
+        (
+            "System",
+            &[Self::Toolbox, Self::Startup, Self::Services, Self::System],
+        ),
     ];
 
     /// The page name shown in the navigation and the command bar.
@@ -126,7 +135,7 @@ impl Page {
                 "Processes ranked by CPU time since they started, with their total I/O."
             }
             // Startup leads with its controls and source chips at compact sizes.
-            Self::Startup => "",
+            Self::Startup | Self::Toolbox => "",
             Self::Users => "Resource use per Windows account.",
             Self::Details => "Every process with all counters. Drag column edges to resize.",
             // Services leads with its control row instead; the buttons'
@@ -197,6 +206,7 @@ pub struct TrontopApp {
     snapshot: SystemSnapshot,
     seen_generation: u64,
     page: Page,
+    toolbox: toolbox::Toolbox,
     performance_device: PerformanceDevice,
     query: String,
     secondary_query: String,
@@ -323,6 +333,7 @@ impl TrontopApp {
             snapshot: SystemSnapshot::default(),
             seen_generation: 0,
             page: Page::Processes,
+            toolbox: Default::default(),
             performance_device: PerformanceDevice::Cpu,
             query: String::new(),
             secondary_query: String::new(),
@@ -450,6 +461,10 @@ impl TrontopApp {
                 self.show_affinity_editor = false;
                 // Pending confirmations keep their original target, never a reused PID.
             }
+        }
+        if self.seen_generation > 0 {
+            self.toolbox
+                .observe_volumes(&self.snapshot.disks, &snapshot.disks);
         }
         self.seen_generation = snapshot.sequence;
         self.graphs.sample(&snapshot, std::time::Instant::now());
@@ -988,32 +1003,33 @@ impl TrontopApp {
                         }
                         let selected = self.selected_pid.is_some();
                         // Below the 1100 px label breakpoint, an unselected row
-                        // leaves End task and Inspector nothing to act on, so
+                        // leaves End all instances and Inspector nothing to act on, so
                         // they disappear entirely instead of sitting there
                         // disabled and icon-only. At full width they stay put,
                         // just disabled, since there is room to spare.
                         let show_process_actions = selected || !compact;
-                        if matches!(self.page, Page::Processes | Page::Details)
+                        if matches!(self.page, Page::Overview | Page::Processes | Page::Details)
                             && show_process_actions
                         {
                             ui.add_space(theme::space::M);
-                            let can_end = selected && !self.process_actions.busy();
+                            let can_end = selected && self.process_actions.ready();
                             if ui
                                 .add_enabled_ui(can_end, |ui| {
                                     command_button(
                                         ui,
                                         Icon::Stop,
-                                        "End task",
-                                        compact,
-                                        t.panel_raised,
+                                        "End all instances",
+                                        false,
+                                        t.danger,
                                         t,
                                     )
                                 })
                                 .inner
-                                .on_disabled_hover_text("Select a process to end it.")
+                                .on_hover_text("End every instance of this executable and its children. Review and confirm first.")
+                                .on_disabled_hover_text("Select a process and wait for the action worker.")
                                 .clicked()
                             {
-                                self.request_end_selected();
+                                self.request_end_all_selected();
                             }
                             let fill = if selected && self.inspector_visible {
                                 t.accent_dim
@@ -1124,7 +1140,7 @@ impl TrontopApp {
     }
 
     fn inspector(&mut self, root: &mut egui::Ui) {
-        if !matches!(self.page, Page::Processes | Page::Details)
+        if !matches!(self.page, Page::Overview | Page::Processes | Page::Details)
             || !self.inspector_visible
             || self.selected_process().is_none()
         {
@@ -1145,7 +1161,7 @@ impl TrontopApp {
             .show(root, |ui| {
                 widgets::hover_label(ui, RichText::new("INSPECTOR").size(10.0).strong().color(t.text_muted));
                 ui.add_space(10.0);
-                // Identity and the confirmed End task action stay above the scroll.
+                // Identity and the confirmed End all instances action stay above the scroll.
                 if let Some(process) = self.selected_process().cloned() {
                     let state_label = self.observed_process_state(&process);
                     ui.horizontal(|ui| {
@@ -1155,18 +1171,30 @@ impl TrontopApp {
                     ui.add_space(8.0);
                     ui.add(egui::Label::new(RichText::new(&process.name).size(19.0).strong().color(t.text)).truncate())
                         .on_hover_text(&process.name);
+                    if self.page == Page::Overview && ui.link("Open in Details").clicked() {
+                        self.page = Page::Details;
+                    }
                     ui.add_space(10.0);
                     ui.scope(|ui| {
-                        if widgets::action_button_enabled(ui, RichText::new("End task").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t, self.process_actions.ready())
+                        if widgets::action_button_enabled(ui, RichText::new("End all instances").color(Color32::WHITE), Vec2::new(ui.available_width(), 34.0), t.danger, t, self.process_actions.ready())
+                            .on_hover_text("End every instance of this executable and its children. Review and confirm first.")
                             .on_disabled_hover_text("Wait for the process action worker to be ready.")
                             .clicked()
                         {
-                            self.request_end_selected();
+                            self.request_end_all_selected();
                         }
-                        if widgets::action_button_enabled(ui, RichText::new("End process tree").color(t.text), Vec2::new(ui.available_width(), 30.0), t.panel_raised, t, self.process_actions.ready())
-                            .on_hover_text("Review this branch or every instance of the same executable before ending them.").clicked() {
-                            self.request_end_tree_selected();
-                        }
+                        ui.add_enabled_ui(self.process_actions.ready(), |ui| {
+                            ui.menu_button("More process actions", |ui| {
+                                if ui.button("End this process").on_hover_text("Only the selected PID, after confirmation.").clicked() {
+                                    self.request_end_selected();
+                                    ui.close();
+                                }
+                                if ui.button("End this branch").on_hover_text("The selected process and its children, after confirmation.").clicked() {
+                                    self.request_end_tree_selected();
+                                    ui.close();
+                                }
+                            });
+                        });
                     });
                 }
                 ui.separator();
@@ -2460,6 +2488,18 @@ Counters: {state}."
             },
             if disk.removable { "yes" } else { "no" }
         ));
+        if ui
+            .add_enabled(
+                !self.toolbox.busy(),
+                egui::Button::new("Explore in SpaceView"),
+            )
+            .on_disabled_hover_text("A Toolbox operation is running.")
+            .clicked()
+        {
+            self.toolbox
+                .open_folder(ui.ctx(), disk.mount.clone().into());
+            self.page = Page::Toolbox;
+        }
         let height = widgets::fit_height(ui, 84.0, 160.0, 360.0);
         self.graphs.volume_graph(ui, &disk.mount, height, t);
         ui.add_space(theme::space::L);
@@ -3166,6 +3206,16 @@ Counters: {state}."
         target: String,
     ) -> bool {
         // Defense in depth: local callbacks/tests must not bypass the recovery UI.
+        #[cfg(windows)]
+        if let ProcessAction::Suspend(id) | ProcessAction::Resume(id) = &action
+            && self.toolbox.sleep_rules.contains(*id)
+        {
+            self.message = Some((
+                "Remove the active sleep rule before using manual suspension.".into(),
+                true,
+            ));
+            return false;
+        }
         if self
             .graphics_recovering
             .load(std::sync::atomic::Ordering::Acquire)
@@ -3263,6 +3313,7 @@ impl eframe::App for TrontopApp {
             return;
         }
         let ctx = ui.ctx().clone();
+        self.toolbox.poll();
         self.poll_startup_command();
         // Workers normally wake the UI. If they stall, repaint only at the
         // remaining freshness transitions so a frozen view cannot claim Live.
@@ -3359,6 +3410,7 @@ impl eframe::App for TrontopApp {
                 Page::Details => self.details_page(ui),
                 Page::Services => self.services_page(ui),
                 Page::System => self.system_page(ui),
+                Page::Toolbox => self.toolbox_page(ui),
             });
         self.confirm_end_task(&ctx);
         self.confirm_end_tree(&ctx);
